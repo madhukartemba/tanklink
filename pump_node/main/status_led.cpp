@@ -137,13 +137,16 @@ class ProgressFill final : public pixelengine::Animation {
 
 /**
  * Idle / connected: mostly dim, brief bright pulse (10s low → 1s pulse).
- * With neighbors_: ±1 follow the glow; ±2 only on the bright peak.
+ * neighbors_: ±1 soft surrounds; ±2 on bright peak.
+ * surrounds_pulse_only_: ±1 stay off during the dim dwell (standby).
  */
 class CenterIdleGlow final : public pixelengine::Animation {
    public:
     explicit CenterIdleGlow(size_t led_count, uint32_t color = Color::White,
-                            float brightness_mul = 1.0f, bool neighbors = false)
-        : color_(color), brightness_mul_(brightness_mul), neighbors_(neighbors)
+                            float brightness_mul = 1.0f, bool neighbors = false,
+                            bool surrounds_pulse_only = false)
+        : color_(color), brightness_mul_(brightness_mul), neighbors_(neighbors),
+          surrounds_pulse_only_(surrounds_pulse_only)
     {
         led_count_ = led_count;
         layout_ = Layout::Linear;
@@ -186,10 +189,10 @@ class CenterIdleGlow final : public pixelengine::Animation {
             if (d < 0.55f) {
                 weight = 1.0f;
             } else if (neighbors_ && d < 1.55f) {
-                /* Immediate surrounds — soft with the pulse. */
-                weight = 0.22f + 0.55f * pulse;
+                /* ±1 surrounds */
+                weight = surrounds_pulse_only_ ? (0.75f * pulse) : (0.22f + 0.55f * pulse);
             } else if (neighbors_ && d < 2.55f) {
-                /* Next surrounds — only on the bright part. */
+                /* ±2 — only on the bright part */
                 weight = 0.45f * pulse * pulse;
             }
             if (weight > 0.001f) {
@@ -202,6 +205,7 @@ class CenterIdleGlow final : public pixelengine::Animation {
     uint32_t color_;
     float brightness_mul_ = 1.0f;
     bool neighbors_ = false;
+    bool surrounds_pulse_only_ = false;
     float center_ = 0.0f;
     float t0_ = 0.0f;
 };
@@ -454,11 +458,12 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<PingPong>(kN));
         break;
     case STATUS_LED_IDLE:
-        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::White));
+        /* Same neighbor pulse as connected; ±1 off during dim dwell. */
+        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::White, 1.0f, true, true));
         break;
     case STATUS_LED_CONNECTED:
-        /* Same 10s/1s pulse timing; ±1 always soft, ±2 on bright peak. */
-        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::Green, 1.25f, true));
+        /* Same 10s/1s pulse; ±1 soft (incl. dim), ±2 on bright peak. */
+        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::Green, 1.25f, true, false));
         break;
     case STATUS_LED_PUMP_ON:
         s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::rgb(20, 100, 255), 9.5f, 0.42f,
@@ -481,7 +486,7 @@ void apply_mode(status_led_mode_t mode)
             kN, Color::scale(Color::Red, std::max(0.35f, s_bri))));
         break;
     default:
-        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::White));
+        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::White, 1.0f, true, true));
         break;
     }
     s_applied = mode;
