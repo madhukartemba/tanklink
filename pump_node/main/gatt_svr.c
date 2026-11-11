@@ -4,6 +4,8 @@
 
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "host/ble_gap.h"
+#include "host/ble_hs.h"
 #include "host/ble_uuid.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
@@ -19,6 +21,14 @@
 
 #define TAG "GATT_SVR"
 
+typedef struct {
+    uint16_t conn_handle;
+    bool in_use;
+    bool authed;
+    bool state_notify;
+    bool ota_status_notify;
+} conn_slot_t;
+
 static const ble_uuid128_t uuid_svc = TANKLINK_SVC_UUID_INIT;
 static const ble_uuid128_t uuid_info = TANKLINK_CHR_INFO_INIT;
 static const ble_uuid128_t uuid_pair = TANKLINK_CHR_PAIR_INIT;
@@ -30,13 +40,10 @@ static const ble_uuid128_t uuid_ota_ctrl = TANKLINK_CHR_OTA_CTRL_INIT;
 static const ble_uuid128_t uuid_ota_data = TANKLINK_CHR_OTA_DATA_INIT;
 static const ble_uuid128_t uuid_ota_status = TANKLINK_CHR_OTA_STATUS_INIT;
 
-static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
+static conn_slot_t s_conns[TANKLINK_MAX_BLE_CONN];
 static uint16_t s_pair_val_handle;
 static uint16_t s_state_val_handle;
 static uint16_t s_ota_status_val_handle;
-static bool s_authed;
-static bool s_state_notify;
-static bool s_ota_status_notify;
 static uint8_t s_pump_on;
 static int64_t s_pump_on_since_us;
 
@@ -102,6 +109,40 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
     { 0 },
 };
 
+static conn_slot_t *slot_find(uint16_t conn_handle)
+{
+    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
+        if (s_conns[i].in_use && s_conns[i].conn_handle == conn_handle) {
+            return &s_conns[i];
+        }
+    }
+    return NULL;
+}
+
+static conn_slot_t *slot_alloc(uint16_t conn_handle)
+{
+    conn_slot_t *existing = slot_find(conn_handle);
+    if (existing) {
+        return existing;
+    }
+    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
+        if (!s_conns[i].in_use) {
+            memset(&s_conns[i], 0, sizeof(s_conns[i]));
+            s_conns[i].in_use = true;
+            s_conns[i].conn_handle = conn_handle;
+            return &s_conns[i];
+        }
+    }
+    return NULL;
+}
+
+static void clear_all_auth(void)
+{
+    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
+        s_conns[i].authed = false;
+    }
+}
+
 static void append_ota_status(uint8_t *out6)
 {
     uint32_t off = pump_ota_offset();
@@ -115,22 +156,24 @@ static void append_ota_status(uint8_t *out6)
 
 static void ota_status_notify(void)
 {
-    if (!s_ota_status_notify || s_conn_handle == BLE_HS_CONN_HANDLE_NONE) {
-        return;
-    }
     uint8_t buf[6];
     append_ota_status(buf);
-    struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, sizeof(buf));
-    if (!om) {
-        return;
-    }
-    int rc = ble_gatts_notify_custom(s_conn_handle, s_ota_status_val_handle, om);
-    if (rc != 0) {
-        ESP_LOGW(TAG, "ota status notify rc=%d", rc);
+    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
+        if (!s_conns[i].in_use || !s_conns[i].ota_status_notify) {
+            continue;
+        }
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, sizeof(buf));
+        if (!om) {
+            continue;
+        }
+        int rc = ble_gatts_notify_custom(s_conns[i].conn_handle, s_ota_status_val_handle, om);
+        if (rc != 0) {
+            ESP_LOGW(TAG, "ota status notify conn=%u rc=%d", s_conns[i].conn_handle, rc);
+        }
     }
 }
 
-static int append_info(struct os_mbuf *om)
+static int append_info(struct os_mbuf *om, uint16_t conn_handle)
 {
     /* paired(1) + device_id(6) + fw\0 + auto_off_min(1) + flags(1) + run_secs(u32 LE) */
     uint8_t paired = pump_pair_is_paired() ? 1 : 0;
@@ -151,7 +194,7 @@ static int append_info(struct os_mbuf *om)
     if (pump_pair_pairing_active()) {
         flags |= 0x01;
     }
-    if (s_authed) {
+    if (gatt_svr_is_authed_conn(conn_handle)) {
         flags |= 0x02;
     }
     rc = os_mbuf_append(om, &auto_off, 1);
@@ -212,7 +255,7 @@ static void refresh_connected_led(void)
         mode == STATUS_LED_UPDATING) {
         return;
     }
-    if (s_conn_handle != BLE_HS_CONN_HANDLE_NONE && !s_pump_on) {
+    if (gatt_svr_is_connected() && !s_pump_on) {
         status_led_set_mode(STATUS_LED_CONNECTED);
     } else if (!s_pump_on) {
         status_led_set_mode(STATUS_LED_IDLE);
@@ -222,17 +265,17 @@ static void refresh_connected_led(void)
 static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
                       struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    (void)conn_handle;
     (void)attr_handle;
     (void)arg;
 
     const ble_uuid_t *uuid = ctxt->chr->uuid;
+    conn_slot_t *slot = slot_find(conn_handle);
 
     if (ble_uuid_cmp(uuid, &uuid_info.u) == 0) {
         if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
             return BLE_ATT_ERR_UNLIKELY;
         }
-        return append_info(ctxt->om) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        return append_info(ctxt->om, conn_handle) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
     }
 
     if (ble_uuid_cmp(uuid, &uuid_pair.u) == 0) {
@@ -247,12 +290,14 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         if (pump_pair_claim(token) != ESP_OK) {
             return BLE_ATT_ERR_UNLIKELY;
         }
-        s_authed = true; /* claimer is authenticated for this connection */
+        if (slot) {
+            slot->authed = true; /* claimer is authenticated for this connection */
+        }
         struct os_mbuf *om = ble_hs_mbuf_from_flat(token, sizeof(token));
         if (!om) {
             return BLE_ATT_ERR_INSUFFICIENT_RES;
         }
-        int rc = ble_gatts_notify_custom(s_conn_handle, s_pair_val_handle, om);
+        int rc = ble_gatts_notify_custom(conn_handle, s_pair_val_handle, om);
         if (rc != 0) {
             ESP_LOGW(TAG, "pair notify failed rc=%d", rc);
         }
@@ -272,9 +317,12 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         if (rc != 0) {
             return BLE_ATT_ERR_UNLIKELY;
         }
-        s_authed = pump_pair_check_token(token, sizeof(token));
-        ESP_LOGI(TAG, "Auth %s", s_authed ? "OK" : "FAILED");
-        return s_authed ? 0 : BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+        bool ok = pump_pair_check_token(token, sizeof(token));
+        if (slot) {
+            slot->authed = ok;
+        }
+        ESP_LOGI(TAG, "Auth %s conn=%u", ok ? "OK" : "FAILED", conn_handle);
+        return ok ? 0 : BLE_ATT_ERR_WRITE_NOT_PERMITTED;
     }
 
     if (ble_uuid_cmp(uuid, &uuid_state.u) == 0) {
@@ -289,8 +337,8 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
             return BLE_ATT_ERR_UNLIKELY;
         }
-        if (!s_authed) {
-            ESP_LOGW(TAG, "Cmd rejected — not authenticated");
+        if (!gatt_svr_is_authed_conn(conn_handle)) {
+            ESP_LOGW(TAG, "Cmd rejected — not authenticated conn=%u", conn_handle);
             return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
         }
         uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
@@ -306,7 +354,7 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
             if (pump_pair_unpair() != ESP_OK) {
                 return BLE_ATT_ERR_UNLIKELY;
             }
-            s_authed = false;
+            clear_all_auth();
             gatt_svr_set_pump_state(0);
             return 0;
         }
@@ -325,7 +373,7 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
             return BLE_ATT_ERR_UNLIKELY;
         }
-        if (!s_authed) {
+        if (!gatt_svr_is_authed_conn(conn_handle)) {
             return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
         }
         uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
@@ -385,11 +433,11 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
             }
             uint32_t size = (uint32_t)buf[1] | ((uint32_t)buf[2] << 8) |
                             ((uint32_t)buf[3] << 16) | ((uint32_t)buf[4] << 24);
-            ota_err = pump_ota_start(size, &buf[5]);
+            ota_err = pump_ota_start(conn_handle, size, &buf[5]);
         } else if (op == TANKLINK_OTA_OP_ABORT) {
-            ota_err = pump_ota_abort();
+            ota_err = pump_ota_abort_from(conn_handle);
         } else if (op == TANKLINK_OTA_OP_FINISH) {
-            ota_err = pump_ota_finish();
+            ota_err = pump_ota_finish(conn_handle);
         } else {
             return BLE_ATT_ERR_UNLIKELY;
         }
@@ -416,7 +464,7 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         }
         uint32_t offset = (uint32_t)tmp[0] | ((uint32_t)tmp[1] << 8) |
                           ((uint32_t)tmp[2] << 16) | ((uint32_t)tmp[3] << 24);
-        uint8_t ota_err = pump_ota_write(offset, &tmp[4], (uint16_t)(len - 4));
+        uint8_t ota_err = pump_ota_write(conn_handle, offset, &tmp[4], (uint16_t)(len - 4));
         return ota_err == TANKLINK_OTA_ERR_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
     }
 
@@ -443,6 +491,7 @@ void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg)
 
 int gatt_svr_init(void)
 {
+    memset(s_conns, 0, sizeof(s_conns));
     ble_svc_gap_init();
     ble_svc_gatt_init();
     pump_ota_set_status_cb(ota_status_notify);
@@ -454,32 +503,59 @@ int gatt_svr_init(void)
     return ble_gatts_add_svcs(gatt_svr_svcs);
 }
 
-void gatt_svr_set_conn(uint16_t conn_handle)
+void gatt_svr_on_connect(uint16_t conn_handle)
 {
-    s_conn_handle = conn_handle;
+    conn_slot_t *slot = slot_alloc(conn_handle);
+    if (!slot) {
+        ESP_LOGW(TAG, "conn table full — rejecting handle=%u", conn_handle);
+        ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+        return;
+    }
+    ESP_LOGI(TAG, "conn add handle=%u count=%d", conn_handle, gatt_svr_conn_count());
     refresh_connected_led();
 }
 
-void gatt_svr_clear_session(void)
+void gatt_svr_on_disconnect(uint16_t conn_handle)
 {
-    if (pump_ota_is_active()) {
-        pump_ota_abort();
+    pump_ota_on_disconnect(conn_handle);
+    conn_slot_t *slot = slot_find(conn_handle);
+    if (slot) {
+        memset(slot, 0, sizeof(*slot));
     }
-    s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-    s_authed = false;
-    s_state_notify = false;
-    s_ota_status_notify = false;
+    ESP_LOGI(TAG, "conn drop handle=%u count=%d", conn_handle, gatt_svr_conn_count());
     refresh_connected_led();
+}
+
+int gatt_svr_conn_count(void)
+{
+    int n = 0;
+    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
+        if (s_conns[i].in_use) {
+            n++;
+        }
+    }
+    return n;
+}
+
+bool gatt_svr_is_authed_conn(uint16_t conn_handle)
+{
+    conn_slot_t *slot = slot_find(conn_handle);
+    return slot && slot->authed;
 }
 
 bool gatt_svr_is_authed(void)
 {
-    return s_authed;
+    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
+        if (s_conns[i].in_use && s_conns[i].authed) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool gatt_svr_is_connected(void)
 {
-    return s_conn_handle != BLE_HS_CONN_HANDLE_NONE;
+    return gatt_svr_conn_count() > 0;
 }
 
 uint8_t gatt_svr_pump_state(void)
@@ -567,16 +643,18 @@ void gatt_svr_poll(void)
 
 void gatt_svr_notify_state_if_subscribed(void)
 {
-    if (!s_state_notify || s_conn_handle == BLE_HS_CONN_HANDLE_NONE) {
-        return;
-    }
-    struct os_mbuf *om = ble_hs_mbuf_from_flat(&s_pump_on, 1);
-    if (!om) {
-        return;
-    }
-    int rc = ble_gatts_notify_custom(s_conn_handle, s_state_val_handle, om);
-    if (rc != 0) {
-        ESP_LOGW(TAG, "state notify rc=%d", rc);
+    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
+        if (!s_conns[i].in_use || !s_conns[i].state_notify) {
+            continue;
+        }
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(&s_pump_on, 1);
+        if (!om) {
+            continue;
+        }
+        int rc = ble_gatts_notify_custom(s_conns[i].conn_handle, s_state_val_handle, om);
+        if (rc != 0) {
+            ESP_LOGW(TAG, "state notify conn=%u rc=%d", s_conns[i].conn_handle, rc);
+        }
     }
 }
 
@@ -590,12 +668,16 @@ uint16_t gatt_svr_state_val_handle(void)
     return s_state_val_handle;
 }
 
-void gatt_svr_on_subscribe(uint16_t attr_handle, bool notify_enabled)
+void gatt_svr_on_subscribe(uint16_t conn_handle, uint16_t attr_handle, bool notify_enabled)
 {
+    conn_slot_t *slot = slot_find(conn_handle);
+    if (!slot) {
+        return;
+    }
     if (attr_handle == s_state_val_handle) {
-        s_state_notify = notify_enabled;
+        slot->state_notify = notify_enabled;
     }
     if (attr_handle == s_ota_status_val_handle) {
-        s_ota_status_notify = notify_enabled;
+        slot->ota_status_notify = notify_enabled;
     }
 }

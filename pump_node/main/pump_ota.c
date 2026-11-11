@@ -7,6 +7,7 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "host/ble_hs.h"
 #include "tinycrypt/sha256.h"
 
 #include "gatt_svr.h"
@@ -26,6 +27,7 @@ static uint8_t s_expect_sha[32];
 static struct tc_sha256_state_struct s_sha;
 static pump_ota_status_cb_t s_status_cb;
 static status_led_mode_t s_led_before;
+static uint16_t s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
 
 static void notify_status(void)
 {
@@ -51,6 +53,7 @@ static void cleanup_session(bool keep_err)
     }
     s_offset = 0;
     s_image_size = 0;
+    s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
     if (!keep_err) {
         s_err = TANKLINK_OTA_ERR_OK;
         s_state = TANKLINK_OTA_ST_IDLE;
@@ -62,10 +65,16 @@ static void cleanup_session(bool keep_err)
     }
 }
 
+static bool is_owner(uint16_t conn_handle)
+{
+    return s_owner_conn != BLE_HS_CONN_HANDLE_NONE && s_owner_conn == conn_handle;
+}
+
 esp_err_t pump_ota_init(void)
 {
     s_state = TANKLINK_OTA_ST_IDLE;
     s_err = TANKLINK_OTA_ERR_OK;
+    s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
     return ESP_OK;
 }
 
@@ -97,9 +106,18 @@ uint32_t pump_ota_offset(void)
     return s_offset;
 }
 
-uint8_t pump_ota_start(uint32_t image_size, const uint8_t sha256[32])
+void pump_ota_on_disconnect(uint16_t conn_handle)
 {
-    if (!gatt_svr_is_authed()) {
+    if (is_owner(conn_handle) && pump_ota_is_active()) {
+        ESP_LOGW(TAG, "OTA owner disconnected — abort");
+        cleanup_session(false);
+        notify_status();
+    }
+}
+
+uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t sha256[32])
+{
+    if (!gatt_svr_is_authed_conn(conn_handle)) {
         set_err(TANKLINK_OTA_ERR_NOT_AUTH);
         return TANKLINK_OTA_ERR_NOT_AUTH;
     }
@@ -141,22 +159,24 @@ uint8_t pump_ota_start(uint32_t image_size, const uint8_t sha256[32])
     s_image_size = image_size;
     s_offset = 0;
     s_active = true;
+    s_owner_conn = conn_handle;
     s_err = TANKLINK_OTA_ERR_OK;
     s_state = TANKLINK_OTA_ST_READY;
     s_led_before = status_led_get_mode();
     status_led_set_mode(STATUS_LED_UPDATING);
-    ESP_LOGI(TAG, "OTA start size=%lu part=%s", (unsigned long)image_size, s_part->label);
+    ESP_LOGI(TAG, "OTA start size=%lu part=%s owner=%u",
+             (unsigned long)image_size, s_part->label, conn_handle);
     notify_status();
     return TANKLINK_OTA_ERR_OK;
 }
 
-uint8_t pump_ota_write(uint32_t offset, const uint8_t *data, uint16_t len)
+uint8_t pump_ota_write(uint16_t conn_handle, uint32_t offset, const uint8_t *data, uint16_t len)
 {
     if (!s_active) {
         set_err(TANKLINK_OTA_ERR_STATE);
         return TANKLINK_OTA_ERR_STATE;
     }
-    if (!gatt_svr_is_authed()) {
+    if (!is_owner(conn_handle) || !gatt_svr_is_authed_conn(conn_handle)) {
         cleanup_session(true);
         set_err(TANKLINK_OTA_ERR_NOT_AUTH);
         return TANKLINK_OTA_ERR_NOT_AUTH;
@@ -202,6 +222,17 @@ uint8_t pump_ota_abort(void)
     return TANKLINK_OTA_ERR_OK;
 }
 
+uint8_t pump_ota_abort_from(uint16_t conn_handle)
+{
+    if (!s_active && s_state == TANKLINK_OTA_ST_IDLE) {
+        return TANKLINK_OTA_ERR_OK;
+    }
+    if (s_owner_conn != BLE_HS_CONN_HANDLE_NONE && !is_owner(conn_handle)) {
+        return TANKLINK_OTA_ERR_NOT_AUTH;
+    }
+    return pump_ota_abort();
+}
+
 static void reboot_task(void *arg)
 {
     (void)arg;
@@ -209,13 +240,13 @@ static void reboot_task(void *arg)
     esp_restart();
 }
 
-uint8_t pump_ota_finish(void)
+uint8_t pump_ota_finish(uint16_t conn_handle)
 {
     if (!s_active) {
         set_err(TANKLINK_OTA_ERR_STATE);
         return TANKLINK_OTA_ERR_STATE;
     }
-    if (!gatt_svr_is_authed()) {
+    if (!is_owner(conn_handle) || !gatt_svr_is_authed_conn(conn_handle)) {
         cleanup_session(true);
         set_err(TANKLINK_OTA_ERR_NOT_AUTH);
         return TANKLINK_OTA_ERR_NOT_AUTH;
@@ -241,6 +272,7 @@ uint8_t pump_ota_finish(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_end: %s", esp_err_to_name(err));
         s_part = NULL;
+        s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
         set_err(TANKLINK_OTA_ERR_FLASH);
         return TANKLINK_OTA_ERR_FLASH;
     }
@@ -249,6 +281,7 @@ uint8_t pump_ota_finish(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "set_boot: %s", esp_err_to_name(err));
         s_part = NULL;
+        s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
         set_err(TANKLINK_OTA_ERR_FLASH);
         return TANKLINK_OTA_ERR_FLASH;
     }

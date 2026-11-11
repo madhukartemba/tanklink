@@ -8,13 +8,19 @@
 extern "C" {
 #endif
 
+/** Max simultaneous BLE centrals (must match CONFIG_BT_NIMBLE_MAX_CONNECTIONS). */
+#define TANKLINK_MAX_BLE_CONN 5
+
 int gatt_svr_init(void);
 void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg);
 
-void gatt_svr_set_conn(uint16_t conn_handle);
-void gatt_svr_clear_session(void);
+void gatt_svr_on_connect(uint16_t conn_handle);
+void gatt_svr_on_disconnect(uint16_t conn_handle);
+int gatt_svr_conn_count(void);
+bool gatt_svr_is_authed_conn(uint16_t conn_handle);
 bool gatt_svr_is_authed(void);
 bool gatt_svr_is_connected(void);
+
 uint8_t gatt_svr_pump_state(void);
 void gatt_svr_set_pump_state(uint8_t on);
 /** Same as set_pump_state but skips the on-pump buzzer (button already clicked). */
@@ -29,7 +35,7 @@ uint32_t gatt_svr_run_seconds(void);
 
 uint16_t gatt_svr_pair_val_handle(void);
 uint16_t gatt_svr_state_val_handle(void);
-void gatt_svr_on_subscribe(uint16_t attr_handle, bool notify_enabled);
+void gatt_svr_on_subscribe(uint16_t conn_handle, uint16_t attr_handle, bool notify_enabled);
 
 #ifdef __cplusplus
 }

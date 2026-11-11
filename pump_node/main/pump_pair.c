@@ -204,15 +204,25 @@ esp_err_t pump_pair_claim(uint8_t out_token[TANKLINK_TOKEN_LEN])
     if (!pump_pair_is_claimable()) {
         return ESP_ERR_INVALID_STATE;
     }
-    esp_fill_random(s_pair.token, TANKLINK_TOKEN_LEN);
-    s_pair.paired = 1;
-    esp_err_t err = save_blob();
-    if (err != ESP_OK) {
-        return err;
+    /*
+     * One shared token for every paired phone/tablet.
+     * First claim (unpaired) creates it; later claims during a pairing
+     * window hand out the same token so additional devices can join
+     * without invalidating phones that already have it.
+     */
+    if (!s_pair.paired) {
+        esp_fill_random(s_pair.token, TANKLINK_TOKEN_LEN);
+        s_pair.paired = 1;
+        esp_err_t err = save_blob();
+        if (err != ESP_OK) {
+            return err;
+        }
+        ESP_LOGI(TAG, "CLAIMED new token serial=%s", s_serial);
+    } else {
+        ESP_LOGI(TAG, "CLAIMED shared token serial=%s", s_serial);
     }
     memcpy(out_token, s_pair.token, TANKLINK_TOKEN_LEN);
-    s_pairing_active = false;
-    ESP_LOGI(TAG, "CLAIMED serial=%s", s_serial);
+    /* Keep pairing window open until timeout so multiple devices can claim. */
     refresh_led_for_pair_state();
     return ESP_OK;
 }

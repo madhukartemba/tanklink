@@ -47,6 +47,14 @@ static void on_short_press(void)
     if (pump_ota_is_active()) {
         return;
     }
+    /* Short press exits pairing mode without toggling the pump. */
+    if (pump_pair_pairing_active()) {
+        if (pump_config_buzzer_on_button()) {
+            buzzer_play_user(false);
+        }
+        pump_pair_exit_pairing_mode();
+        return;
+    }
     if (pump_config_buzzer_on_button()) {
         buzzer_play_user(false);
     }
@@ -112,6 +120,9 @@ static void advertise(void)
     adv.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv.disc_mode = BLE_GAP_DISC_MODE_GEN;
     rc = ble_gap_adv_start(s_own_addr_type, NULL, BLE_HS_FOREVER, &adv, gap_event, NULL);
+    if (rc == BLE_HS_EALREADY) {
+        return;
+    }
     if (rc != 0) {
         ESP_LOGE(TAG, "adv start failed rc=%d", rc);
         return;
@@ -137,27 +148,36 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         if (event->connect.status != 0) {
             advertise();
         } else {
-            gatt_svr_set_conn(event->connect.conn_handle);
+            gatt_svr_on_connect(event->connect.conn_handle);
             /* Prefer large ATT MTU for OTA throughput (central may also request). */
             ble_att_set_preferred_mtu(512);
             ble_gattc_exchange_mtu(event->connect.conn_handle, NULL, NULL);
+            /* NimBLE stops advertising on connect — reopen while slots remain. */
+            if (gatt_svr_conn_count() < TANKLINK_MAX_BLE_CONN) {
+                advertise();
+            }
         }
         break;
 
     case BLE_GAP_EVENT_DISCONNECT:
         ESP_LOGI(TAG, "disconnect reason=%d", event->disconnect.reason);
-        gatt_svr_clear_session();
+        gatt_svr_on_disconnect(event->disconnect.conn.conn_handle);
         advertise();
         break;
 
     case BLE_GAP_EVENT_ADV_COMPLETE:
-        advertise();
+        if (gatt_svr_conn_count() < TANKLINK_MAX_BLE_CONN) {
+            advertise();
+        }
         break;
 
     case BLE_GAP_EVENT_SUBSCRIBE:
-        ESP_LOGI(TAG, "subscribe attr=%d notify=%d",
+        ESP_LOGI(TAG, "subscribe conn=%d attr=%d notify=%d",
+                 event->subscribe.conn_handle,
                  event->subscribe.attr_handle, event->subscribe.cur_notify);
-        gatt_svr_on_subscribe(event->subscribe.attr_handle, event->subscribe.cur_notify != 0);
+        gatt_svr_on_subscribe(event->subscribe.conn_handle,
+                              event->subscribe.attr_handle,
+                              event->subscribe.cur_notify != 0);
         break;
 
     case BLE_GAP_EVENT_MTU:

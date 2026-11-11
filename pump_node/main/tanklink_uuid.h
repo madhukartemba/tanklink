@@ -35,7 +35,7 @@ extern "C" {
 
 #define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
 #define TANKLINK_DEVICE_NAME "TankLink-Pump"
-#define TANKLINK_FW_VERSION  "0.4.2"
+#define TANKLINK_FW_VERSION  "0.4.5"
 
 /* OTA_CTRL opcodes */
 #define TANKLINK_OTA_OP_START  0x01

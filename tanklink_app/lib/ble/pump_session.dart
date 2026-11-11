@@ -47,6 +47,7 @@ class SavedPump {
   String get displayTitle => '$name · #$serial';
 
   SavedPump copyWith({
+    String? remoteId,
     String? name,
     String? deviceIdHex,
     String? serial,
@@ -54,7 +55,7 @@ class SavedPump {
   }) {
     final id = deviceIdHex ?? this.deviceIdHex;
     return SavedPump(
-      remoteId: remoteId,
+      remoteId: remoteId ?? this.remoteId,
       deviceIdHex: id,
       token: token ?? this.token,
       name: name ?? this.name,
@@ -272,9 +273,22 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final device = BluetoothDevice.fromId(pump.remoteId);
+      // Direct connect often fails on Android after a cold start while another
+      // phone is already linked — scan first so the stack can see advertising.
+      final device = await _resolveDeviceForConnect(pump);
       await _connectAndDiscover(device);
-      await _auth!.write(pump.token, withoutResponse: false);
+      final tokenPump = selected ?? pump;
+      try {
+        await _auth!.write(tokenPump.token, withoutResponse: false);
+      } catch (e) {
+        debugPrint('auth write failed: $e');
+        await disconnect();
+        connecting = false;
+        connectFailed = true;
+        status = 'Auth failed — hold pump 5s, then Add pump again';
+        notifyListeners();
+        return;
+      }
       authed = true;
       await _state!.setNotifyValue(true);
       final stateVal = await _state!.read();
@@ -287,13 +301,94 @@ class PumpSession extends ChangeNotifier {
       status = 'Connected';
       notifyListeners();
       // Soft trigger for firmware check (listener may also call this).
-    } catch (_) {
+    } catch (e) {
+      debugPrint('connectSelected failed: $e');
       await disconnect();
       connecting = false;
       connectFailed = true;
       status = 'Couldn’t connect';
       notifyListeners();
     }
+  }
+
+  /// Find the saved pump via a short scan (required when another central is
+  /// already connected and Android's address cache is cold).
+  Future<BluetoothDevice> _resolveDeviceForConnect(SavedPump pump) async {
+    try {
+      for (final d in FlutterBluePlus.connectedDevices) {
+        if (d.remoteId.str == pump.remoteId) {
+          return d;
+        }
+      }
+    } catch (_) {}
+
+    try {
+      await FlutterBluePlus.adapterState
+          .where((s) => s == BluetoothAdapterState.on)
+          .first
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      return BluetoothDevice.fromId(pump.remoteId);
+    }
+
+    final found = Completer<BluetoothDevice>();
+    StreamSubscription<List<ScanResult>>? sub;
+    sub = FlutterBluePlus.scanResults.listen((results) {
+      for (final r in results) {
+        if (_scanMatchesSavedPump(r, pump) && !found.isCompleted) {
+          found.complete(r.device);
+        }
+      }
+    });
+
+    try {
+      try {
+        await FlutterBluePlus.startScan(
+          withServices: [TankLinkUuids.service],
+          timeout: const Duration(seconds: 6),
+        );
+      } catch (_) {
+        await FlutterBluePlus.startScan(timeout: const Duration(seconds: 6));
+      }
+
+      final device = await found.future.timeout(const Duration(seconds: 7));
+      await FlutterBluePlus.stopScan();
+      await sub.cancel();
+
+      if (device.remoteId.str != pump.remoteId) {
+        await _upsertPump(pump.copyWith(remoteId: device.remoteId.str));
+      }
+      return device;
+    } catch (_) {
+      await FlutterBluePlus.stopScan();
+      await sub.cancel();
+      // Last resort: cached id (may still work if the OS remembers it).
+      return BluetoothDevice.fromId(pump.remoteId);
+    }
+  }
+
+  bool _scanMatchesSavedPump(ScanResult r, SavedPump pump) {
+    if (r.device.remoteId.str == pump.remoteId) {
+      return true;
+    }
+    final name = r.advertisementData.advName;
+    final serial = pump.serial.toUpperCase();
+    if (serial.isEmpty || serial == '----') {
+      return false;
+    }
+    final hasSvc = r.advertisementData.serviceUuids
+        .any((u) => u == TankLinkUuids.service);
+    final looksLikeUs = name.startsWith(TankLinkUuids.deviceNamePrefix) ||
+        name.contains('TankLink') ||
+        hasSvc;
+    if (!looksLikeUs) {
+      return false;
+    }
+    final upper = name.toUpperCase();
+    return upper.endsWith(serial) ||
+        upper.contains('-$serial') ||
+        upper.contains('#$serial') ||
+        upper.contains(serial);
   }
 
   Future<void> _refreshInfoAndSettings() async {
