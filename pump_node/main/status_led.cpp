@@ -134,7 +134,7 @@ class ProgressFill final : public pixelengine::Animation {
  */
 class CenterIdleGlow final : public pixelengine::Animation {
    public:
-    explicit CenterIdleGlow(size_t led_count, uint32_t color = Color::rgb(0, 210, 90),
+    explicit CenterIdleGlow(size_t led_count, uint32_t color = Color::rgb(255, 255, 255),
                             float brightness_mul = 1.0f)
         : color_(color), brightness_mul_(brightness_mul)
     {
@@ -315,9 +315,9 @@ class BootLoading final : public pixelengine::Animation {
             break;
         }
         case Stage::Success: {
-            /* Full-strip soft green pulse — boot OK. */
-            color = Color::rgb(0, 220, 90);
-            bri_scale = 0.55f;
+            /* Full-strip pure green pulse — boot OK. */
+            color = Color::Green; /* 0x00FF00 */
+            bri_scale = 0.65f;
             fill = static_cast<float>(led_count_);
             const float t = now - t0_;
             const float pulse = smoother01(std::min(1.0f, t / 0.18f));
@@ -329,8 +329,8 @@ class BootLoading final : public pixelengine::Animation {
             break;
         }
         case Stage::SuccessFade: {
-            color = Color::rgb(0, 220, 90);
-            bri_scale = 0.55f;
+            color = Color::Green;
+            bri_scale = 0.65f;
             fill = static_cast<float>(led_count_);
             fade = 1.0f - smoother01(std::min(1.0f, (now - t0_) / 0.35f));
             if (now - t0_ >= 0.35f) {
@@ -415,16 +415,16 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<PingPong>(kN));
         break;
     case STATUS_LED_IDLE:
-        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN));
+        /* Standby — white center glow. */
+        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::White));
         break;
     case STATUS_LED_CONNECTED:
-        /* Same standby glow, cooler color, a bit brighter. */
-        s_px.addAnimation(
-            std::make_unique<CenterIdleGlow>(kN, Color::rgb(0, 190, 210), 1.25f));
+        /* Linked — same glow, pure green, a bit brighter. */
+        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::Green, 1.25f));
         break;
     case STATUS_LED_PUMP_ON:
-        /* Spaced high-contrast blue wave while the pump runs. */
-        s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::rgb(30, 110, 255), 9.5f, 0.42f,
+        /* Water / pump running — spaced high-contrast blue wave. */
+        s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::rgb(20, 100, 255), 9.5f, 0.42f,
                                                      0.05f, 2.2f));
         break;
     case STATUS_LED_HOLD_PROGRESS:
@@ -436,13 +436,16 @@ void apply_mode(status_led_mode_t mode)
             std::make_unique<ProgressFill>(kN, &s_ota_pct, Color::rgb(0, 200, 220)));
         break;
     case STATUS_LED_UPDATE_OK:
-        s_px.solid(Color::scale(Color::rgb(0, 230, 70), s_bri * 0.55f));
+        /* Instant full-strip pure green (no crossfade delay). */
+        s_px.setAnimationImmediate(std::make_unique<pixelengine::SolidColor>(
+            kN, Color::scale(Color::Green, std::max(0.35f, s_bri))));
         break;
     case STATUS_LED_UPDATE_ERR:
-        s_px.solid(Color::scale(Color::rgb(230, 40, 40), s_bri * 0.55f));
+        s_px.setAnimationImmediate(std::make_unique<pixelengine::SolidColor>(
+            kN, Color::scale(Color::Red, std::max(0.35f, s_bri))));
         break;
     default:
-        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN));
+        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::White));
         break;
     }
 }

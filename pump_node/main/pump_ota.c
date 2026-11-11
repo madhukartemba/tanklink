@@ -59,17 +59,23 @@ static void err_led_restore_task(void *arg)
     vTaskDelete(NULL);
 }
 
+static void show_ota_err_led(void)
+{
+    status_led_set_mode(STATUS_LED_UPDATE_ERR);
+    xTaskCreate(err_led_restore_task, "ota_led_err", 2048, NULL, 3, NULL);
+}
+
 static void set_err(uint8_t err)
 {
     s_err = err;
     s_state = TANKLINK_OTA_ST_ERR;
-    status_led_set_mode(STATUS_LED_UPDATE_ERR);
-    xTaskCreate(err_led_restore_task, "ota_led_err", 2048, NULL, 3, NULL);
+    show_ota_err_led();
     notify_status();
 }
 
 static void cleanup_session(bool keep_err)
 {
+    const bool was_updating = (status_led_get_mode() == STATUS_LED_UPDATING) || s_active;
     if (s_active) {
         esp_ota_abort(s_handle);
         s_active = false;
@@ -82,7 +88,12 @@ static void cleanup_session(bool keep_err)
     if (!keep_err) {
         s_err = TANKLINK_OTA_ERR_OK;
         s_state = TANKLINK_OTA_ST_IDLE;
-        restore_led_after_ota();
+        if (was_updating) {
+            /* Abort / disconnect mid-OTA — flash red, then restore. */
+            show_ota_err_led();
+        } else {
+            restore_led_after_ota();
+        }
     }
     /* keep_err: caller shows UPDATE_ERR via set_err(); leave strip red. */
 }
@@ -266,7 +277,7 @@ static void reboot_task(void *arg)
 {
     (void)arg;
     /* Hold green success long enough to read on the strip. */
-    vTaskDelay(pdMS_TO_TICKS(900));
+    vTaskDelay(pdMS_TO_TICKS(1500));
     esp_restart();
 }
 
