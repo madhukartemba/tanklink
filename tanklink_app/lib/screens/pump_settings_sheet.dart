@@ -8,7 +8,7 @@ import '../update/pump_firmware_update.dart';
 
 Future<void> showPumpSettingsSheet(BuildContext context) {
   // Refresh release metadata when opening settings.
-  context.read<PumpFirmwareUpdate>().checkForUpdates();
+  context.read<PumpFirmwareUpdate>().checkForUpdates(force: true);
   context.read<PumpFirmwareUpdate>().clearSnooze();
   return showModalBottomSheet<void>(
     context: context,
@@ -576,6 +576,14 @@ class _FirmwareTile extends StatelessWidget {
                       : const Icon(Icons.refresh_rounded),
                 ),
         ),
+        if (fw.errorMessage != null && !available)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              fw.errorMessage!,
+              style: TextStyle(color: scheme.error, fontSize: 13),
+            ),
+          ),
         if (ready)
           Align(
             alignment: Alignment.centerLeft,

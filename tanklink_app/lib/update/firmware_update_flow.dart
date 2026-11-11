@@ -430,7 +430,7 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
   }
 }
 
-/// Home banner when a newer release is available.
+/// Home update affordance when a newer release is available for the open pump.
 class FirmwareUpdateBanner extends StatelessWidget {
   const FirmwareUpdateBanner({super.key});
 
@@ -445,52 +445,50 @@ class FirmwareUpdateBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final scheme = Theme.of(context).colorScheme;
+    final current = session.firmware.isEmpty ? '—' : session.firmware;
+    final latest = fw.latestVersion ?? '';
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Material(
         color: scheme.primary.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(20),
-        child: InkWell(
-          onTap: () => showFirmwareConfirmSheet(context),
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-            child: Row(
-              children: [
-                Icon(Icons.system_update_alt_rounded, color: scheme.primary),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Firmware ${fw.latestVersion} available',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: scheme.primary,
-                        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+          child: Row(
+            children: [
+              Icon(Icons.system_update_alt_rounded, color: scheme.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Update available',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: scheme.primary,
                       ),
-                      Text(
-                        'Tap to review and update',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: scheme.onSurfaceVariant,
-                        ),
+                    ),
+                    Text(
+                      '$current → $latest',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: scheme.onSurfaceVariant,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                TextButton(
-                  onPressed: () => showFirmwareConfirmSheet(context),
-                  child: const Text('Review'),
-                ),
-                IconButton(
-                  tooltip: 'Dismiss',
-                  onPressed: () => fw.snoozeLatest(),
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ],
-            ),
+              ),
+              FilledButton(
+                onPressed: () => showFirmwareConfirmSheet(context),
+                child: const Text('Update'),
+              ),
+              IconButton(
+                tooltip: 'Dismiss',
+                onPressed: () => fw.snoozeLatest(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
           ),
         ),
       ),
