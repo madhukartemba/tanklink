@@ -136,8 +136,8 @@ class ProgressFill final : public pixelengine::Animation {
 };
 
 /**
- * Idle / connected: center-only breathe with a visible floor.
- * brightness_mul stacks on top of the global master brightness.
+ * Idle / connected: center LED mostly stays dim, with a brief bright pulse
+ * every few seconds (long dwell low → short breathe-in → back down).
  */
 class CenterIdleGlow final : public pixelengine::Animation {
    public:
@@ -157,16 +157,32 @@ class CenterIdleGlow final : public pixelengine::Animation {
         if (led_count_ == 0) {
             return;
         }
-        constexpr float kPeriod = 3.4f;
-        constexpr float kTwoPi = 6.28318530718f;
-        const float phase = ((now_sec() - t0_) / kPeriod) * kTwoPi;
-        const float raw = 0.5f + 0.5f * std::sinf(phase - 1.57079632679f);
-        const float breathe = smoother01(raw);
-        const float level = 0.22f + 0.78f * breathe;
-        const float peak = 0.42f * level * brightness_mul_;
+        /* ~5.5s mostly low, ~0.9s pulse window. */
+        constexpr float kPeriod = 5.5f;
+        constexpr float kPulse = 0.9f;
+        constexpr float kFloor = 0.18f;
+        constexpr float kPeak = 0.48f;
+
+        float t = std::fmod(now_sec() - t0_, kPeriod);
+        if (t < 0.0f) {
+            t += kPeriod;
+        }
+        float pulse = 0.0f;
+        const float start = kPeriod - kPulse;
+        if (t >= start) {
+            const float u = (t - start) / kPulse; /* 0→1 across the pulse */
+            /* Rise quickly (~35%), fall slower (~65%). */
+            if (u < 0.35f) {
+                pulse = smoother01(u / 0.35f);
+            } else {
+                pulse = 1.0f - smoother01((u - 0.35f) / 0.65f);
+            }
+        }
+        const float level = kFloor + (kPeak - kFloor) * pulse;
+        const float bri = level * brightness_mul_;
 
         std::fill(buffer_.begin(), buffer_.end(), 0);
-        buffer_[center_] = scale_bri(color_, peak);
+        buffer_[center_] = scale_bri(color_, bri);
     }
 
    private:
