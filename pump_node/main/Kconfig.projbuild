@@ -68,4 +68,33 @@ menu "Pump Board"
         help
             Kitchen-gas-alarm board uses GPIO 4.
 
+    config PUMP_RELAY_START_GPIO
+        int "Starter relay A / START GPIO (−1 = unassigned)"
+        range -1 21
+        default -1
+        help
+            Placeholder. Two-button starter: momentary START relay.
+            Leave −1 until the pin is chosen on the board.
+
+    config PUMP_RELAY_STOP_GPIO
+        int "Starter relay B / STOP GPIO (−1 = unassigned)"
+        range -1 21
+        default -1
+        help
+            Placeholder. Two-button starter: momentary STOP relay.
+            Leave −1 until the pin is chosen on the board.
+
+    config PUMP_RELAY_ACTIVE_HIGH
+        bool "Relays active high"
+        default y
+        help
+            GPIO HIGH energizes the relay coil (common for transistor drivers).
+
+    config PUMP_RELAY_PULSE_MS
+        int "Start/Stop pulse width (ms)"
+        range 50 2000
+        default 400
+        help
+            How long Start/Stop relays stay closed for a two-button starter.
+
 endmenu

@@ -233,12 +233,13 @@ void app_main(void)
 
     ESP_ERROR_CHECK(buzzer_init());
     ESP_ERROR_CHECK(pump_config_init());
+    /* Relays early: always force Stop before anything else can request Start. */
+    ESP_ERROR_CHECK(relay_control_init());
     ESP_ERROR_CHECK(board_init()); /* NeoPixel + button before pair LED state */
     pump_config_apply_led();
     ESP_ERROR_CHECK(pump_pair_init());
     board_set_long_press_callback(on_long_press);
     board_set_button_callback(on_short_press);
-    ESP_ERROR_CHECK(relay_control_init());
     ESP_ERROR_CHECK(lora_link_init());
     ESP_ERROR_CHECK(pump_ota_init());
 

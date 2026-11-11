@@ -35,4 +35,8 @@ class TankLinkUuids {
   static const buzzOnButton = 1 << 1;
   static const buzzOnPump = 1 << 2;
   static const buzzOnAutoOff = 1 << 3;
+
+  /** Starter / contactor profile (settings byte). */
+  static const starterNone = 0;
+  static const starterTwoButton = 1;
 }

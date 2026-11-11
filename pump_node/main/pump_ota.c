@@ -11,6 +11,7 @@
 #include "tinycrypt/sha256.h"
 
 #include "gatt_svr.h"
+#include "relay_control.h"
 #include "status_led.h"
 #include "tanklink_uuid.h"
 
@@ -96,6 +97,7 @@ static void cleanup_session(bool keep_err)
         }
     }
     /* keep_err: caller shows UPDATE_ERR via set_err(); leave strip red. */
+    relay_control_set_blocked(false);
 }
 
 static bool is_owner(uint16_t conn_handle)
@@ -154,7 +156,9 @@ uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
         set_err(TANKLINK_OTA_ERR_NOT_AUTH);
         return TANKLINK_OTA_ERR_NOT_AUTH;
     }
+    /* Safety: never OTA while pumping — force off and block starts. */
     if (gatt_svr_pump_state() != 0) {
+        gatt_svr_set_pump_state(0);
         set_err(TANKLINK_OTA_ERR_PUMP_ON);
         return TANKLINK_OTA_ERR_PUMP_ON;
     }
@@ -168,6 +172,7 @@ uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
     }
 
     cleanup_session(false);
+    relay_control_force_off();
 
     s_part = esp_ota_get_next_update_partition(NULL);
     if (!s_part) {
@@ -195,6 +200,7 @@ uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
     s_owner_conn = conn_handle;
     s_err = TANKLINK_OTA_ERR_OK;
     s_state = TANKLINK_OTA_ST_READY;
+    relay_control_set_blocked(true);
     s_led_before = status_led_get_mode();
     status_led_set_mode(STATUS_LED_UPDATING);
     ESP_LOGI(TAG, "OTA start size=%lu part=%s owner=%u",

@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "relay_control.h"
 #include "status_led.h"
 
 #define TAG "PUMP_CFG"
@@ -30,6 +31,7 @@ static void load_defaults(pump_config_t *cfg)
     cfg->buzzer_flags = DEFAULT_BUZZ_FLAGS;
     cfg->buzzer_tone = BUZZER_TONE_CLICK;
     cfg->led_brightness = PUMP_LED_BRIGHTNESS_DEFAULT;
+    cfg->starter_type = PUMP_STARTER_NONE;
 }
 
 static uint8_t clamp_led_bri(uint8_t percent)
@@ -202,10 +204,32 @@ void pump_config_apply_led(void)
     status_led_set_brightness(pump_config_led_brightness());
 }
 
+uint8_t pump_config_starter_type(void)
+{
+    if (s_cfg.starter_type >= PUMP_STARTER_COUNT) {
+        return PUMP_STARTER_NONE;
+    }
+    return s_cfg.starter_type;
+}
+
+esp_err_t pump_config_set_starter_type(uint8_t type)
+{
+    if (type >= PUMP_STARTER_COUNT) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    s_cfg.starter_type = type;
+    esp_err_t err = pump_config_set(&s_cfg);
+    if (err == ESP_OK) {
+        (void)relay_control_set_type((pump_starter_type_t)type);
+    }
+    return err;
+}
+
 void pump_config_log(void)
 {
     ESP_LOGI(TAG,
-             "empty=%ucm full=%ucm auto_off=%umin buzz_flags=0x%02x tone=%u led=%u",
+             "empty=%ucm full=%ucm auto_off=%umin buzz_flags=0x%02x tone=%u led=%u starter=%u",
              s_cfg.dist_empty_cm, s_cfg.dist_full_cm, s_cfg.auto_off_min,
-             s_cfg.buzzer_flags, s_cfg.buzzer_tone, s_cfg.led_brightness);
+             s_cfg.buzzer_flags, s_cfg.buzzer_tone, s_cfg.led_brightness,
+             s_cfg.starter_type);
 }

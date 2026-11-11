@@ -6,8 +6,10 @@
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
+#include "gatt_svr.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "relay_control.h"
 #include "sdkconfig.h"
 #include "status_led.h"
 
@@ -168,6 +170,9 @@ const uint8_t *pump_pair_token(void)
 
 esp_err_t pump_pair_enter_pairing_mode(void)
 {
+    /* Diverting activity — pump must be off and stay off. */
+    gatt_svr_set_pump_state(0);
+    relay_control_set_blocked(true);
     s_pairing_active = true;
     s_pairing_deadline_us = esp_timer_get_time() + (int64_t)CONFIG_PUMP_PAIRING_TIMEOUT_MS * 1000;
     ESP_LOGI(TAG, "Pairing window open (%d ms)", CONFIG_PUMP_PAIRING_TIMEOUT_MS);
@@ -181,6 +186,7 @@ void pump_pair_exit_pairing_mode(void)
         return;
     }
     s_pairing_active = false;
+    relay_control_set_blocked(false);
     ESP_LOGI(TAG, "Pairing window closed");
     refresh_led_for_pair_state();
 }
@@ -227,10 +233,13 @@ esp_err_t pump_pair_claim(uint8_t out_token[TANKLINK_TOKEN_LEN])
 
 esp_err_t pump_pair_unpair(void)
 {
+    gatt_svr_set_pump_state(0);
+    relay_control_set_blocked(true);
     s_pair.paired = 0;
     memset(s_pair.token, 0, sizeof(s_pair.token));
     esp_err_t err = save_blob();
     if (err != ESP_OK) {
+        relay_control_set_blocked(false);
         return err;
     }
     s_pairing_active = true;

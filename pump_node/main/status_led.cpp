@@ -137,7 +137,6 @@ class ProgressFill final : public pixelengine::Animation {
 
 /**
  * Idle / connected: mostly dim, brief bright pulse (10s low → 1s pulse).
- * Dim dwell is latched static (no RMT refresh) so a lone low LED doesn't shimmer.
  * neighbors_: ±1 soft surrounds; ±2 on bright peak.
  * surrounds_pulse_only_: ±1 stay off during the dim dwell (standby).
  */
@@ -180,26 +179,9 @@ class CenterIdleGlow final : public pixelengine::Animation {
                 pulse = 1.0f - smoother01((u - 0.35f) / 0.65f);
             }
         }
-
-        /* Hold a fixed dim frame without re-driving the strip (avoids low-PWM flicker). */
-        if (pulse <= 0.0001f) {
-            if (!dim_latched_) {
-                paint(0.0f, kFloor * brightness_mul_);
-                dim_latched_ = true;
-                is_static_ = true;
-            }
-            return;
-        }
-
-        dim_latched_ = false;
-        is_static_ = false;
         const float level = kFloor + (kPeak - kFloor) * pulse;
-        paint(pulse, level * brightness_mul_);
-    }
+        const float bri = level * brightness_mul_;
 
-   private:
-    void paint(float pulse, float bri)
-    {
         std::fill(buffer_.begin(), buffer_.end(), 0);
         for (size_t i = 0; i < led_count_; ++i) {
             const float d = std::fabs(static_cast<float>(i) - center_);
@@ -217,11 +199,11 @@ class CenterIdleGlow final : public pixelengine::Animation {
         }
     }
 
+   private:
     uint32_t color_;
     float brightness_mul_ = 1.0f;
     bool neighbors_ = false;
     bool surrounds_pulse_only_ = false;
-    bool dim_latched_ = false;
     float center_ = 0.0f;
     float t0_ = 0.0f;
 };

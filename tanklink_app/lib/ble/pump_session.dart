@@ -103,6 +103,7 @@ class PumpSession extends ChangeNotifier {
       TankLinkUuids.buzzOnAutoOff;
   int buzzerTone = 0; // click / soft / sharp / double
   int ledBrightness = 70; // 1-100
+  int starterType = TankLinkUuids.starterNone;
   bool connecting = false;
   bool connectFailed = false;
   bool scanning = false;
@@ -438,6 +439,9 @@ class PumpSession extends ChangeNotifier {
         if (bytes.length >= 13) {
           ledBrightness = bytes[12].clamp(1, 100);
         }
+        if (bytes.length >= 14) {
+          starterType = bytes[13];
+        }
       } catch (_) {}
     }
   }
@@ -500,6 +504,7 @@ class PumpSession extends ChangeNotifier {
     int? flags,
     int? tone,
     int? brightness,
+    int? starter,
   }) async {
     if (_settings == null || !authed) {
       status = 'Not connected';
@@ -510,11 +515,13 @@ class PumpSession extends ChangeNotifier {
     final f = flags ?? buzzerFlags;
     final t = (tone ?? buzzerTone).clamp(0, 3);
     final b = (brightness ?? ledBrightness).clamp(1, 100);
-    await _settings!.write([m, f, t, b], withoutResponse: false);
+    final s = (starter ?? starterType).clamp(0, 1);
+    await _settings!.write([m, f, t, b, s], withoutResponse: false);
     autoOffMin = m;
     buzzerFlags = f;
     buzzerTone = t;
     ledBrightness = b;
+    starterType = s;
     notifyListeners();
   }
 
@@ -525,6 +532,14 @@ class PumpSession extends ChangeNotifier {
 
   Future<void> setLedBrightness(int percent) async {
     await _writeSettings(brightness: percent.clamp(1, 100));
+  }
+
+  Future<void> setStarterType(int type) async {
+    await _writeSettings(starter: type.clamp(0, 1));
+    status = type == TankLinkUuids.starterTwoButton
+        ? 'Two-button starter'
+        : 'Starter: none';
+    notifyListeners();
   }
 
   Future<void> setBuzzerSettings({

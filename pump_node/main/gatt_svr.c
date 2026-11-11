@@ -217,7 +217,7 @@ static int append_info(struct os_mbuf *om, uint16_t conn_handle)
 
 static int append_settings(struct os_mbuf *om)
 {
-    /* auto_off(1) + run_secs(u32 LE) + serial(5) + buzz_flags(1) + tone(1) + led_bri(1) */
+    /* auto_off(1)+run(4)+serial(5)+buzz(1)+tone(1)+led(1)+starter(1) */
     uint8_t auto_off = pump_config_auto_off_min();
     int rc = os_mbuf_append(om, &auto_off, 1);
     if (rc != 0) {
@@ -241,6 +241,7 @@ static int append_settings(struct os_mbuf *om)
     uint8_t buzz_flags = pump_config_buzzer_flags();
     uint8_t tone = pump_config_buzzer_tone();
     uint8_t led_bri = pump_config_led_brightness();
+    uint8_t starter = pump_config_starter_type();
     rc = os_mbuf_append(om, &buzz_flags, 1);
     if (rc != 0) {
         return rc;
@@ -249,7 +250,11 @@ static int append_settings(struct os_mbuf *om)
     if (rc != 0) {
         return rc;
     }
-    return os_mbuf_append(om, &led_bri, 1);
+    rc = os_mbuf_append(om, &led_bri, 1);
+    if (rc != 0) {
+        return rc;
+    }
+    return os_mbuf_append(om, &starter, 1);
 }
 
 static void refresh_connected_led(void)
@@ -386,7 +391,7 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         if (len < 1) {
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
         }
-        uint8_t buf[4] = {0};
+        uint8_t buf[5] = {0};
         uint16_t copy = len > sizeof(buf) ? sizeof(buf) : len;
         int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, copy, NULL);
         if (rc != 0) {
@@ -406,6 +411,12 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
                 return BLE_ATT_ERR_UNLIKELY;
             }
             ESP_LOGI(TAG, "led brightness=%u", buf[3]);
+        }
+        if (len >= 5) {
+            if (pump_config_set_starter_type(buf[4]) != ESP_OK) {
+                return BLE_ATT_ERR_UNLIKELY;
+            }
+            ESP_LOGI(TAG, "starter type=%u", buf[4]);
         }
         ESP_LOGI(TAG, "auto-off set to %u min", buf[0]);
         return 0;
@@ -590,6 +601,10 @@ uint32_t gatt_svr_run_seconds(void)
 static void set_pump_state_internal(uint8_t on, bool allow_pump_buzz)
 {
     uint8_t next = on ? 1 : 0;
+    if (next && (relay_control_is_blocked() || pump_ota_is_active())) {
+        ESP_LOGW(TAG, "Pump ON denied — blocked/OTA");
+        return;
+    }
     bool changed = next != s_pump_on;
     if (next && !s_pump_on) {
         s_pump_on_since_us = esp_timer_get_time();
@@ -599,7 +614,12 @@ static void set_pump_state_internal(uint8_t on, bool allow_pump_buzz)
     }
     s_pump_on = next;
     board_set_pump_on(s_pump_on != 0);
-    relay_control_set_running(s_pump_on != 0);
+    if (s_pump_on) {
+        relay_control_set_running(true);
+    } else {
+        /* Prefer force_off so Stop is always pulsed for safety. */
+        relay_control_force_off();
+    }
     ESP_LOGI(TAG, "Pump state -> %u", s_pump_on);
     if (changed && allow_pump_buzz && pump_config_buzzer_on_pump()) {
         buzzer_play(next ? BUZZER_TONE_SHARP : BUZZER_TONE_CLICK, false);
