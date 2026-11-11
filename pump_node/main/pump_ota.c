@@ -204,6 +204,13 @@ uint8_t pump_ota_write(uint16_t conn_handle, uint32_t offset, const uint8_t *dat
     s_offset += len;
     s_state = TANKLINK_OTA_ST_WRITING;
     s_err = TANKLINK_OTA_ERR_OK;
+    if (s_image_size > 0) {
+        uint8_t pct = (uint8_t)((s_offset * 100ull) / s_image_size);
+        if (pct > 100) {
+            pct = 100;
+        }
+        status_led_set_update_progress(pct);
+    }
     /* Notify every ~4KB or on last chunk to limit BLE chatter. */
     if ((s_offset & 0xfff) == 0 || s_offset == s_image_size) {
         notify_status();

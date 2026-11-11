@@ -102,6 +102,7 @@ class PumpSession extends ChangeNotifier {
       TankLinkUuids.buzzOnPump |
       TankLinkUuids.buzzOnAutoOff;
   int buzzerTone = 0; // click / soft / sharp / double
+  int ledBrightness = 70; // 1-100
   bool connecting = false;
   bool connectFailed = false;
   bool scanning = false;
@@ -429,10 +430,13 @@ class PumpSession extends ChangeNotifier {
               (bytes[3] << 16) |
               (bytes[4] << 24);
         }
-        // auto(1)+run(4)+serial(5)=10, then flags + tone
+        // auto(1)+run(4)+serial(5)=10, then flags + tone [+ led bri]
         if (bytes.length >= 12) {
           buzzerFlags = bytes[10];
           buzzerTone = bytes[11].clamp(0, 3);
+        }
+        if (bytes.length >= 13) {
+          ledBrightness = bytes[12].clamp(1, 100);
         }
       } catch (_) {}
     }
@@ -491,7 +495,12 @@ class PumpSession extends ChangeNotifier {
     );
   }
 
-  Future<void> _writeSettings({int? minutes, int? flags, int? tone}) async {
+  Future<void> _writeSettings({
+    int? minutes,
+    int? flags,
+    int? tone,
+    int? brightness,
+  }) async {
     if (_settings == null || !authed) {
       status = 'Not connected';
       notifyListeners();
@@ -500,16 +509,22 @@ class PumpSession extends ChangeNotifier {
     final m = (minutes ?? autoOffMin).clamp(0, 240);
     final f = flags ?? buzzerFlags;
     final t = (tone ?? buzzerTone).clamp(0, 3);
-    await _settings!.write([m, f, t], withoutResponse: false);
+    final b = (brightness ?? ledBrightness).clamp(1, 100);
+    await _settings!.write([m, f, t, b], withoutResponse: false);
     autoOffMin = m;
     buzzerFlags = f;
     buzzerTone = t;
+    ledBrightness = b;
     notifyListeners();
   }
 
   Future<void> setAutoOffMinutes(int minutes) async {
     await _writeSettings(minutes: minutes);
     // Keep status quiet — avoids UI churn while dragging the slider.
+  }
+
+  Future<void> setLedBrightness(int percent) async {
+    await _writeSettings(brightness: percent.clamp(1, 100));
   }
 
   Future<void> setBuzzerSettings({

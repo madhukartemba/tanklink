@@ -217,7 +217,7 @@ static int append_info(struct os_mbuf *om, uint16_t conn_handle)
 
 static int append_settings(struct os_mbuf *om)
 {
-    /* auto_off(1) + run_secs(u32 LE) + serial(5) + buzz_flags(1) + tone(1) */
+    /* auto_off(1) + run_secs(u32 LE) + serial(5) + buzz_flags(1) + tone(1) + led_bri(1) */
     uint8_t auto_off = pump_config_auto_off_min();
     int rc = os_mbuf_append(om, &auto_off, 1);
     if (rc != 0) {
@@ -240,11 +240,16 @@ static int append_settings(struct os_mbuf *om)
     }
     uint8_t buzz_flags = pump_config_buzzer_flags();
     uint8_t tone = pump_config_buzzer_tone();
+    uint8_t led_bri = pump_config_led_brightness();
     rc = os_mbuf_append(om, &buzz_flags, 1);
     if (rc != 0) {
         return rc;
     }
-    return os_mbuf_append(om, &tone, 1);
+    rc = os_mbuf_append(om, &tone, 1);
+    if (rc != 0) {
+        return rc;
+    }
+    return os_mbuf_append(om, &led_bri, 1);
 }
 
 static void refresh_connected_led(void)
@@ -394,6 +399,12 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
                 return BLE_ATT_ERR_UNLIKELY;
             }
             ESP_LOGI(TAG, "buzzer flags=0x%02x tone=%u", buf[1], buf[2]);
+        }
+        if (len >= 4) {
+            if (pump_config_set_led_brightness(buf[3]) != ESP_OK) {
+                return BLE_ATT_ERR_UNLIKELY;
+            }
+            ESP_LOGI(TAG, "led brightness=%u", buf[3]);
         }
         ESP_LOGI(TAG, "auto-off set to %u min", buf[0]);
         return 0;

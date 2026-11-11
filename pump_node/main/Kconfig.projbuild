@@ -18,9 +18,9 @@ menu "Pump Board"
         int "NeoPixel count"
         depends on PUMP_ENABLE_NEOPIXEL
         range 1 16
-        default 1
+        default 11
         help
-            Number of LEDs on the strip (1 now; raise for final board).
+            Number of LEDs on the status strip (linear bar).
 
     config PUMP_ENABLE_BUTTON
         bool "Enable local button"

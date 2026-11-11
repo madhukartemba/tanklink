@@ -22,6 +22,9 @@ typedef enum {
 esp_err_t status_led_init(void);
 void status_led_set_mode(status_led_mode_t mode);
 void status_led_set_hold_progress(uint8_t percent); /* 0-100 */
+void status_led_set_update_progress(uint8_t percent); /* 0-100 OTA bar */
+void status_led_set_brightness(uint8_t percent); /* 1-100 global master */
+uint8_t status_led_get_brightness(void);
 status_led_mode_t status_led_get_mode(void);
 
 #ifdef __cplusplus

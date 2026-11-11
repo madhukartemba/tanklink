@@ -196,6 +196,8 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                       );
                     },
             ),
+            const SizedBox(height: 4),
+            _LedBrightnessTile(ready: ready),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -364,6 +366,76 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LedBrightnessTile extends StatefulWidget {
+  const _LedBrightnessTile({required this.ready});
+
+  final bool ready;
+
+  @override
+  State<_LedBrightnessTile> createState() => _LedBrightnessTileState();
+}
+
+class _LedBrightnessTileState extends State<_LedBrightnessTile> {
+  late int _draft;
+  bool _hydrated = false;
+
+  void _hydrate(PumpSession session) {
+    if (_hydrated) return;
+    _draft = session.ledBrightness.clamp(1, 100);
+    _hydrated = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<PumpSession>();
+    final scheme = Theme.of(context).colorScheme;
+    _hydrate(session);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.light_mode_outlined, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'LED brightness',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+                  Text(
+                    !widget.ready
+                        ? 'Connect to change'
+                        : '$_draft%',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (widget.ready) ...[
+          Slider(
+            min: 1,
+            max: 100,
+            divisions: 99,
+            value: _draft.toDouble(),
+            label: '$_draft%',
+            onChanged: (v) => setState(() => _draft = v.round()),
+            onChangeEnd: (v) => session.setLedBrightness(v.round()),
+          ),
+        ],
+      ],
     );
   }
 }

@@ -9,12 +9,14 @@
 extern "C" {
 #endif
 
-#define PUMP_CONFIG_MAGIC 0x50554D52u /* 'PUMR' — v3 with buzzer */
+#define PUMP_CONFIG_MAGIC 0x50554D52u /* 'PUMR' — v3 with buzzer + LED bri */
 
 #define PUMP_BUZZ_FLAG_ENABLED   (1u << 0)
 #define PUMP_BUZZ_FLAG_ON_BUTTON (1u << 1)
 #define PUMP_BUZZ_FLAG_ON_PUMP   (1u << 2)
 #define PUMP_BUZZ_FLAG_ON_AUTO   (1u << 3)
+
+#define PUMP_LED_BRIGHTNESS_DEFAULT 70
 
 typedef struct {
     uint32_t magic;
@@ -26,7 +28,7 @@ typedef struct {
     uint8_t auto_off_min;
     uint8_t buzzer_flags; /* PUMP_BUZZ_FLAG_* */
     uint8_t buzzer_tone;  /* buzzer_tone_t */
-    uint8_t reserved_u8;
+    uint8_t led_brightness; /* 1-100; 0 treated as default on load */
     uint32_t reserved[3];
 } pump_config_t;
 
@@ -46,6 +48,10 @@ bool pump_config_buzzer_on_auto(void);
 
 /** Apply NVS buzzer settings into the buzzer driver. */
 void pump_config_apply_buzzer(void);
+
+uint8_t pump_config_led_brightness(void);
+esp_err_t pump_config_set_led_brightness(uint8_t percent);
+void pump_config_apply_led(void);
 
 void pump_config_log(void);
 

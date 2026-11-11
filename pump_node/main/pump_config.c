@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "status_led.h"
 
 #define TAG "PUMP_CFG"
 #define NVS_NAMESPACE "pump"
@@ -28,6 +29,18 @@ static void load_defaults(pump_config_t *cfg)
     cfg->auto_off_min = DEFAULT_AUTO_OFF_MIN;
     cfg->buzzer_flags = DEFAULT_BUZZ_FLAGS;
     cfg->buzzer_tone = BUZZER_TONE_CLICK;
+    cfg->led_brightness = PUMP_LED_BRIGHTNESS_DEFAULT;
+}
+
+static uint8_t clamp_led_bri(uint8_t percent)
+{
+    if (percent < 1) {
+        return PUMP_LED_BRIGHTNESS_DEFAULT;
+    }
+    if (percent > 100) {
+        return 100;
+    }
+    return percent;
 }
 
 esp_err_t pump_config_init(void)
@@ -40,6 +53,7 @@ esp_err_t pump_config_init(void)
         ESP_LOGI(TAG, "No saved config; using defaults");
         err = pump_config_set(&s_cfg);
         pump_config_apply_buzzer();
+        pump_config_apply_led();
         return err;
     }
     if (err != ESP_OK) {
@@ -56,6 +70,7 @@ esp_err_t pump_config_init(void)
         load_defaults(&s_cfg);
         err = pump_config_set(&s_cfg);
         pump_config_apply_buzzer();
+        pump_config_apply_led();
         return err;
     }
     if (err != ESP_OK) {
@@ -64,7 +79,11 @@ esp_err_t pump_config_init(void)
         return err;
     }
 
+    /* Old blobs used this byte as reserved (0) — promote to default. */
+    s_cfg.led_brightness = clamp_led_bri(s_cfg.led_brightness);
+
     pump_config_apply_buzzer();
+    pump_config_apply_led();
     pump_config_log();
     return ESP_OK;
 }
@@ -97,6 +116,7 @@ esp_err_t pump_config_set(const pump_config_t *cfg)
 
     if (err == ESP_OK) {
         pump_config_apply_buzzer();
+        pump_config_apply_led();
         pump_config_log();
     }
     return err;
@@ -166,10 +186,26 @@ void pump_config_apply_buzzer(void)
     buzzer_set_user_tone((buzzer_tone_t)s_cfg.buzzer_tone);
 }
 
+uint8_t pump_config_led_brightness(void)
+{
+    return clamp_led_bri(s_cfg.led_brightness);
+}
+
+esp_err_t pump_config_set_led_brightness(uint8_t percent)
+{
+    s_cfg.led_brightness = clamp_led_bri(percent);
+    return pump_config_set(&s_cfg);
+}
+
+void pump_config_apply_led(void)
+{
+    status_led_set_brightness(pump_config_led_brightness());
+}
+
 void pump_config_log(void)
 {
     ESP_LOGI(TAG,
-             "empty=%ucm full=%ucm auto_off=%umin buzz_flags=0x%02x tone=%u",
+             "empty=%ucm full=%ucm auto_off=%umin buzz_flags=0x%02x tone=%u led=%u",
              s_cfg.dist_empty_cm, s_cfg.dist_full_cm, s_cfg.auto_off_min,
-             s_cfg.buzzer_flags, s_cfg.buzzer_tone);
+             s_cfg.buzzer_flags, s_cfg.buzzer_tone, s_cfg.led_brightness);
 }
