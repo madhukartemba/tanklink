@@ -150,7 +150,8 @@ static void render_pairing(float t_ms, rgb_f_t *out)
     if (n <= 1) {
         float s = smootherstep(sine01(900.0f, t_ms));
         float br = 0.28f + 0.62f * s;
-        out[0] = (rgb_f_t){br, br * 0.55f, 0.0f};
+        /* Clear blue pulse (distinct from teal “connected”). */
+        out[0] = (rgb_f_t){0.05f * br, 0.22f * br, br};
         return;
     }
 
@@ -164,7 +165,7 @@ static void render_pairing(float t_ms, rgb_f_t *out)
         }
         float falloff = expf(-d * d * 1.8f);
         float br = 0.08f + 0.90f * falloff;
-        out[i] = (rgb_f_t){br, br * 0.55f, 0.0f};
+        out[i] = (rgb_f_t){0.05f * br, 0.22f * br, br};
     }
 }
 
