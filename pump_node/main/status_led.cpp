@@ -51,8 +51,8 @@ extern "C" status_led_mode_t status_led_get_mode(void)
 #define CONFIG_PUMP_NEOPIXEL_COUNT 1
 #endif
 
-/* ~100 Hz for smoother motion; FreeRTOS tick often 10 ms. */
-#define FRAME_MS 10
+/* ~50 Hz — enough for smooth breathe; less RMT contention vs BLE. */
+#define FRAME_MS 20
 
 using pixelengine::Color;
 using pixelengine::Layout;
@@ -129,18 +129,20 @@ class ProgressFill final : public pixelengine::Animation {
 };
 
 /**
- * Idle: center (+ soft neighbors) breathe with a visible floor — never fully off.
+ * Idle / connected: center-only breathe with a visible floor.
  * Phase is wall-clock based to avoid FreeRTOS tick jitter looking choppy.
+ * brightness_mul stacks on top of the global master brightness.
  */
 class CenterIdleGlow final : public pixelengine::Animation {
    public:
-    explicit CenterIdleGlow(size_t led_count, uint32_t color = Color::rgb(0, 210, 90))
-        : color_(color)
+    explicit CenterIdleGlow(size_t led_count, uint32_t color = Color::rgb(0, 210, 90),
+                            float brightness_mul = 1.0f)
+        : color_(color), brightness_mul_(brightness_mul)
     {
         led_count_ = led_count;
         layout_ = Layout::Linear;
         buffer_.assign(led_count_, 0);
-        center_ = (led_count_ > 0) ? (static_cast<float>(led_count_ - 1) * 0.5f) : 0.0f;
+        center_ = (led_count_ > 0) ? static_cast<size_t>((led_count_ - 1) / 2) : 0;
         t0_ = now_sec();
     }
 
@@ -156,26 +158,16 @@ class CenterIdleGlow final : public pixelengine::Animation {
         const float breathe = smoother01(raw);
         /* Floor ~0.22 of peak so standby never blanks. */
         const float level = 0.22f + 0.78f * breathe;
-        const float peak = 0.42f * level;
+        const float peak = 0.42f * level * brightness_mul_;
 
-        for (size_t i = 0; i < led_count_; ++i) {
-            const float d = std::fabs(static_cast<float>(i) - center_);
-            float weight = 0.0f;
-            if (d < 0.55f) {
-                weight = 1.0f;
-            } else if (d < 1.55f) {
-                /* Neighbors rise with the high point only */
-                weight = 0.28f + 0.42f * breathe;
-            } else if (d < 2.55f) {
-                weight = 0.08f * breathe;
-            }
-            buffer_[i] = scale_bri(color_, peak * weight);
-        }
+        std::fill(buffer_.begin(), buffer_.end(), 0);
+        buffer_[center_] = scale_bri(color_, peak);
     }
 
    private:
     uint32_t color_;
-    float center_ = 0.0f;
+    float brightness_mul_ = 1.0f;
+    size_t center_ = 0;
     float t0_ = 0.0f;
 };
 
@@ -427,14 +419,14 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN));
         break;
     case STATUS_LED_CONNECTED:
-        /* Gentle teal wave — linked, waiting. */
-        s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::rgb(0, 180, 170), 5.5f, 0.28f,
-                                                     0.18f, 1.15f));
+        /* Same standby glow, cooler color, a bit brighter. */
+        s_px.addAnimation(
+            std::make_unique<CenterIdleGlow>(kN, Color::rgb(0, 190, 210), 1.25f));
         break;
     case STATUS_LED_PUMP_ON:
-        /* Same family, longer spacing + higher contrast emerald. */
-        s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::rgb(0, 230, 70), 9.5f, 0.42f, 0.05f,
-                                                     2.2f));
+        /* Spaced high-contrast blue wave while the pump runs. */
+        s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::rgb(30, 110, 255), 9.5f, 0.42f,
+                                                     0.05f, 2.2f));
         break;
     case STATUS_LED_HOLD_PROGRESS:
         s_px.addAnimation(
