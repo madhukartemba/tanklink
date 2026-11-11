@@ -257,7 +257,8 @@ static void refresh_connected_led(void)
     status_led_mode_t mode = status_led_get_mode();
     if (mode == STATUS_LED_HOLD_PROGRESS || mode == STATUS_LED_PAIRING ||
         mode == STATUS_LED_UNPAIRED || mode == STATUS_LED_PUMP_ON ||
-        mode == STATUS_LED_UPDATING) {
+        mode == STATUS_LED_UPDATING || mode == STATUS_LED_UPDATE_OK ||
+        mode == STATUS_LED_UPDATE_ERR) {
         return;
     }
     if (gatt_svr_is_connected() && !s_pump_on) {

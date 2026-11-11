@@ -36,10 +36,35 @@ static void notify_status(void)
     }
 }
 
+static void restore_led_after_ota(void)
+{
+    status_led_mode_t mode = status_led_get_mode();
+    if (mode == STATUS_LED_UPDATING || mode == STATUS_LED_UPDATE_OK ||
+        mode == STATUS_LED_UPDATE_ERR) {
+        status_led_set_mode(s_led_before == STATUS_LED_UPDATING ||
+                                    s_led_before == STATUS_LED_UPDATE_OK ||
+                                    s_led_before == STATUS_LED_UPDATE_ERR
+                                ? STATUS_LED_IDLE
+                                : s_led_before);
+    }
+}
+
+static void err_led_restore_task(void *arg)
+{
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    if (status_led_get_mode() == STATUS_LED_UPDATE_ERR) {
+        restore_led_after_ota();
+    }
+    vTaskDelete(NULL);
+}
+
 static void set_err(uint8_t err)
 {
     s_err = err;
     s_state = TANKLINK_OTA_ST_ERR;
+    status_led_set_mode(STATUS_LED_UPDATE_ERR);
+    xTaskCreate(err_led_restore_task, "ota_led_err", 2048, NULL, 3, NULL);
     notify_status();
 }
 
@@ -57,12 +82,9 @@ static void cleanup_session(bool keep_err)
     if (!keep_err) {
         s_err = TANKLINK_OTA_ERR_OK;
         s_state = TANKLINK_OTA_ST_IDLE;
+        restore_led_after_ota();
     }
-    status_led_mode_t mode = status_led_get_mode();
-    if (mode == STATUS_LED_UPDATING) {
-        status_led_set_mode(s_led_before == STATUS_LED_UPDATING ? STATUS_LED_IDLE
-                                                                : s_led_before);
-    }
+    /* keep_err: caller shows UPDATE_ERR via set_err(); leave strip red. */
 }
 
 static bool is_owner(uint16_t conn_handle)
@@ -243,7 +265,8 @@ uint8_t pump_ota_abort_from(uint16_t conn_handle)
 static void reboot_task(void *arg)
 {
     (void)arg;
-    vTaskDelay(pdMS_TO_TICKS(400));
+    /* Hold green success long enough to read on the strip. */
+    vTaskDelay(pdMS_TO_TICKS(900));
     esp_restart();
 }
 
@@ -295,6 +318,7 @@ uint8_t pump_ota_finish(uint16_t conn_handle)
 
     s_state = TANKLINK_OTA_ST_VERIFY_OK;
     s_err = TANKLINK_OTA_ERR_OK;
+    status_led_set_mode(STATUS_LED_UPDATE_OK);
     notify_status();
     s_state = TANKLINK_OTA_ST_REBOOTING;
     notify_status();

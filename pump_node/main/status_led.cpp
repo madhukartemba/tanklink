@@ -117,9 +117,8 @@ class ProgressFill final : public pixelengine::Animation {
         for (size_t i = 0; i < led_count_; ++i) {
             float fill = lit - static_cast<float>(i);
             fill = clamp01(fill);
-            /* Dim unfilled tail so the strip reads as a bar. */
-            const float bri = (fill > 0.001f) ? fill : 0.04f;
-            buffer_[i] = scale_bri(color_, bri);
+            /* Only progress LEDs lit — unfilled stay off. */
+            buffer_[i] = (fill > 0.001f) ? scale_bri(color_, fill) : 0;
         }
     }
 
@@ -435,6 +434,12 @@ void apply_mode(status_led_mode_t mode)
     case STATUS_LED_UPDATING:
         s_px.addAnimation(
             std::make_unique<ProgressFill>(kN, &s_ota_pct, Color::rgb(0, 200, 220)));
+        break;
+    case STATUS_LED_UPDATE_OK:
+        s_px.solid(Color::scale(Color::rgb(0, 230, 70), s_bri * 0.55f));
+        break;
+    case STATUS_LED_UPDATE_ERR:
+        s_px.solid(Color::scale(Color::rgb(230, 40, 40), s_bri * 0.55f));
         break;
     default:
         s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN));
