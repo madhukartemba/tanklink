@@ -466,8 +466,7 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::Green, 1.25f, true, false));
         break;
     case STATUS_LED_PUMP_ON:
-        s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::rgb(20, 100, 255), 9.5f, 0.42f,
-                                                     0.05f, 2.2f));
+        s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::Blue, 9.5f, 0.42f, 0.05f, 2.2f));
         break;
     case STATUS_LED_HOLD_PROGRESS:
         s_px.addAnimation(
