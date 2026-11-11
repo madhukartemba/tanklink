@@ -31,6 +31,18 @@ static bool s_start_gpio_ok;
 static bool s_stop_gpio_ok;
 static esp_timer_handle_t s_pulse_timer;
 static int s_pulse_gpio = -1;
+static uint16_t s_pulse_ms = CONFIG_PUMP_RELAY_PULSE_MS;
+
+static uint16_t clamp_pulse_ms(uint16_t ms)
+{
+    if (ms < 50) {
+        return 50;
+    }
+    if (ms > 2000) {
+        return 2000;
+    }
+    return ms;
+}
 
 static int start_gpio(void)
 {
@@ -113,7 +125,7 @@ static void pulse_gpio(int gpio)
     s_pulse_gpio = gpio;
     gpio_set_level(gpio, relay_active_level());
     if (s_pulse_timer) {
-        esp_timer_start_once(s_pulse_timer, (uint64_t)CONFIG_PUMP_RELAY_PULSE_MS * 1000ULL);
+        esp_timer_start_once(s_pulse_timer, (uint64_t)s_pulse_ms * 1000ULL);
     }
 }
 
@@ -161,6 +173,7 @@ esp_err_t relay_control_init(void)
     if (s_type >= PUMP_STARTER_COUNT) {
         s_type = PUMP_STARTER_NONE;
     }
+    s_pulse_ms = clamp_pulse_ms(pump_config_relay_pulse_ms());
     s_running = false;
     s_blocked = false;
 
@@ -194,9 +207,9 @@ esp_err_t relay_control_init(void)
     }
 
     ESP_LOGI(TAG,
-             "type=%u start_gpio=%d (%s) stop_gpio=%d (%s) pulse=%dms",
+             "type=%u start_gpio=%d (%s) stop_gpio=%d (%s) pulse=%ums",
              (unsigned)s_type, sg, s_start_gpio_ok ? "ok" : "unassigned", tg,
-             s_stop_gpio_ok ? "ok" : "unassigned", CONFIG_PUMP_RELAY_PULSE_MS);
+             s_stop_gpio_ok ? "ok" : "unassigned", (unsigned)s_pulse_ms);
 
     /* Safety: always force Stop on boot, whether or not we think it was on. */
     relay_control_force_off();
@@ -339,4 +352,15 @@ esp_err_t relay_control_set_type(pump_starter_type_t type)
         xSemaphoreGive(s_mu);
     }
     return ESP_OK;
+}
+
+uint16_t relay_control_get_pulse_ms(void)
+{
+    return s_pulse_ms;
+}
+
+void relay_control_set_pulse_ms(uint16_t ms)
+{
+    s_pulse_ms = clamp_pulse_ms(ms);
+    ESP_LOGI(TAG, "pulse -> %ums", (unsigned)s_pulse_ms);
 }

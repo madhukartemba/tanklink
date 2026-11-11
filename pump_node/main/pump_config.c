@@ -32,6 +32,7 @@ static void load_defaults(pump_config_t *cfg)
     cfg->buzzer_tone = BUZZER_TONE_CLICK;
     cfg->led_brightness = PUMP_LED_BRIGHTNESS_DEFAULT;
     cfg->starter_type = PUMP_STARTER_NONE;
+    cfg->relay_pulse_ms = PUMP_RELAY_PULSE_MS_DEFAULT;
 }
 
 static uint8_t clamp_led_bri(uint8_t percent)
@@ -43,6 +44,20 @@ static uint8_t clamp_led_bri(uint8_t percent)
         return 100;
     }
     return percent;
+}
+
+static uint16_t clamp_pulse_ms(uint32_t ms)
+{
+    if (ms == 0) {
+        return PUMP_RELAY_PULSE_MS_DEFAULT;
+    }
+    if (ms < PUMP_RELAY_PULSE_MS_MIN) {
+        return PUMP_RELAY_PULSE_MS_MIN;
+    }
+    if (ms > PUMP_RELAY_PULSE_MS_MAX) {
+        return PUMP_RELAY_PULSE_MS_MAX;
+    }
+    return (uint16_t)ms;
 }
 
 esp_err_t pump_config_init(void)
@@ -83,6 +98,8 @@ esp_err_t pump_config_init(void)
 
     /* Old blobs used this byte as reserved (0) — promote to default. */
     s_cfg.led_brightness = clamp_led_bri(s_cfg.led_brightness);
+    /* Older blobs left relay_pulse_ms as 0 (former reserved dword). */
+    s_cfg.relay_pulse_ms = clamp_pulse_ms(s_cfg.relay_pulse_ms);
 
     pump_config_apply_buzzer();
     pump_config_apply_led();
@@ -225,11 +242,26 @@ esp_err_t pump_config_set_starter_type(uint8_t type)
     return err;
 }
 
+uint16_t pump_config_relay_pulse_ms(void)
+{
+    return clamp_pulse_ms(s_cfg.relay_pulse_ms);
+}
+
+esp_err_t pump_config_set_relay_pulse_ms(uint16_t ms)
+{
+    s_cfg.relay_pulse_ms = clamp_pulse_ms(ms);
+    esp_err_t err = pump_config_set(&s_cfg);
+    if (err == ESP_OK) {
+        relay_control_set_pulse_ms(pump_config_relay_pulse_ms());
+    }
+    return err;
+}
+
 void pump_config_log(void)
 {
     ESP_LOGI(TAG,
-             "empty=%ucm full=%ucm auto_off=%umin buzz_flags=0x%02x tone=%u led=%u starter=%u",
+             "empty=%ucm full=%ucm auto_off=%umin buzz_flags=0x%02x tone=%u led=%u starter=%u pulse=%ums",
              s_cfg.dist_empty_cm, s_cfg.dist_full_cm, s_cfg.auto_off_min,
              s_cfg.buzzer_flags, s_cfg.buzzer_tone, s_cfg.led_brightness,
-             s_cfg.starter_type);
+             s_cfg.starter_type, (unsigned)pump_config_relay_pulse_ms());
 }

@@ -104,6 +104,7 @@ class PumpSession extends ChangeNotifier {
   int buzzerTone = 0; // click / soft / sharp / double
   int ledBrightness = 70; // 1-100
   int starterType = TankLinkUuids.starterNone;
+  int relayPulseMs = TankLinkUuids.relayPulseMsDefault;
   bool connecting = false;
   bool connectFailed = false;
   bool scanning = false;
@@ -442,6 +443,15 @@ class PumpSession extends ChangeNotifier {
         if (bytes.length >= 14) {
           starterType = bytes[13];
         }
+        if (bytes.length >= 16) {
+          final ms = bytes[14] | (bytes[15] << 8);
+          relayPulseMs = ms
+              .clamp(
+                TankLinkUuids.relayPulseMsMin,
+                TankLinkUuids.relayPulseMsMax,
+              )
+              .toInt();
+        }
       } catch (_) {}
     }
   }
@@ -505,6 +515,7 @@ class PumpSession extends ChangeNotifier {
     int? tone,
     int? brightness,
     int? starter,
+    int? pulseMs,
   }) async {
     if (_settings == null || !authed) {
       status = 'Not connected';
@@ -516,12 +527,20 @@ class PumpSession extends ChangeNotifier {
     final t = (tone ?? buzzerTone).clamp(0, 3);
     final b = (brightness ?? ledBrightness).clamp(1, 100);
     final s = (starter ?? starterType).clamp(0, 1);
-    await _settings!.write([m, f, t, b, s], withoutResponse: false);
+    final p = (pulseMs ?? relayPulseMs).clamp(
+      TankLinkUuids.relayPulseMsMin,
+      TankLinkUuids.relayPulseMsMax,
+    );
+    await _settings!.write(
+      [m, f, t, b, s, p & 0xff, (p >> 8) & 0xff],
+      withoutResponse: false,
+    );
     autoOffMin = m;
     buzzerFlags = f;
     buzzerTone = t;
     ledBrightness = b;
     starterType = s;
+    relayPulseMs = p;
     notifyListeners();
   }
 
@@ -538,6 +557,20 @@ class PumpSession extends ChangeNotifier {
     await _writeSettings(starter: type.clamp(0, 1));
     status = type == TankLinkUuids.starterTwoButton
         ? 'Two-button starter'
+        : 'Starter: none';
+    notifyListeners();
+  }
+
+  Future<void> setStarterConfig({required int type, required int pulseMs}) async {
+    await _writeSettings(
+      starter: type.clamp(0, 1),
+      pulseMs: pulseMs.clamp(
+        TankLinkUuids.relayPulseMsMin,
+        TankLinkUuids.relayPulseMsMax,
+      ),
+    );
+    status = type == TankLinkUuids.starterTwoButton
+        ? 'Two-button · ${relayPulseMs} ms'
         : 'Starter: none';
     notifyListeners();
   }

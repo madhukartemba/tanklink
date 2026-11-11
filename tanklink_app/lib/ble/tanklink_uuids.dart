@@ -39,4 +39,8 @@ class TankLinkUuids {
   /** Starter / contactor profile (settings byte). */
   static const starterNone = 0;
   static const starterTwoButton = 1;
+
+  static const relayPulseMsDefault = 400;
+  static const relayPulseMsMin = 50;
+  static const relayPulseMsMax = 2000;
 }

@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PUMP_CONFIG_MAGIC 0x50554D53u /* 'PUMS' — v4 starter type */
+#define PUMP_CONFIG_MAGIC 0x50554D53u /* 'PUMS' — v5 starter + pulse ms */
 
 #define PUMP_BUZZ_FLAG_ENABLED   (1u << 0)
 #define PUMP_BUZZ_FLAG_ON_BUTTON (1u << 1)
@@ -17,6 +17,9 @@ extern "C" {
 #define PUMP_BUZZ_FLAG_ON_AUTO   (1u << 3)
 
 #define PUMP_LED_BRIGHTNESS_DEFAULT 70
+#define PUMP_RELAY_PULSE_MS_DEFAULT 400
+#define PUMP_RELAY_PULSE_MS_MIN 50
+#define PUMP_RELAY_PULSE_MS_MAX 2000
 
 typedef struct {
     uint32_t magic;
@@ -31,7 +34,8 @@ typedef struct {
     uint8_t led_brightness; /* 1-100; 0 treated as default on load */
     uint8_t starter_type;   /* pump_starter_type_t */
     uint8_t reserved_u8[3];
-    uint32_t reserved[2];
+    uint32_t relay_pulse_ms; /* 50-2000; 0 = default on load */
+    uint32_t reserved;
 } pump_config_t;
 
 esp_err_t pump_config_init(void);
@@ -57,6 +61,9 @@ void pump_config_apply_led(void);
 
 uint8_t pump_config_starter_type(void);
 esp_err_t pump_config_set_starter_type(uint8_t type);
+
+uint16_t pump_config_relay_pulse_ms(void);
+esp_err_t pump_config_set_relay_pulse_ms(uint16_t ms);
 
 void pump_config_log(void);
 

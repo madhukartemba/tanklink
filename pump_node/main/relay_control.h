@@ -47,6 +47,9 @@ bool relay_control_gpios_assigned(void);
 pump_starter_type_t relay_control_get_type(void);
 esp_err_t relay_control_set_type(pump_starter_type_t type);
 
+uint16_t relay_control_get_pulse_ms(void);
+void relay_control_set_pulse_ms(uint16_t ms);
+
 #ifdef __cplusplus
 }
 #endif

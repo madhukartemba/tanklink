@@ -6,6 +6,7 @@ import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
 import '../update/firmware_update_flow.dart';
 import '../update/pump_firmware_update.dart';
+import 'starter_settings_screen.dart';
 
 Future<void> showPumpSettingsSheet(BuildContext context) {
   // Refresh release metadata when opening settings.
@@ -71,7 +72,7 @@ String _buzzerSummary(PumpSession session) {
 String _starterSummary(PumpSession session) {
   switch (session.starterType) {
     case TankLinkUuids.starterTwoButton:
-      return 'Two-button starter';
+      return 'Two-button · ${session.relayPulseMs} ms';
     default:
       return 'Not configured';
   }
@@ -218,11 +219,10 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
               onTap: !ready
                   ? null
                   : () {
-                      showModalBottomSheet<void>(
-                        context: context,
-                        isScrollControlled: true,
-                        showDragHandle: true,
-                        builder: (_) => const _StarterSettingsSheet(),
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const StarterSettingsScreen(),
+                        ),
                       );
                     },
             ),
@@ -405,166 +405,6 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 child: const Text('Unpair on pump'),
               ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StarterSettingsSheet extends StatelessWidget {
-  const _StarterSettingsSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    final session = context.watch<PumpSession>();
-    final scheme = Theme.of(context).colorScheme;
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    final twoButton = session.starterType == TankLinkUuids.starterTwoButton;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 24 + bottom),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Starter',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'How TankLink drives the pump motor starter. More types will appear here later.',
-              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            _StarterOption(
-              selected: session.starterType == TankLinkUuids.starterNone,
-              title: 'Not configured',
-              subtitle: 'App on/off only — no relay pulses',
-              onTap: () => session.setStarterType(TankLinkUuids.starterNone),
-            ),
-            _StarterOption(
-              selected: twoButton,
-              title: 'Two-button starter',
-              subtitle: 'Momentary Start + Stop via two relays',
-              onTap: () =>
-                  session.setStarterType(TankLinkUuids.starterTwoButton),
-            ),
-            if (twoButton) ...[
-              const SizedBox(height: 20),
-              Text(
-                'Wiring',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Use two dry-contact relays on the TankLink board:',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    SizedBox(height: 10),
-                    Text('• Relay A (START) — across the starter’s Start pushbutton'),
-                    SizedBox(height: 6),
-                    Text('• Relay B (STOP) — across the starter’s Stop pushbutton'),
-                    SizedBox(height: 10),
-                    Text(
-                      'TankLink pulses Start to turn the pump on, and pulses Stop to turn it off. '
-                      'On every boot, Stop is pulsed first for safety (even after a crash/reboot).',
-                    ),
-                    SizedBox(height: 10),
-                    Text(
-                      'GPIO pins are not assigned on this firmware build yet — '
-                      'select this type now so the app/firmware profile matches; '
-                      'hardware pins will be wired in a later board revision.',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StarterOption extends StatelessWidget {
-  const _StarterOption({
-    required this.selected,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final bool selected;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: selected
-            ? scheme.primaryContainer.withValues(alpha: 0.55)
-            : scheme.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: selected ? scheme.primary : scheme.outlineVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
