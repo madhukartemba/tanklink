@@ -11,6 +11,7 @@
 #include "board.h"
 #include "buzzer.h"
 #include "pump_config.h"
+#include "pump_ota.h"
 #include "pump_pair.h"
 #include "relay_control.h"
 #include "status_led.h"
@@ -25,12 +26,17 @@ static const ble_uuid128_t uuid_auth = TANKLINK_CHR_AUTH_INIT;
 static const ble_uuid128_t uuid_state = TANKLINK_CHR_STATE_INIT;
 static const ble_uuid128_t uuid_cmd = TANKLINK_CHR_CMD_INIT;
 static const ble_uuid128_t uuid_settings = TANKLINK_CHR_SETTINGS_INIT;
+static const ble_uuid128_t uuid_ota_ctrl = TANKLINK_CHR_OTA_CTRL_INIT;
+static const ble_uuid128_t uuid_ota_data = TANKLINK_CHR_OTA_DATA_INIT;
+static const ble_uuid128_t uuid_ota_status = TANKLINK_CHR_OTA_STATUS_INIT;
 
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t s_pair_val_handle;
 static uint16_t s_state_val_handle;
+static uint16_t s_ota_status_val_handle;
 static bool s_authed;
 static bool s_state_notify;
+static bool s_ota_status_notify;
 static uint8_t s_pump_on;
 static int64_t s_pump_on_since_us;
 
@@ -74,11 +80,55 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
                 .access_cb = chr_access,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
             },
+            {
+                .uuid = &uuid_ota_ctrl.u,
+                .access_cb = chr_access,
+                .flags = BLE_GATT_CHR_F_WRITE,
+            },
+            {
+                .uuid = &uuid_ota_data.u,
+                .access_cb = chr_access,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
+            },
+            {
+                .uuid = &uuid_ota_status.u,
+                .access_cb = chr_access,
+                .val_handle = &s_ota_status_val_handle,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+            },
             { 0 },
         },
     },
     { 0 },
 };
+
+static void append_ota_status(uint8_t *out6)
+{
+    uint32_t off = pump_ota_offset();
+    out6[0] = pump_ota_state();
+    out6[1] = pump_ota_last_error();
+    out6[2] = (uint8_t)(off & 0xff);
+    out6[3] = (uint8_t)((off >> 8) & 0xff);
+    out6[4] = (uint8_t)((off >> 16) & 0xff);
+    out6[5] = (uint8_t)((off >> 24) & 0xff);
+}
+
+static void ota_status_notify(void)
+{
+    if (!s_ota_status_notify || s_conn_handle == BLE_HS_CONN_HANDLE_NONE) {
+        return;
+    }
+    uint8_t buf[6];
+    append_ota_status(buf);
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, sizeof(buf));
+    if (!om) {
+        return;
+    }
+    int rc = ble_gatts_notify_custom(s_conn_handle, s_ota_status_val_handle, om);
+    if (rc != 0) {
+        ESP_LOGW(TAG, "ota status notify rc=%d", rc);
+    }
+}
 
 static int append_info(struct os_mbuf *om)
 {
@@ -158,7 +208,8 @@ static void refresh_connected_led(void)
 {
     status_led_mode_t mode = status_led_get_mode();
     if (mode == STATUS_LED_HOLD_PROGRESS || mode == STATUS_LED_PAIRING ||
-        mode == STATUS_LED_UNPAIRED || mode == STATUS_LED_PUMP_ON) {
+        mode == STATUS_LED_UNPAIRED || mode == STATUS_LED_PUMP_ON ||
+        mode == STATUS_LED_UPDATING) {
         return;
     }
     if (s_conn_handle != BLE_HS_CONN_HANDLE_NONE && !s_pump_on) {
@@ -300,6 +351,75 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         return 0;
     }
 
+    if (ble_uuid_cmp(uuid, &uuid_ota_status.u) == 0) {
+        if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        uint8_t buf[6];
+        append_ota_status(buf);
+        return os_mbuf_append(ctxt->om, buf, sizeof(buf)) == 0 ? 0
+                                                               : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+
+    if (ble_uuid_cmp(uuid, &uuid_ota_ctrl.u) == 0) {
+        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
+        if (len < 1) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        uint8_t buf[1 + 4 + 32];
+        if (len > sizeof(buf)) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, len, NULL);
+        if (rc != 0) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        uint8_t op = buf[0];
+        uint8_t ota_err = TANKLINK_OTA_ERR_OK;
+        if (op == TANKLINK_OTA_OP_START) {
+            if (len != 1 + 4 + 32) {
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+            uint32_t size = (uint32_t)buf[1] | ((uint32_t)buf[2] << 8) |
+                            ((uint32_t)buf[3] << 16) | ((uint32_t)buf[4] << 24);
+            ota_err = pump_ota_start(size, &buf[5]);
+        } else if (op == TANKLINK_OTA_OP_ABORT) {
+            ota_err = pump_ota_abort();
+        } else if (op == TANKLINK_OTA_OP_FINISH) {
+            ota_err = pump_ota_finish();
+        } else {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        ota_status_notify();
+        return ota_err == TANKLINK_OTA_ERR_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+    }
+
+    if (ble_uuid_cmp(uuid, &uuid_ota_data.u) == 0) {
+        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
+        if (len < 5) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        /* Stack-friendly cap: offset(4) + payload */
+        if (len > 512) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        uint8_t tmp[512];
+        int rc = ble_hs_mbuf_to_flat(ctxt->om, tmp, len, NULL);
+        if (rc != 0) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        uint32_t offset = (uint32_t)tmp[0] | ((uint32_t)tmp[1] << 8) |
+                          ((uint32_t)tmp[2] << 16) | ((uint32_t)tmp[3] << 24);
+        uint8_t ota_err = pump_ota_write(offset, &tmp[4], (uint16_t)(len - 4));
+        return ota_err == TANKLINK_OTA_ERR_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+    }
+
     return BLE_ATT_ERR_UNLIKELY;
 }
 
@@ -325,6 +445,7 @@ int gatt_svr_init(void)
 {
     ble_svc_gap_init();
     ble_svc_gatt_init();
+    pump_ota_set_status_cb(ota_status_notify);
 
     int rc = ble_gatts_count_cfg(gatt_svr_svcs);
     if (rc != 0) {
@@ -341,9 +462,13 @@ void gatt_svr_set_conn(uint16_t conn_handle)
 
 void gatt_svr_clear_session(void)
 {
+    if (pump_ota_is_active()) {
+        pump_ota_abort();
+    }
     s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
     s_authed = false;
     s_state_notify = false;
+    s_ota_status_notify = false;
     refresh_connected_led();
 }
 
@@ -409,6 +534,10 @@ void gatt_svr_set_pump_state_silent(uint8_t on)
 
 void gatt_svr_toggle_pump(void)
 {
+    if (pump_ota_is_active()) {
+        ESP_LOGW(TAG, "Toggle ignored — OTA in progress");
+        return;
+    }
     if (!pump_pair_is_paired()) {
         ESP_LOGW(TAG, "Toggle ignored — not paired");
         return;
@@ -465,5 +594,8 @@ void gatt_svr_on_subscribe(uint16_t attr_handle, bool notify_enabled)
 {
     if (attr_handle == s_state_val_handle) {
         s_state_notify = notify_enabled;
+    }
+    if (attr_handle == s_ota_status_val_handle) {
+        s_ota_status_notify = notify_enabled;
     }
 }

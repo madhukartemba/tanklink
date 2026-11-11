@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -113,9 +115,13 @@ class PumpSession extends ChangeNotifier {
   BluetoothCharacteristic? _state;
   BluetoothCharacteristic? _cmd;
   BluetoothCharacteristic? _settings;
+  BluetoothCharacteristic? _otaCtrl;
+  BluetoothCharacteristic? _otaData;
+  BluetoothCharacteristic? _otaStatus;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<List<int>>? _pairNotifySub;
   StreamSubscription<List<int>>? _stateNotifySub;
+  StreamSubscription<List<int>>? _otaStatusSub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
   Timer? _runTicker;
 
@@ -280,6 +286,7 @@ class PumpSession extends ChangeNotifier {
       connectFailed = false;
       status = 'Connected';
       notifyListeners();
+      // Soft trigger for firmware check (listener may also call this).
     } catch (_) {
       await disconnect();
       connecting = false;
@@ -583,20 +590,135 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Push a firmware image over BLE OTA. [onProgress] reports bytes written.
+  Future<void> otaUpdate(
+    Uint8List image, {
+    void Function(int done, int total)? onProgress,
+    void Function()? onVerifying,
+    void Function()? onRebooting,
+  }) async {
+    if (!authed || !connected) {
+      throw StateError('Not connected');
+    }
+    if (pumpOn) {
+      throw StateError('Stop the pump before updating');
+    }
+    if (_otaCtrl == null || _otaData == null || _otaStatus == null) {
+      throw StateError('This pump firmware does not support BLE OTA yet');
+    }
+
+    final digest = sha256.convert(image);
+    final shaBytes = Uint8List.fromList(digest.bytes);
+    final size = image.length;
+
+    await _otaStatus!.setNotifyValue(true);
+    await _otaStatusSub?.cancel();
+    final statusCtrl = StreamController<List<int>>.broadcast();
+    _otaStatusSub = _otaStatus!.onValueReceived.listen(statusCtrl.add);
+
+    Future<List<int>> waitStatus({
+      required bool Function(int state, int err) match,
+      Duration timeout = const Duration(seconds: 20),
+    }) async {
+      final existing = await _otaStatus!.read();
+      if (existing.length >= 2 && match(existing[0], existing[1])) {
+        return existing;
+      }
+      return statusCtrl.stream
+          .where((v) => v.length >= 2 && match(v[0], v[1]))
+          .first
+          .timeout(timeout);
+    }
+
+    try {
+      final start = BytesBuilder();
+      start.addByte(TankLinkUuids.otaOpStart);
+      start.addByte(size & 0xff);
+      start.addByte((size >> 8) & 0xff);
+      start.addByte((size >> 16) & 0xff);
+      start.addByte((size >> 24) & 0xff);
+      start.add(shaBytes);
+      await _otaCtrl!.write(start.toBytes(), withoutResponse: false);
+      await waitStatus(
+        match: (st, err) =>
+            (st == TankLinkUuids.otaStReady || st == TankLinkUuids.otaStWriting) &&
+            err == 0,
+      );
+
+      // ATT payload ≈ MTU - 3; leave room for 4-byte offset header.
+      final mtu = _device?.mtuNow ?? 23;
+      final maxChunk = (mtu - 3 - 4).clamp(20, 480);
+
+      var offset = 0;
+      while (offset < size) {
+        final end = (offset + maxChunk).clamp(0, size);
+        final chunk = image.sublist(offset, end);
+        final packet = BytesBuilder();
+        packet.addByte(offset & 0xff);
+        packet.addByte((offset >> 8) & 0xff);
+        packet.addByte((offset >> 16) & 0xff);
+        packet.addByte((offset >> 24) & 0xff);
+        packet.add(chunk);
+        // Prefer write-with-response for reliability on OTA data.
+        await _otaData!.write(packet.toBytes(), withoutResponse: false);
+        offset = end;
+        onProgress?.call(offset, size);
+      }
+
+      onVerifying?.call();
+      await _otaCtrl!
+          .write([TankLinkUuids.otaOpFinish], withoutResponse: false);
+      await waitStatus(
+        match: (st, err) =>
+            (st == TankLinkUuids.otaStVerifyOk ||
+                st == TankLinkUuids.otaStRebooting) &&
+            err == 0,
+        timeout: const Duration(seconds: 30),
+      );
+      onRebooting?.call();
+
+      // Device reboots — wait for disconnect then reconnect.
+      await Future<void>.delayed(const Duration(seconds: 2));
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        try {
+          await connectSelected();
+          if (authed && connected) {
+            return;
+          }
+        } catch (_) {}
+      }
+      throw StateError('Updated, but couldn’t reconnect — try Connect');
+    } catch (e) {
+      try {
+        await _otaCtrl
+            ?.write([TankLinkUuids.otaOpAbort], withoutResponse: false);
+      } catch (_) {}
+      rethrow;
+    } finally {
+      await _otaStatusSub?.cancel();
+      _otaStatusSub = null;
+      await statusCtrl.close();
+    }
+  }
+
   Future<void> disconnect() async {
     _runTicker?.cancel();
     _runTicker = null;
     await _pairNotifySub?.cancel();
     await _stateNotifySub?.cancel();
+    await _otaStatusSub?.cancel();
     await _connSub?.cancel();
     _pairNotifySub = null;
     _stateNotifySub = null;
+    _otaStatusSub = null;
     _connSub = null;
     try {
       await _device?.disconnect();
     } catch (_) {}
     _device = null;
     _pair = _auth = _state = _cmd = _settings = null;
+    _otaCtrl = _otaData = _otaStatus = null;
     connected = false;
     authed = false;
     connecting = false;
@@ -653,6 +775,20 @@ class PumpSession extends ChangeNotifier {
     } catch (_) {
       _settings = null;
     }
+    try {
+      _otaCtrl = svc.characteristics
+          .firstWhere((c) => c.uuid == TankLinkUuids.otaCtrl);
+      _otaData = svc.characteristics
+          .firstWhere((c) => c.uuid == TankLinkUuids.otaData);
+      _otaStatus = svc.characteristics
+          .firstWhere((c) => c.uuid == TankLinkUuids.otaStatus);
+    } catch (_) {
+      _otaCtrl = _otaData = _otaStatus = null;
+    }
+
+    try {
+      await device.requestMtu(512);
+    } catch (_) {}
 
     await _stateNotifySub?.cancel();
     _stateNotifySub = _state!.onValueReceived.listen((value) {

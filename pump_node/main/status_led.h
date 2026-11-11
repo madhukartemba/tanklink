@@ -16,6 +16,7 @@ typedef enum {
     STATUS_LED_CONNECTED, /* phone linked, pump idle */
     STATUS_LED_PUMP_ON,
     STATUS_LED_HOLD_PROGRESS, /* button hold feedback 0..100% via set_hold_progress */
+    STATUS_LED_UPDATING,      /* BLE OTA in progress */
 } status_led_mode_t;
 
 esp_err_t status_led_init(void);

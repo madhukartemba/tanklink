@@ -175,6 +175,13 @@ static void render_pump_on(float t_ms, rgb_f_t *out)
     fill_rgb(out, 0.0f, br, 0.0f);
 }
 
+static void render_updating(float t_ms, rgb_f_t *out)
+{
+    float s = smootherstep(sine01(700.0f, t_ms));
+    float br = 0.20f + 0.55f * s;
+    fill_rgb(out, br * 0.15f, br * 0.75f, br);
+}
+
 static void render_boot(float t_ms, rgb_f_t *out)
 {
     float s = smootherstep(sine01(1600.0f, t_ms));
@@ -221,6 +228,9 @@ static void render_mode(status_led_mode_t mode, float t_ms, float hold_pct, rgb_
         break;
     case STATUS_LED_HOLD_PROGRESS:
         render_hold(hold_pct, out);
+        break;
+    case STATUS_LED_UPDATING:
+        render_updating(t_ms, out);
         break;
     case STATUS_LED_IDLE:
     default:

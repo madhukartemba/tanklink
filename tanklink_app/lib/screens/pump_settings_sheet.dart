@@ -3,8 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
+import '../update/firmware_update_flow.dart';
+import '../update/pump_firmware_update.dart';
 
 Future<void> showPumpSettingsSheet(BuildContext context) {
+  // Refresh release metadata when opening settings.
+  context.read<PumpFirmwareUpdate>().checkForUpdates();
+  context.read<PumpFirmwareUpdate>().clearSnooze();
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -141,12 +146,11 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              ready
-                  ? 'Firmware ${session.firmware.isEmpty ? '—' : session.firmware}'
-                  : 'Offline',
+              ready ? 'Connected' : 'Offline',
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 20),
+            _FirmwareTile(ready: ready),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.badge_outlined),
@@ -520,6 +524,72 @@ class _BuzzerSettingsSheet extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _FirmwareTile extends StatelessWidget {
+  const _FirmwareTile({required this.ready});
+
+  final bool ready;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<PumpSession>();
+    final fw = context.watch<PumpFirmwareUpdate>();
+    final scheme = Theme.of(context).colorScheme;
+    final device = session.firmware.isEmpty ? '—' : session.firmware;
+    final available = ready && fw.updateAvailableFor(session.firmware);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Badge(
+            isLabelVisible: available,
+            smallSize: 10,
+            child: const Icon(Icons.memory_rounded),
+          ),
+          title: const Text('Firmware'),
+          subtitle: Text(
+            available
+                ? '$device → ${fw.latestVersion}'
+                : ready
+                    ? device
+                    : 'Connect to check',
+          ),
+          trailing: available
+              ? FilledButton.tonal(
+                  onPressed: () => showFirmwareConfirmSheet(context),
+                  child: Text('Update to ${fw.latestVersion}'),
+                )
+              : IconButton(
+                  tooltip: 'Check for updates',
+                  onPressed: () => fw.checkForUpdates(force: true),
+                  icon: fw.phase == FwUpdatePhase.checking
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                ),
+        ),
+        if (ready)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => pickAndInstallFirmware(context),
+              icon: const Icon(Icons.folder_open_rounded, size: 18),
+              label: const Text('Install from file…'),
+              style: TextButton.styleFrom(
+                foregroundColor: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        const SizedBox(height: 4),
+      ],
     );
   }
 }

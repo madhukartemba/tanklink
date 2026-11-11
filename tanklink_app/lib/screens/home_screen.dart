@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
+import '../update/firmware_update_flow.dart';
+import '../update/pump_firmware_update.dart';
 import '../widgets/slide_to_start.dart';
 import 'add_pump_screen.dart';
 import 'pump_list_screen.dart';
@@ -20,6 +22,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<PumpFirmwareUpdate>().checkForUpdates();
+    });
   }
 
   @override
@@ -32,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       context.read<PumpSession>().onAppResumed();
+      context.read<PumpFirmwareUpdate>().checkForUpdates();
     }
   }
 
@@ -130,6 +136,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onSettings: () => showPumpSettingsSheet(context),
                   onRename: () => showRenamePumpDialog(context, pump),
                 ),
+                const FirmwareUpdateBanner(),
                 const Spacer(),
                 SizedBox(
                   width: double.infinity,

@@ -6,9 +6,10 @@ idf_component_register(
         "status_led.c"
         "pump_config.c"
         "pump_pair.c"
+        "pump_ota.c"
         "gatt_svr.c"
         "lora_link.c"
         "relay_control.c"
     INCLUDE_DIRS "."
-    REQUIRES nvs_flash bt led_strip driver esp_timer
+    REQUIRES nvs_flash bt led_strip driver esp_timer app_update
 )

@@ -38,11 +38,22 @@ flutter pub get
 flutter run
 ```
 
+## Firmware updates (BLE OTA)
+
+Pump firmware can be updated from the app over BLE (dual OTA partitions).
+
+1. Bump `TANKLINK_FW_VERSION` and build `pump_node`
+2. Publish a GitHub release tagged `pump-vX.Y.Z` with `pump_node.bin` + `firmware-manifest.json`
+3. See [`docs/firmware-release.md`](docs/firmware-release.md) and `./scripts/make_pump_manifest.sh`
+
+First flash after the OTA partition change must be over **USB**. Later updates use the app.
+
 ## Status (high level)
 
 - [x] BLE claim / auth / multi-pump
 - [x] Pump On/Off + auto-off + buzzer settings
 - [x] NeoPixel status + slide-to-start UI
+- [x] BLE OTA + GitHub Releases check
 - [ ] Relay wiring / starter control
 - [ ] Tank floats + RA-02 LoRa link
 - [ ] Optional DS3231 schedules on pump

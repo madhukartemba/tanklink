@@ -13,6 +13,7 @@
 
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
+#include "host/ble_att.h"
 #include "host/ble_hs.h"
 #include "host/util/util.h"
 #include "services/gap/ble_svc_gap.h"
@@ -22,6 +23,7 @@
 #include "gatt_svr.h"
 #include "lora_link.h"
 #include "pump_config.h"
+#include "pump_ota.h"
 #include "pump_pair.h"
 #include "relay_control.h"
 #include "status_led.h"
@@ -42,6 +44,9 @@ static void on_long_press(void)
 
 static void on_short_press(void)
 {
+    if (pump_ota_is_active()) {
+        return;
+    }
     if (pump_config_buzzer_on_button()) {
         buzzer_play_user(false);
     }
@@ -133,6 +138,9 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             advertise();
         } else {
             gatt_svr_set_conn(event->connect.conn_handle);
+            /* Prefer large ATT MTU for OTA throughput (central may also request). */
+            ble_att_set_preferred_mtu(512);
+            ble_gattc_exchange_mtu(event->connect.conn_handle, NULL, NULL);
         }
         break;
 
@@ -211,6 +219,7 @@ void app_main(void)
     board_set_button_callback(on_short_press);
     ESP_ERROR_CHECK(relay_control_init());
     ESP_ERROR_CHECK(lora_link_init());
+    ESP_ERROR_CHECK(pump_ota_init());
 
     /* Hardware self-test chirp (same board as kitchen gas alarm). */
     if (buzzer_enabled()) {
