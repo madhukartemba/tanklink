@@ -91,9 +91,10 @@ static float now_sec(void)
     return static_cast<float>(esp_timer_get_time()) * 1e-6f;
 }
 
-static uint32_t scale_bri(uint32_t c, float t)
+static uint32_t scale_bri(uint32_t c, float t, size_t led_index = 0)
 {
-    return Color::scale(c, clamp01(t) * s_bri);
+    /* Dithered scale — reduces low-brightness banding on WS2812s. */
+    return Color::scaleDithered(c, clamp01(t) * s_bri, led_index);
 }
 
 /** Left→right progress bar with a bright leading tip (hold + OTA). */
@@ -126,7 +127,7 @@ class ProgressFill final : public pixelengine::Animation {
             if (fill < 1.0f) {
                 bri = 0.35f + 0.65f * fill;
             }
-            buffer_[i] = scale_bri(color_, bri);
+            buffer_[i] = scale_bri(color_, bri, i);
         }
     }
 
@@ -196,7 +197,7 @@ class CenterIdleGlow final : public pixelengine::Animation {
                 weight = 0.45f * pulse * pulse;
             }
             if (weight > 0.001f) {
-                buffer_[i] = scale_bri(color_, bri * weight);
+                buffer_[i] = scale_bri(color_, bri * weight, i);
             }
         }
     }
@@ -239,7 +240,7 @@ class SoftWave final : public pixelengine::Animation {
                 s = std::pow(s, contrast_);
             }
             const float bri = floor_ + (1.0f - floor_) * s;
-            buffer_[i] = scale_bri(color_, bri * 0.55f);
+            buffer_[i] = scale_bri(color_, bri * 0.55f, i);
         }
     }
 
@@ -282,7 +283,7 @@ class PingPong final : public pixelengine::Animation {
                 continue;
             }
             const float t = 1.0f - dist / static_cast<float>(trail_);
-            buffer_[i] = scale_bri(color_, t * t);
+            buffer_[i] = scale_bri(color_, t * t, i);
         }
     }
 
@@ -382,7 +383,7 @@ class BootLoading final : public pixelengine::Animation {
         for (size_t i = 0; i < led_count_; ++i) {
             float cell = fill - static_cast<float>(i);
             cell = clamp01(cell);
-            buffer_[i] = scale_bri(color, cell * fade * bri_scale);
+            buffer_[i] = scale_bri(color, cell * fade * bri_scale, i);
         }
     }
 
@@ -413,9 +414,8 @@ class SoftBreathe final : public pixelengine::Animation {
         const float phase = ((now_sec() - t0_) / period_s_) * kTwoPi;
         const float raw = 0.5f + 0.5f * std::sinf(phase - 1.57079632679f);
         const float bri = floor_ + (1.0f - floor_) * smoother01(raw);
-        const uint32_t c = scale_bri(color_, bri * 0.45f);
         for (size_t i = 0; i < led_count_; ++i) {
-            buffer_[i] = c;
+            buffer_[i] = scale_bri(color_, bri * 0.45f, i);
         }
     }
 
