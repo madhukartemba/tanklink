@@ -260,7 +260,7 @@ class PingPong final : public pixelengine::Animation {
 };
 
 /**
- * Boot: center-out white load → collapse to black → pure green success → black → standby.
+ * Boot: left→right fill → fade → pure green success → fade → standby.
  */
 class BootLoading final : public pixelengine::Animation {
    public:
@@ -270,8 +270,6 @@ class BootLoading final : public pixelengine::Animation {
         layout_ = Layout::Linear;
         buffer_.assign(led_count_, 0);
         is_static_ = false;
-        center_ = (led_count_ > 0) ? (static_cast<float>(led_count_ - 1) * 0.5f) : 0.0f;
-        max_r_ = (led_count_ > 0) ? (static_cast<float>(led_count_ - 1) * 0.5f + 0.6f) : 1.0f;
         t0_ = now_sec();
     }
 
@@ -283,58 +281,47 @@ class BootLoading final : public pixelengine::Animation {
             return;
         }
         const float now = now_sec();
-        float radius = 0.0f;
+        float fill = 0.0f;
         float fade = 1.0f;
-        uint32_t color = Color::rgb(220, 225, 235);
-        float bri_scale = 0.42f;
-        bool solid = false;
+        uint32_t color = Color::rgb(170, 175, 195);
+        float bri_scale = 0.38f;
 
         switch (stage_) {
-        case Stage::Expand: {
-            /* ~1.1s center → edges */
+        case Stage::Fill: {
             const float t = now - t0_;
-            const float u = smoother01(std::min(1.0f, t / 1.1f));
-            radius = u * max_r_;
-            if (t >= 1.1f) {
+            const float u = smoother01(std::min(1.0f, t / 1.35f));
+            fill = u * static_cast<float>(led_count_);
+            if (t >= 1.35f) {
                 stage_ = Stage::Hold;
                 t0_ = now;
-                radius = max_r_;
+                fill = static_cast<float>(led_count_);
             }
             break;
         }
         case Stage::Hold:
-            radius = max_r_;
-            if (now - t0_ >= 0.15f) {
-                stage_ = Stage::Collapse;
+            fill = static_cast<float>(led_count_);
+            if (now - t0_ >= 0.18f) {
+                stage_ = Stage::FadeOut;
                 t0_ = now;
             }
             break;
-        case Stage::Collapse: {
-            /* Edges fall back to center, then black. */
-            const float t = now - t0_;
-            const float u = smoother01(std::min(1.0f, t / 0.45f));
-            radius = max_r_ * (1.0f - u);
-            fade = 1.0f - 0.35f * u;
-            if (t >= 0.45f) {
-                stage_ = Stage::Black;
+        case Stage::FadeOut: {
+            fill = static_cast<float>(led_count_);
+            fade = 1.0f - smoother01(std::min(1.0f, (now - t0_) / 0.4f));
+            if (now - t0_ >= 0.4f) {
+                stage_ = Stage::Success;
                 t0_ = now;
+                fade = 0.0f;
             }
             break;
         }
-        case Stage::Black:
-            radius = 0.0f;
-            fade = 0.0f;
-            if (now - t0_ >= 0.12f) {
-                stage_ = Stage::Success;
-                t0_ = now;
-            }
-            break;
         case Stage::Success: {
             color = Color::Green;
-            bri_scale = 0.70f;
-            solid = true;
+            bri_scale = 0.65f;
+            fill = static_cast<float>(led_count_);
             const float t = now - t0_;
-            fade = smoother01(std::min(1.0f, t / 0.12f));
+            const float pulse = smoother01(std::min(1.0f, t / 0.18f));
+            fade = (t < 0.35f) ? pulse : 1.0f;
             if (t >= 0.55f) {
                 stage_ = Stage::SuccessFade;
                 t0_ = now;
@@ -343,8 +330,8 @@ class BootLoading final : public pixelengine::Animation {
         }
         case Stage::SuccessFade: {
             color = Color::Green;
-            bri_scale = 0.70f;
-            solid = true;
+            bri_scale = 0.65f;
+            fill = static_cast<float>(led_count_);
             fade = 1.0f - smoother01(std::min(1.0f, (now - t0_) / 0.35f));
             if (now - t0_ >= 0.35f) {
                 stage_ = Stage::Done;
@@ -353,33 +340,22 @@ class BootLoading final : public pixelengine::Animation {
             break;
         }
         case Stage::Done:
-            radius = 0.0f;
+            fill = 0.0f;
             fade = 0.0f;
             break;
         }
 
         for (size_t i = 0; i < led_count_; ++i) {
-            float cell = 0.0f;
-            if (solid) {
-                cell = 1.0f;
-            } else {
-                const float d = std::fabs(static_cast<float>(i) - center_);
-                cell = clamp01(radius - d + 0.55f);
-                /* Soft tip on the expanding edge. */
-                if (cell > 0.0f && cell < 1.0f) {
-                    cell = 0.35f + 0.65f * cell;
-                }
-            }
+            float cell = fill - static_cast<float>(i);
+            cell = clamp01(cell);
             buffer_[i] = scale_bri(color, cell * fade * bri_scale);
         }
     }
 
    private:
-    enum class Stage { Expand, Hold, Collapse, Black, Success, SuccessFade, Done };
+    enum class Stage { Fill, Hold, FadeOut, Success, SuccessFade, Done };
     float t0_ = 0.0f;
-    float center_ = 0.0f;
-    float max_r_ = 1.0f;
-    Stage stage_ = Stage::Expand;
+    Stage stage_ = Stage::Fill;
 };
 
 /** Unpaired: slow amber whole-strip breathe with floor. */
@@ -427,11 +403,11 @@ void apply_mode(status_led_mode_t mode)
         s_boot = nullptr;
     }
 
-    /* Pump start/stop: snap to black, then crossfade into the next pattern. */
+    /* Pump start/stop: crossfade through black before the next pattern. */
     const bool pump_edge =
         (mode == STATUS_LED_PUMP_ON) || (s_applied == STATUS_LED_PUMP_ON);
     if (pump_edge && mode != STATUS_LED_UPDATE_OK && mode != STATUS_LED_UPDATE_ERR) {
-        s_px.setAnimationImmediate(std::make_unique<pixelengine::SolidColor>(kN, Color::Black));
+        s_px.blank();
     }
 
     switch (mode) {
