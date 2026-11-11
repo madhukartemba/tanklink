@@ -137,6 +137,7 @@ class ProgressFill final : public pixelengine::Animation {
 
 /**
  * Idle / connected: mostly dim, brief bright pulse (10s low → 1s pulse).
+ * Dim dwell is latched static (no RMT refresh) so a lone low LED doesn't shimmer.
  * neighbors_: ±1 soft surrounds; ±2 on bright peak.
  * surrounds_pulse_only_: ±1 stay off during the dim dwell (standby).
  */
@@ -163,7 +164,7 @@ class CenterIdleGlow final : public pixelengine::Animation {
         constexpr float kDim = 10.0f;
         constexpr float kPulse = 1.0f;
         constexpr float kPeriod = kDim + kPulse;
-        constexpr float kFloor = 0.18f;
+        constexpr float kFloor = 0.20f;
         constexpr float kPeak = 0.48f;
 
         float t = std::fmod(now_sec() - t0_, kPeriod);
@@ -172,16 +173,33 @@ class CenterIdleGlow final : public pixelengine::Animation {
         }
         float pulse = 0.0f;
         if (t >= kDim) {
-            const float u = (t - kDim) / kPulse; /* 0→1 across the pulse */
+            const float u = (t - kDim) / kPulse;
             if (u < 0.35f) {
                 pulse = smoother01(u / 0.35f);
             } else {
                 pulse = 1.0f - smoother01((u - 0.35f) / 0.65f);
             }
         }
-        const float level = kFloor + (kPeak - kFloor) * pulse;
-        const float bri = level * brightness_mul_;
 
+        /* Hold a fixed dim frame without re-driving the strip (avoids low-PWM flicker). */
+        if (pulse <= 0.0001f) {
+            if (!dim_latched_) {
+                paint(0.0f, kFloor * brightness_mul_);
+                dim_latched_ = true;
+                is_static_ = true;
+            }
+            return;
+        }
+
+        dim_latched_ = false;
+        is_static_ = false;
+        const float level = kFloor + (kPeak - kFloor) * pulse;
+        paint(pulse, level * brightness_mul_);
+    }
+
+   private:
+    void paint(float pulse, float bri)
+    {
         std::fill(buffer_.begin(), buffer_.end(), 0);
         for (size_t i = 0; i < led_count_; ++i) {
             const float d = std::fabs(static_cast<float>(i) - center_);
@@ -189,10 +207,8 @@ class CenterIdleGlow final : public pixelengine::Animation {
             if (d < 0.55f) {
                 weight = 1.0f;
             } else if (neighbors_ && d < 1.55f) {
-                /* ±1 surrounds */
                 weight = surrounds_pulse_only_ ? (0.75f * pulse) : (0.22f + 0.55f * pulse);
             } else if (neighbors_ && d < 2.55f) {
-                /* ±2 — only on the bright part */
                 weight = 0.45f * pulse * pulse;
             }
             if (weight > 0.001f) {
@@ -201,11 +217,11 @@ class CenterIdleGlow final : public pixelengine::Animation {
         }
     }
 
-   private:
     uint32_t color_;
     float brightness_mul_ = 1.0f;
     bool neighbors_ = false;
     bool surrounds_pulse_only_ = false;
+    bool dim_latched_ = false;
     float center_ = 0.0f;
     float t0_ = 0.0f;
 };
