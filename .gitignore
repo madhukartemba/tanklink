@@ -1,0 +1,59 @@
+# macOS / IDE
+.DS_Store
+.idea/
+*.swp
+*.iml
+
+# ESP-IDF (pump_node / tank_node)
+**/build/
+**/sdkconfig
+**/sdkconfig.old
+**/dependencies.lock
+**/managed_components/
+**/.cache/
+**/dist/
+
+# Flutter
+**/doc/api/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.pub-cache/
+**/.pub/
+**/coverage/
+**/*.symbols
+**/*.map.json
+**/app.*.symbols
+**/app.*.map.json
+
+# Android / iOS local
+**/android/local.properties
+**/android/.gradle/
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/android/captures/
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+**/ios/ServiceDefinitions.json
+**/macos/Flutter/ephemeral/
+**/linux/flutter/ephemeral/
+**/windows/flutter/ephemeral/
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+**/credentials.json
+**/google-services.json
+**/GoogleService-Info.plist
+
+# Python / misc
+__pycache__/
+*.pyc
+.venv/
+venv/

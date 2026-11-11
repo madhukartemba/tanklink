@@ -1,0 +1,46 @@
+#pragma once
+
+#include "host/ble_uuid.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* TankLink custom 128-bit UUIDs (LE byte order for NimBLE).
+ * String form:
+ *   Service  7f1a0001-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Info     7f1a0002-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Pair     7f1a0003-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Auth     7f1a0004-ac01-4c8c-9b2e-74616e6b6c6e
+ *   State    7f1a0005-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Cmd      7f1a0006-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Settings 7f1a0007-ac01-4c8c-9b2e-74616e6b6c6e
+ */
+#define TANKLINK_UUID_BASE_TAIL 0x6e, 0x6c, 0x6b, 0x6e, 0x61, 0x74, 0x2e, 0x9b, \
+                                0x8c, 0x4c, 0x01, 0xac
+
+#define TANKLINK_SVC_UUID_INIT  BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x01, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_INFO_INIT  BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x02, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_PAIR_INIT  BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x03, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_AUTH_INIT  BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x04, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_STATE_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x05, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_CMD_INIT   BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x06, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_SETTINGS_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x07, 0x00, 0x1a, 0x7f)
+
+#define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
+#define TANKLINK_DEVICE_NAME "TankLink-Pump"
+#define TANKLINK_FW_VERSION  "0.3.0"
+#define TANKLINK_TOKEN_LEN   16
+#define TANKLINK_DEVICE_ID_LEN 6
+#define TANKLINK_SERIAL_LEN  4
+#define TANKLINK_ADV_NAME_MAX 16
+
+/* Cmd opcodes (byte 0). 0x00/0x01 remain plain off/on for older apps. */
+#define TANKLINK_CMD_OFF       0x00
+#define TANKLINK_CMD_ON        0x01
+#define TANKLINK_CMD_TEST_BEEP 0xB1
+#define TANKLINK_CMD_UNPAIR    0xF0
+
+#ifdef __cplusplus
+}
+#endif
