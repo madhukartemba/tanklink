@@ -78,7 +78,11 @@ static void button_task(void *arg)
                 if (s_click_cb) {
                     s_click_cb();
                 }
-                status_led_set_mode(s_mode_before_hold);
+                /* Click handler may change LED (e.g. exit pairing). Only
+                 * restore the pre-hold mode if we're still in hold progress. */
+                if (status_led_get_mode() == STATUS_LED_HOLD_PROGRESS) {
+                    status_led_set_mode(s_mode_before_hold);
+                }
             }
             /* long press: pairing mode owns LED */
         }

@@ -190,10 +190,8 @@ void pump_pair_poll(void)
     if (!s_pairing_active) {
         return;
     }
-    /* Keep unpaired always claimable: refresh deadline while unpaired */
-    if (!s_pair.paired) {
-        return;
-    }
+    /* Pairing LED/window always expires; unpaired pumps stay claimable
+     * via pump_pair_is_claimable() even after the window closes. */
     if (esp_timer_get_time() >= s_pairing_deadline_us) {
         pump_pair_exit_pairing_mode();
     }
