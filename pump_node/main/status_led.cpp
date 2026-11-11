@@ -136,19 +136,19 @@ class ProgressFill final : public pixelengine::Animation {
 };
 
 /**
- * Idle / connected: center LED mostly stays dim, with a brief bright pulse
- * every few seconds (long dwell low → short breathe-in → back down).
+ * Idle / connected: mostly dim, brief bright pulse (10s low → 1s pulse).
+ * With neighbors_: ±1 follow the glow; ±2 only on the bright peak.
  */
 class CenterIdleGlow final : public pixelengine::Animation {
    public:
     explicit CenterIdleGlow(size_t led_count, uint32_t color = Color::White,
-                            float brightness_mul = 1.0f)
-        : color_(color), brightness_mul_(brightness_mul)
+                            float brightness_mul = 1.0f, bool neighbors = false)
+        : color_(color), brightness_mul_(brightness_mul), neighbors_(neighbors)
     {
         led_count_ = led_count;
         layout_ = Layout::Linear;
         buffer_.assign(led_count_, 0);
-        center_ = (led_count_ > 0) ? static_cast<size_t>((led_count_ - 1) / 2) : 0;
+        center_ = (led_count_ > 0) ? (static_cast<float>(led_count_ - 1) * 0.5f) : 0.0f;
         t0_ = now_sec();
     }
 
@@ -157,9 +157,9 @@ class CenterIdleGlow final : public pixelengine::Animation {
         if (led_count_ == 0) {
             return;
         }
-        /* ~5.5s mostly low, ~0.9s pulse window. */
-        constexpr float kPeriod = 5.5f;
-        constexpr float kPulse = 0.9f;
+        constexpr float kDim = 10.0f;
+        constexpr float kPulse = 1.0f;
+        constexpr float kPeriod = kDim + kPulse;
         constexpr float kFloor = 0.18f;
         constexpr float kPeak = 0.48f;
 
@@ -168,10 +168,8 @@ class CenterIdleGlow final : public pixelengine::Animation {
             t += kPeriod;
         }
         float pulse = 0.0f;
-        const float start = kPeriod - kPulse;
-        if (t >= start) {
-            const float u = (t - start) / kPulse; /* 0→1 across the pulse */
-            /* Rise quickly (~35%), fall slower (~65%). */
+        if (t >= kDim) {
+            const float u = (t - kDim) / kPulse; /* 0→1 across the pulse */
             if (u < 0.35f) {
                 pulse = smoother01(u / 0.35f);
             } else {
@@ -182,13 +180,29 @@ class CenterIdleGlow final : public pixelengine::Animation {
         const float bri = level * brightness_mul_;
 
         std::fill(buffer_.begin(), buffer_.end(), 0);
-        buffer_[center_] = scale_bri(color_, bri);
+        for (size_t i = 0; i < led_count_; ++i) {
+            const float d = std::fabs(static_cast<float>(i) - center_);
+            float weight = 0.0f;
+            if (d < 0.55f) {
+                weight = 1.0f;
+            } else if (neighbors_ && d < 1.55f) {
+                /* Immediate surrounds — soft with the pulse. */
+                weight = 0.22f + 0.55f * pulse;
+            } else if (neighbors_ && d < 2.55f) {
+                /* Next surrounds — only on the bright part. */
+                weight = 0.45f * pulse * pulse;
+            }
+            if (weight > 0.001f) {
+                buffer_[i] = scale_bri(color_, bri * weight);
+            }
+        }
     }
 
    private:
     uint32_t color_;
     float brightness_mul_ = 1.0f;
-    size_t center_ = 0;
+    bool neighbors_ = false;
+    float center_ = 0.0f;
     float t0_ = 0.0f;
 };
 
@@ -443,7 +457,8 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::White));
         break;
     case STATUS_LED_CONNECTED:
-        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::Green, 1.25f));
+        /* Same 10s/1s pulse timing; ±1 always soft, ±2 on bright peak. */
+        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::Green, 1.25f, true));
         break;
     case STATUS_LED_PUMP_ON:
         s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::rgb(20, 100, 255), 9.5f, 0.42f,
