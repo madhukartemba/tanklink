@@ -32,7 +32,7 @@ class ErrorCodesScreen extends StatelessWidget {
       code: 5,
       name: 'Pairing timed out',
       detail:
-          'No successful pair ACK within the pairing window (~60s). Start Pair tank sensor again and retry the hold.',
+          'No successful pair ACK within the pairing window (~30s). Start Pair tank sensor again and retry the hold.',
     ),
   ];
 
@@ -82,7 +82,7 @@ class ErrorCodesScreen extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             'Long hard blinks (not soft pulses), twice, with a pause between groups. '
-            'After a wake TX, success is one soft pulse; failure uses the numbered blink code. Boot and pairing use soft pulses.',
+            'Short press: one blink (BLE update window). Pairing: soft breathing. TX success: one soft pulse; failure uses the numbered blink code.',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),

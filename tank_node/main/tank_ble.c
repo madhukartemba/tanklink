@@ -230,7 +230,9 @@ esp_err_t tank_ble_start_ota_window(uint32_t timeout_ms)
 
     s_window_active = true;
     s_window_deadline_us = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
-    tank_led_pairing_flash_start();
+    /* Distinct from LoRa pairing breathe: one short blink, then dark. */
+    tank_led_blink(1, 120, 0);
+    tank_led_off();
     advertise();
     ESP_LOGI(TAG, "OTA advertise started (%u ms window)", (unsigned)timeout_ms);
     return ESP_OK;
@@ -265,14 +267,12 @@ esp_err_t tank_ble_wait_ota_window(void)
         } else {
             hold_start_us = 0;
         }
-        tank_led_pairing_flash_tick();
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 
     s_window_active = false;
     ble_gap_adv_stop();
     if (!tank_ota_is_active()) {
-        tank_led_pairing_flash_stop();
         tank_led_off();
     }
     return want_pair ? ESP_ERR_INVALID_STATE : ESP_OK;

@@ -19,14 +19,15 @@ The status LED shows the **error number** as **long hard blinks** (on/off, not s
 | Action | LED |
 | --- | --- |
 | Boot | Soft fade pulses |
-| Hold to pair | Brightness ramps 0→100 over ~3 s, then soft breathing pulses |
-| Pairing success | Two calm fade pulses |
-| Short press / heartbeat / float wake (paired) | After full TX+ACK: **one** soft success pulse; on failure code **3** long blinks (no per-retry pulses) |
+| Hold to pair | Brightness ramps 0→100 over ~5 s, then soft breathing pulses (~30 s window) |
+| Pairing success | Soft success pulse |
+| Short press (paired) | One short blink (BLE OTA listen ~10 s, LED stays off); after TX+ACK: **one** soft success pulse; on failure code **3** |
+| Heartbeat / float wake (paired) | After full TX+ACK: **one** soft success pulse; on failure code **3** long blinks |
 | Short press (unpaired) | Code **1** long blinks |
 | Cancel pairing | Code **4** long blinks |
 | Pairing timeout | Code **5** long blinks |
 
-Pairing mode lasts **60 s** by default (`CONFIG_TANK_PAIR_WINDOW_MS`). Press the button once to cancel.
+Pairing mode lasts **30 s** by default (`CONFIG_TANK_PAIR_WINDOW_MS`). Press the button once to cancel.
 
 ## Pump NeoPixel codes
 

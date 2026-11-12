@@ -153,7 +153,6 @@ uint8_t tank_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
     s_owner_conn = conn_handle;
     s_err = TANKLINK_OTA_ERR_OK;
     s_state = TANKLINK_OTA_ST_READY;
-    tank_led_pairing_flash_start();
     ESP_LOGI(TAG, "OTA start size=%lu part=%s", (unsigned long)image_size, s_part->label);
     notify_status();
     return TANKLINK_OTA_ERR_OK;
@@ -193,7 +192,6 @@ uint8_t tank_ota_write(uint16_t conn_handle, uint32_t offset, const uint8_t *dat
     s_offset += len;
     s_state = TANKLINK_OTA_ST_WRITING;
     s_err = TANKLINK_OTA_ERR_OK;
-    tank_led_pairing_flash_tick();
     if ((s_offset & 0xfff) == 0 || s_offset == s_image_size) {
         notify_status();
     }
@@ -206,7 +204,6 @@ uint8_t tank_ota_abort(void)
         return TANKLINK_OTA_ERR_OK;
     }
     cleanup_session(false);
-    tank_led_pairing_flash_stop();
     tank_led_off();
     ESP_LOGW(TAG, "OTA aborted");
     notify_status();
@@ -277,7 +274,6 @@ uint8_t tank_ota_finish(uint16_t conn_handle)
         return TANKLINK_OTA_ERR_FLASH;
     }
 
-    tank_led_pairing_flash_stop();
     tank_led_success();
     s_state = TANKLINK_OTA_ST_VERIFY_OK;
     s_err = TANKLINK_OTA_ERR_OK;

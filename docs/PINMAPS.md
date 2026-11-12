@@ -58,7 +58,7 @@ Fail-safe floats: **pull-up**, common to **GND**, contact **opens** when asserte
 
 RA-02: **VCC → 3V3**, GND → GND, antenna on module U.FL. Frequency **433 MHz** (must match pump).
 
-**Status LED:** D4 → **1–2.2 kΩ** → LED anode, cathode → GND (active-high).
+**Status LED:** D4 → **1–2.2 kΩ** → LED anode, cathode → GND (active-high). Firmware drives the pin low ASAP on wake and holds it low in deep sleep. A brief ROM-boot glimmer on D4/GPIO6 (MTCK) can still happen before the app runs; wiring the LED active-low (anode→3V3, cathode→GPIO via resistor) removes that if it bothers you.
 
 **Battery:** BAT+ → **100 kΩ** → D0 → **100 kΩ** → GND, **100 nF** D0–GND.
 

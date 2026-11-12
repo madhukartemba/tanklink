@@ -1,5 +1,6 @@
 #include "tank_led.h"
 
+#include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -14,8 +15,22 @@
 #define LEDC_MAX_DUTY ((1 << 13) - 1)
 
 static bool s_ok;
+static int s_gpio = -1;
 static uint8_t s_pct;
+static bool s_pair_active;
 static int64_t s_pair_phase_ms;
+
+void tank_led_force_off_pin(int gpio)
+{
+    if (gpio < 0) {
+        return;
+    }
+    /* GPIO6 (MTCK) can sit weakly high / glitch through ROM boot — clamp ASAP. */
+    gpio_hold_dis((gpio_num_t)gpio);
+    gpio_reset_pin((gpio_num_t)gpio);
+    gpio_set_direction((gpio_num_t)gpio, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)gpio, 0);
+}
 
 static uint32_t duty_from_pct(uint8_t pct)
 {
@@ -29,6 +44,9 @@ static uint32_t duty_from_pct(uint8_t pct)
 
 esp_err_t tank_led_init(int gpio)
 {
+    s_gpio = gpio;
+    tank_led_force_off_pin(gpio);
+
     ledc_timer_config_t timer = {
         .speed_mode = LEDC_MODE,
         .duty_resolution = LEDC_DUTY_RES,
@@ -54,6 +72,8 @@ esp_err_t tank_led_init(int gpio)
         ESP_LOGW(TAG, "channel: %s", esp_err_to_name(err));
         return err;
     }
+    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, 0);
+    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
     s_ok = true;
     s_pct = 0;
     ESP_LOGI(TAG, "LEDC GPIO%d", gpio);
@@ -78,6 +98,20 @@ void tank_led_set(bool on)
 void tank_led_off(void)
 {
     tank_led_set_brightness(0);
+}
+
+void tank_led_prepare_deep_sleep(void)
+{
+    if (s_gpio < 0) {
+        return;
+    }
+    if (s_ok) {
+        ledc_stop(LEDC_MODE, LEDC_CHANNEL, 0);
+        s_ok = false;
+    }
+    tank_led_force_off_pin(s_gpio);
+    gpio_hold_en((gpio_num_t)s_gpio);
+    gpio_deep_sleep_hold_en();
 }
 
 void tank_led_fade_to(uint8_t pct, uint32_t ms)
@@ -149,12 +183,16 @@ void tank_led_failure(void)
 
 void tank_led_pairing_flash_start(void)
 {
+    s_pair_active = true;
     s_pair_phase_ms = 0;
 }
 
 void tank_led_pairing_flash_tick(void)
 {
-    /* ~1.2s soft triangle wave while pairing. */
+    if (!s_pair_active) {
+        return;
+    }
+    /* ~1.2s soft triangle wave while LoRa pairing — not used for BLE OTA. */
     s_pair_phase_ms += 20;
     const int period = 1200;
     int t = (int)(s_pair_phase_ms % period);
@@ -169,6 +207,10 @@ void tank_led_pairing_flash_tick(void)
 
 void tank_led_pairing_flash_stop(void)
 {
+    if (!s_pair_active) {
+        return;
+    }
+    s_pair_active = false;
     tank_led_fade_to(0, 150);
 }
 

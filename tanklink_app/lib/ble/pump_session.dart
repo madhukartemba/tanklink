@@ -119,8 +119,8 @@ class PumpSession extends ChangeNotifier {
   Uint8List? tankBleToken;
   int tankFlags = 0;
   int tankBatteryPct = 0;
-  /// Seconds since last LoRa packet; null if never heard / unknown.
-  int? tankAgeSec;
+  /// Wall-clock estimate of last LoRa RX (from GATT age_sec snapshots).
+  DateTime? _tankLastHeardAt;
   /// Last LoRa packet RSSI (dBm); null if unknown.
   int? tankRssiDbm;
   /// Last LoRa packet SNR (dB); null if unknown.
@@ -146,6 +146,7 @@ class PumpSession extends ChangeNotifier {
   StreamSubscription<List<int>>? _tankNotifySub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
   Timer? _runTicker;
+  Timer? _ageTicker;
 
   bool get tankOtaReady =>
       tankBound &&
@@ -171,10 +172,21 @@ class PumpSession extends ChangeNotifier {
     return 'Ok';
   }
 
+  /// Live seconds since last tank LoRa packet (ticks with UI timer).
+  int? get tankAgeSec {
+    final at = _tankLastHeardAt;
+    if (at == null) return null;
+    final s = DateTime.now().difference(at).inSeconds;
+    if (s < 0) return 0;
+    if (s > 0xFFFE) return 0xFFFE;
+    return s;
+  }
+
   String get tankAgeLabel {
     final age = tankAgeSec;
     if (age == null) return 'Never heard';
-    if (age < 60) return 'Just now';
+    if (age < 10) return 'Just now';
+    if (age < 60) return '${age}s ago';
     if (age < 3600) return '${age ~/ 60}m ago';
     if (age < 86400) {
       final h = age ~/ 3600;
@@ -732,10 +744,15 @@ class PumpSession extends ChangeNotifier {
     if (bytes.length >= 16) {
       tankOnline = bytes[13] != 0;
       final age = bytes[14] | (bytes[15] << 8);
-      tankAgeSec = age == 0xFFFF ? null : age;
+      if (age == 0xFFFF) {
+        _tankLastHeardAt = null;
+      } else {
+        _tankLastHeardAt =
+            DateTime.now().subtract(Duration(seconds: age.clamp(0, 0xFFFE)));
+      }
     } else {
       tankOnline = tankBound;
-      tankAgeSec = null;
+      _tankLastHeardAt = null;
     }
     if (bytes.length >= 18) {
       tankRssiDbm = bytes[16] > 127 ? bytes[16] - 256 : bytes[16];
@@ -755,11 +772,38 @@ class PumpSession extends ChangeNotifier {
     }
     if (!tankBound) {
       tankOnline = false;
-      tankAgeSec = null;
+      _tankLastHeardAt = null;
       tankRssiDbm = null;
       tankSnrDb = null;
       tankBleToken = null;
+    } else {
+      // Keep online flag honest as wall-clock age advances between notifies.
+      final age = tankAgeSec;
+      if (age != null && age > TankLinkUuids.tankStaleSec) {
+        tankOnline = false;
+      }
     }
+    _ensureAgeTicker();
+  }
+
+  void _ensureAgeTicker() {
+    if (!authed || !connected || !tankBound || _tankLastHeardAt == null) {
+      _ageTicker?.cancel();
+      _ageTicker = null;
+      return;
+    }
+    _ageTicker ??= Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!authed || !connected || _tankLastHeardAt == null) {
+        _ageTicker?.cancel();
+        _ageTicker = null;
+        return;
+      }
+      final age = tankAgeSec;
+      if (age != null && age > TankLinkUuids.tankStaleSec && tankOnline) {
+        tankOnline = false;
+      }
+      notifyListeners();
+    });
   }
 
   Future<void> startTankPair() async {
@@ -1266,6 +1310,8 @@ class PumpSession extends ChangeNotifier {
   Future<void> disconnect() async {
     _runTicker?.cancel();
     _runTicker = null;
+    _ageTicker?.cancel();
+    _ageTicker = null;
     await _pairNotifySub?.cancel();
     await _stateNotifySub?.cancel();
     await _otaStatusSub?.cancel();
@@ -1295,7 +1341,7 @@ class PumpSession extends ChangeNotifier {
     tankBleToken = null;
     tankFlags = 0;
     tankBatteryPct = 0;
-    tankAgeSec = null;
+    _tankLastHeardAt = null;
     tankRssiDbm = null;
     tankSnrDb = null;
     pumpLastError = 0;
@@ -1396,6 +1442,7 @@ class PumpSession extends ChangeNotifier {
   @override
   void dispose() {
     _runTicker?.cancel();
+    _ageTicker?.cancel();
     unawaited(disconnect());
     unawaited(stopScan());
     super.dispose();

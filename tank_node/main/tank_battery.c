@@ -53,15 +53,24 @@ esp_err_t tank_battery_init(void)
 
 static uint8_t pct_from_mv(int vbat_mv)
 {
-    /* Crude LiPo curve: 3.30V=0%, 3.60V~20%, 3.90V~60%, 4.20V=100%. */
-    if (vbat_mv <= 3300) {
+    /*
+     * Absent vs empty:
+     *  - ≲1.5V → 0 (open ADC / no pack) — app treats 0 as "no reading"
+     *  - 1.5–3.3V → 1% (pack present but flat) — app shows low battery
+     * Crude LiPo curve above that: 3.30V→1%, 3.60V~20%, 3.90V~60%, 4.20V=100%.
+     */
+    if (vbat_mv < 1500) {
         return 0;
+    }
+    if (vbat_mv <= 3300) {
+        return 1;
     }
     if (vbat_mv >= 4200) {
         return 100;
     }
     if (vbat_mv < 3600) {
-        return (uint8_t)((vbat_mv - 3300) * 20 / 300);
+        /* 3301–3599 → 2–19% (1% reserved for flat-but-present). */
+        return (uint8_t)(1 + (vbat_mv - 3300) * 19 / 300);
     }
     if (vbat_mv < 3900) {
         return (uint8_t)(20 + (vbat_mv - 3600) * 40 / 300);

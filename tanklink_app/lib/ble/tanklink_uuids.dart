@@ -45,6 +45,8 @@ class TankLinkUuids {
   static const tankStatusWithTokenLen = 35;
   /** Warn when tank reports battery at or below this %. */
   static const tankBatteryLowPct = 20;
+  /** Match pump CONFIG_PUMP_TANK_STALE_SEC — used for live last-seen / online. */
+  static const tankStaleSec = 1500;
 
   static const otaOpStart = 0x01;
   static const otaOpAbort = 0x02;

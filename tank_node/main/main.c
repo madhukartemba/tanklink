@@ -27,10 +27,10 @@
 #define CONFIG_TANK_BUTTON_AWAKE_MS 10000
 #endif
 #ifndef CONFIG_TANK_BLE_OTA_WINDOW_MS
-#define CONFIG_TANK_BLE_OTA_WINDOW_MS 120000
+#define CONFIG_TANK_BLE_OTA_WINDOW_MS 10000
 #endif
 #ifndef CONFIG_TANK_PAIR_WINDOW_MS
-#define CONFIG_TANK_PAIR_WINDOW_MS 60000
+#define CONFIG_TANK_PAIR_WINDOW_MS 30000
 #endif
 
 static uint8_t load_last_flags(void)
@@ -117,7 +117,7 @@ static void enter_deep_sleep(void)
 {
     tank_ble_stop();
     tank_link_deinit_radio();
-    tank_led_off();
+    tank_led_prepare_deep_sleep();
     tank_board_prepare_deep_sleep(CONFIG_TANK_HEARTBEAT_SEC);
     ESP_LOGI(TAG, "entering deep sleep (%ds heartbeat)", CONFIG_TANK_HEARTBEAT_SEC);
     esp_deep_sleep_start();
@@ -233,6 +233,9 @@ static void handle_button_gesture(void)
 
 void app_main(void)
 {
+    /* Kill LED glow before NVS / radio init (GPIO6 can sit weakly high after reset). */
+    tank_led_force_off_pin(CONFIG_TANK_LED_GPIO);
+
     ESP_LOGI(TAG, "TankLink tank node fw=%s", TANK_FW_VERSION_STR);
 
     esp_err_t err = nvs_flash_init();

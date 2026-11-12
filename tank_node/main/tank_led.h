@@ -8,11 +8,19 @@
 extern "C" {
 #endif
 
+/**
+ * Drive the LED GPIO low immediately (before LEDC / NVS).
+ * Call as early as possible in app_main to kill boot glow on GPIO6.
+ */
+void tank_led_force_off_pin(int gpio);
+
 esp_err_t tank_led_init(int gpio);
 void tank_led_set(bool on);
 /** 0–100 percent brightness (soft PWM). */
 void tank_led_set_brightness(uint8_t pct);
 void tank_led_off(void);
+/** GPIO out low + hold so the LED stays dark through deep sleep. */
+void tank_led_prepare_deep_sleep(void);
 
 void tank_led_fade_to(uint8_t pct, uint32_t ms);
 void tank_led_fade_in_out(uint8_t peak_pct, uint32_t up_ms, uint32_t down_ms);
