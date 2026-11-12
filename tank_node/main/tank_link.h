@@ -14,6 +14,8 @@ typedef bool (*tank_link_should_cancel_fn)(void *ctx);
 esp_err_t tank_link_init(void);
 void tank_link_deinit_radio(void);
 bool tank_link_radio_ok(void);
+/** 6-byte tank identity (WiFi STA MAC). */
+const uint8_t *tank_link_tank_id(void);
 
 /**
  * Send status and wait for pump ACK. Retries up to Kconfig attempts.

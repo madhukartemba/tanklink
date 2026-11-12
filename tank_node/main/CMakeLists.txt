@@ -5,6 +5,10 @@ idf_component_register(
         "tank_battery.c"
         "tank_led.c"
         "tank_link.c"
+        "tank_ble_token.c"
+        "tank_ota.c"
+        "tank_gatt.c"
+        "tank_ble.c"
     INCLUDE_DIRS "."
     REQUIRES
         nvs_flash
@@ -13,5 +17,7 @@ idf_component_register(
         esp_adc
         esp_timer
         esp_hw_support
+        bt
+        app_update
         tanklink_lora
 )

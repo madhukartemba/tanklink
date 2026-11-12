@@ -255,6 +255,9 @@ static void fill_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
     out[16] = (uint8_t)(int8_t)rssi;
     out[17] = (uint8_t)lora_link_tank_snr_db();
     out[18] = s_last_error;
+    if (lora_link_tank_has_ble_token()) {
+        memcpy(&out[19], lora_link_tank_ble_token(), TANKLINK_TOKEN_LEN);
+    }
 }
 
 static int append_tank_status(struct os_mbuf *om)

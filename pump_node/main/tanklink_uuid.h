@@ -37,7 +37,7 @@ extern "C" {
 
 #define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
 #define TANKLINK_DEVICE_NAME "TankLink-Pump"
-#define TANKLINK_FW_VERSION  "0.8.0"
+#define TANKLINK_FW_VERSION  "0.8.1"
 
 /* OTA_CTRL opcodes */
 #define TANKLINK_OTA_OP_START  0x01
@@ -79,9 +79,11 @@ extern "C" {
 /**
  * Tank char payload:
  * bound(1) pairing(1) id(6) fw(3) flags(1) bat(1) online(1) age_sec_le(2)
- * rssi_dbm_i8(1) snr_db_i8(1) last_error(1) = 19 bytes
+ * rssi_dbm_i8(1) snr_db_i8(1) last_error(1) ble_token(16) = 35 bytes
+ * Older apps may ignore bytes beyond 19.
  */
-#define TANKLINK_TANK_STATUS_LEN 19
+#define TANKLINK_TANK_STATUS_BASE_LEN 19
+#define TANKLINK_TANK_STATUS_LEN 35
 
 #ifdef __cplusplus
 }

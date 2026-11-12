@@ -30,6 +30,10 @@ int16_t lora_link_tank_rssi_dbm(void);
 /** Last packet SNR (dB); 0 if never heard. */
 int8_t lora_link_tank_snr_db(void);
 const uint8_t *lora_link_tank_id(void);
+/** True when a non-zero BLE OTA token was stored at LoRa pair time. */
+bool lora_link_tank_has_ble_token(void);
+/** 16-byte BLE OTA token (zeros if absent). */
+const uint8_t *lora_link_tank_ble_token(void);
 uint8_t lora_link_tank_flags(void);
 uint8_t lora_link_tank_battery_pct(void);
 uint8_t lora_link_tank_fw_major(void);

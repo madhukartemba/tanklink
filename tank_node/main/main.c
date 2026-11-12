@@ -10,6 +10,8 @@
 #include "sdkconfig.h"
 
 #include "tank_battery.h"
+#include "tank_ble.h"
+#include "tank_ble_token.h"
 #include "tank_board.h"
 #include "tank_errors.h"
 #include "tank_led.h"
@@ -23,6 +25,9 @@
 
 #ifndef CONFIG_TANK_BUTTON_AWAKE_MS
 #define CONFIG_TANK_BUTTON_AWAKE_MS 10000
+#endif
+#ifndef CONFIG_TANK_BLE_OTA_WINDOW_MS
+#define CONFIG_TANK_BLE_OTA_WINDOW_MS 120000
 #endif
 #ifndef CONFIG_TANK_PAIR_WINDOW_MS
 #define CONFIG_TANK_PAIR_WINDOW_MS 60000
@@ -110,6 +115,7 @@ static bool pair_should_cancel(void *ctx)
 
 static void enter_deep_sleep(void)
 {
+    tank_ble_stop();
     tank_link_deinit_radio();
     tank_led_off();
     tank_board_prepare_deep_sleep(CONFIG_TANK_HEARTBEAT_SEC);
@@ -144,6 +150,10 @@ static esp_err_t run_pairing_mode(uint8_t bat)
             save_paired(true);
             tank_led_pairing_flash_stop();
             tank_led_success();
+            /* Extra STATUS so the pump marks online even if PAIR apply was missed. */
+            tank_inputs_t in;
+            tank_board_read(&in);
+            (void)tank_link_send_status(&in, bat, false);
             ESP_LOGI(TAG, "paired OK");
             return ESP_OK;
         }
@@ -204,28 +214,14 @@ static void handle_button_gesture(void)
     save_last_flags(now_flags);
     /* Success / no-ACK LED handled inside tank_link_send_status. */
 
-    /* Awake window: hold-to-pair still works after a short press. */
-    if (CONFIG_TANK_BUTTON_AWAKE_MS <= 0) {
-        return;
-    }
-    ESP_LOGI(TAG, "awake window %d ms", CONFIG_TANK_BUTTON_AWAKE_MS);
-    const int64_t until =
-        esp_timer_get_time() + (int64_t)CONFIG_TANK_BUTTON_AWAKE_MS * 1000;
-    while (esp_timer_get_time() < until) {
-        if (tank_board_button_down()) {
-            is_hold = false;
-            held = 0;
-            tank_board_classify_button(CONFIG_TANK_BUTTON_HOLD_MS, &is_hold, &held,
-                                       hold_progress, NULL);
-            if (is_hold) {
-                bat = tank_battery_percent();
-                (void)run_pairing_mode(bat);
-                return;
-            }
-            /* Another short click: soft pulse, stay in window. */
-            tank_led_fade_in_out(60, 80, 120);
-        }
-        vTaskDelay(pdMS_TO_TICKS(20));
+    /* BLE OTA window: phone can connect after this short press. Hold = LoRa re-pair. */
+    ESP_LOGI(TAG, "BLE OTA window %d ms", CONFIG_TANK_BLE_OTA_WINDOW_MS);
+    err = tank_ble_run_ota_window(CONFIG_TANK_BLE_OTA_WINDOW_MS);
+    if (err == ESP_ERR_INVALID_STATE) {
+        /* Hold detected during window — stop BLE and enter LoRa pair. */
+        tank_ble_stop();
+        bat = tank_battery_percent();
+        (void)run_pairing_mode(bat);
     }
 }
 
@@ -251,6 +247,12 @@ void app_main(void)
     }
     if (tank_link_init() != ESP_OK) {
         ESP_LOGW(TAG, "LoRa unavailable — TX will fail soft");
+    }
+    if (tank_ble_token_init() != ESP_OK) {
+        ESP_LOGW(TAG, "BLE token init failed");
+    }
+    if (tank_ble_init() != ESP_OK) {
+        ESP_LOGW(TAG, "BLE unavailable — OTA window will fail soft");
     }
 
     esp_sleep_wakeup_cause_t cause = tank_board_wakeup_cause();

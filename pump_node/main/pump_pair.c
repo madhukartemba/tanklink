@@ -226,8 +226,13 @@ esp_err_t pump_pair_claim(uint8_t out_token[TANKLINK_TOKEN_LEN])
         ESP_LOGI(TAG, "CLAIMED shared token serial=%s", s_serial);
     }
     memcpy(out_token, s_pair.token, TANKLINK_TOKEN_LEN);
-    /* Keep pairing window open until timeout so multiple devices can claim. */
-    refresh_led_for_pair_state();
+    /* First successful phone claim → standby LED immediately (stop blue pair anim).
+     * Additional phones can re-open the window with Start+Stop hold. */
+    if (s_pairing_active) {
+        pump_pair_exit_pairing_mode();
+    } else {
+        refresh_led_for_pair_state();
+    }
     return ESP_OK;
 }
 

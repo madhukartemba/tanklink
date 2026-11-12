@@ -2,8 +2,8 @@
 
 Battery-powered tank sensor: two fail-safe floats, button, LED, battery ADC, RA-02 LoRa.
 
-Firmware `0.1.0`. Deep sleep with **10 min** heartbeat, wake on float change / button.
-Short press TX then stay awake **10 s** (future BLE). Hold **~3 s** to send LoRa PAIR.
+Firmware `0.2.0`. Deep sleep with **10 min** heartbeat, wake on float change / button.
+Short press: status TX, then **BLE OTA advertise ~120 s**. Hold **~3 s** to send LoRa PAIR (includes BLE token).
 
 See [WIRING.md](WIRING.md) for the pin map.
 

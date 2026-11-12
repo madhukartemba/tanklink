@@ -86,7 +86,16 @@ menu "TankLink Tank Node"
         range 0 60000
         default 10000
         help
-            After a short-press status TX, remain awake this long (hold-to-pair still works).
+            After a short-press status TX, remain awake this long if BLE OTA window is not used
+            (hold-to-pair still works). Prefer TANK_BLE_OTA_WINDOW_MS when paired.
+
+    config TANK_BLE_OTA_WINDOW_MS
+        int "BLE OTA advertise window after short press (ms)"
+        range 10000 600000
+        default 120000
+        help
+            After a paired short-press status TX, advertise BLE for this long so the phone
+            can push a firmware update. Hold-to-pair still works if pressed during the window.
 
     config TANK_PAIR_WINDOW_MS
         int "Pairing mode timeout (ms)"

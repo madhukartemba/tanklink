@@ -1,6 +1,6 @@
-# Pump firmware releases
+# Firmware releases
 
-## Version bump
+## Pump (`pump-v*`)
 
 1. Edit `TANKLINK_FW_VERSION` in [`pump_node/main/tanklink_uuid.h`](../pump_node/main/tanklink_uuid.h) (semver `X.Y.Z`).
 2. Build:
@@ -13,14 +13,10 @@ idf.py build
 
 3. Create GitHub release tag **`pump-vX.Y.Z`** (example: `pump-v0.4.0`).
 
-## Required assets
-
 | File | Source |
 | --- | --- |
 | `pump_node.bin` | `pump_node/build/pump_node.bin` |
-| `firmware-manifest.json` | generated below |
-
-### `firmware-manifest.json`
+| `firmware-manifest.json` | `./scripts/make_pump_manifest.sh X.Y.Z` |
 
 ```json
 {
@@ -31,17 +27,22 @@ idf.py build
 }
 ```
 
-Generate SHA on macOS:
+## Tank (`tank-v*`)
+
+1. Edit `TANK_FW_*` in [`tank_node/main/tank_version.h`](../tank_node/main/tank_version.h).
+2. Build `tank_node`, then:
 
 ```bash
-shasum -a 256 pump_node/build/pump_node.bin
+./scripts/make_tank_manifest.sh X.Y.Z
 ```
 
-Helper:
+3. Create GitHub release tag **`tank-vX.Y.Z`** with assets `tank_node.bin` + `firmware-manifest.json` (`component: tank_node`).
 
-```bash
-./scripts/make_pump_manifest.sh 0.4.0
-```
+### Tank BLE OTA notes
+
+- First USB flash after dual-OTA partition change: `erase-flash` then flash (clears NVS).
+- Re-pair the tank once so the BLE OTA token reaches the pump/app.
+- Short-press the tank button to open a ~120 s BLE advertise window; the app scans for `TL-Tank-XXXX` / `tank_id` and pushes the image.
 
 ## First flash after OTA partition change
 

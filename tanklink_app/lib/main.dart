@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'ble/pump_session.dart';
 import 'screens/home_screen.dart';
 import 'update/pump_firmware_update.dart';
+import 'update/tank_firmware_update.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +23,9 @@ class TankLinkApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PumpSession()..init()),
         ChangeNotifierProvider(
           create: (_) => PumpFirmwareUpdate()..loadCache(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => TankFirmwareUpdate()..loadCache(),
         ),
       ],
       child: MaterialApp(

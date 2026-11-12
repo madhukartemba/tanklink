@@ -19,6 +19,7 @@
 #define NVS_NS "tl_tank"
 #define NVS_KEY_BOUND "bound"
 #define NVS_KEY_ID "id"
+#define NVS_KEY_BLE_TOKEN "ble_tok"
 
 #ifndef CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS
 #define CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS 60000
@@ -98,6 +99,15 @@ uint8_t lora_link_tank_fw_patch(void)
 {
     return 0;
 }
+bool lora_link_tank_has_ble_token(void)
+{
+    return false;
+}
+const uint8_t *lora_link_tank_ble_token(void)
+{
+    static const uint8_t z[TANKLINK_LORA_BLE_TOKEN_LEN];
+    return z;
+}
 
 #else
 
@@ -113,6 +123,8 @@ static bool s_was_online;
 static int64_t s_pair_deadline_us;
 static int64_t s_last_rx_us;
 static uint8_t s_tank_id[TANKLINK_LORA_TANK_ID_LEN];
+static uint8_t s_ble_token[TANKLINK_LORA_BLE_TOKEN_LEN];
+static bool s_has_ble_token;
 static uint8_t s_flags;
 static uint8_t s_bat;
 static uint8_t s_fw_maj;
@@ -121,6 +133,16 @@ static uint8_t s_fw_pat;
 static int16_t s_rssi_dbm;
 static int8_t s_snr_db;
 static uint16_t s_last_seq = 0xFFFF;
+
+static bool token_nonzero(const uint8_t *tok)
+{
+    for (int i = 0; i < TANKLINK_LORA_BLE_TOKEN_LEN; i++) {
+        if (tok[i] != 0) {
+            return true;
+        }
+    }
+    return false;
+}
 
 static esp_err_t save_bind(void)
 {
@@ -133,6 +155,14 @@ static esp_err_t save_bind(void)
     err = nvs_set_u8(h, NVS_KEY_BOUND, bound);
     if (err == ESP_OK && s_bound) {
         err = nvs_set_blob(h, NVS_KEY_ID, s_tank_id, sizeof(s_tank_id));
+        if (err == ESP_OK) {
+            if (s_has_ble_token) {
+                err = nvs_set_blob(h, NVS_KEY_BLE_TOKEN, s_ble_token,
+                                   sizeof(s_ble_token));
+            } else {
+                (void)nvs_erase_key(h, NVS_KEY_BLE_TOKEN);
+            }
+        }
     }
     if (err == ESP_OK) {
         err = nvs_commit(h);
@@ -144,6 +174,8 @@ static esp_err_t save_bind(void)
 static void load_bind(void)
 {
     memset(s_tank_id, 0, sizeof(s_tank_id));
+    memset(s_ble_token, 0, sizeof(s_ble_token));
+    s_has_ble_token = false;
     s_bound = false;
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) {
@@ -155,9 +187,14 @@ static void load_bind(void)
         if (nvs_get_blob(h, NVS_KEY_ID, s_tank_id, &len) == ESP_OK &&
             len == sizeof(s_tank_id)) {
             s_bound = true;
-            ESP_LOGI(TAG, "bound tank %02x:%02x:%02x:%02x:%02x:%02x", s_tank_id[0],
-                     s_tank_id[1], s_tank_id[2], s_tank_id[3], s_tank_id[4],
-                     s_tank_id[5]);
+            size_t tlen = sizeof(s_ble_token);
+            if (nvs_get_blob(h, NVS_KEY_BLE_TOKEN, s_ble_token, &tlen) == ESP_OK &&
+                tlen == sizeof(s_ble_token) && token_nonzero(s_ble_token)) {
+                s_has_ble_token = true;
+            }
+            ESP_LOGI(TAG, "bound tank %02x:%02x:%02x:%02x:%02x:%02x ble_tok=%d",
+                     s_tank_id[0], s_tank_id[1], s_tank_id[2], s_tank_id[3],
+                     s_tank_id[4], s_tank_id[5], (int)s_has_ble_token);
         }
     }
     nvs_close(h);
@@ -285,7 +322,8 @@ static void lora_task(void *arg)
         if (err == ESP_OK && n >= sizeof(tanklink_lora_status_t)) {
             const tanklink_lora_status_t *pkt = (const tanklink_lora_status_t *)buf;
             if (pkt->magic0 != TANKLINK_LORA_MAGIC0 ||
-                pkt->magic1 != TANKLINK_LORA_MAGIC1 || pkt->ver != TANKLINK_LORA_VER) {
+                pkt->magic1 != TANKLINK_LORA_MAGIC1 ||
+                pkt->ver < TANKLINK_LORA_VER_MIN || pkt->ver > TANKLINK_LORA_VER) {
                 vTaskDelay(pdMS_TO_TICKS(15));
                 continue;
             }
@@ -297,6 +335,14 @@ static void lora_task(void *arg)
                     memcpy(s_tank_id, pkt->tank_id, TANKLINK_LORA_TANK_ID_LEN);
                     s_bound = true;
                     s_pairing = false;
+                    if (n >= TANKLINK_LORA_PAIR_LEN) {
+                        memcpy(s_ble_token, buf + sizeof(tanklink_lora_status_t),
+                               TANKLINK_LORA_BLE_TOKEN_LEN);
+                        s_has_ble_token = token_nonzero(s_ble_token);
+                    } else {
+                        memset(s_ble_token, 0, sizeof(s_ble_token));
+                        s_has_ble_token = false;
+                    }
                     restore_led_after_tank_pair();
                     save_bind();
                     send_ack(pkt);
@@ -416,12 +462,15 @@ esp_err_t lora_link_unpair_tank(void)
     s_bat = 0;
     s_rssi_dbm = 0;
     s_snr_db = 0;
+    s_has_ble_token = false;
     memset(s_tank_id, 0, sizeof(s_tank_id));
+    memset(s_ble_token, 0, sizeof(s_ble_token));
     status_led_set_tank_full(false);
     esp_err_t err = save_bind();
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
         nvs_erase_key(h, NVS_KEY_ID);
+        nvs_erase_key(h, NVS_KEY_BLE_TOKEN);
         nvs_commit(h);
         nvs_close(h);
     }
@@ -457,6 +506,14 @@ int8_t lora_link_tank_snr_db(void)
 const uint8_t *lora_link_tank_id(void)
 {
     return s_tank_id;
+}
+bool lora_link_tank_has_ble_token(void)
+{
+    return s_has_ble_token;
+}
+const uint8_t *lora_link_tank_ble_token(void)
+{
+    return s_ble_token;
 }
 uint8_t lora_link_tank_flags(void)
 {

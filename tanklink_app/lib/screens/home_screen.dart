@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../ble/pump_session.dart';
 import '../update/firmware_update_flow.dart';
 import '../update/pump_firmware_update.dart';
+import '../update/tank_firmware_update.dart';
+import '../update/tank_firmware_update_flow.dart';
 import '../widgets/slide_to_start.dart';
 import 'add_pump_screen.dart';
 import 'pump_list_screen.dart';
@@ -24,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<PumpFirmwareUpdate>().checkForUpdates();
+      context.read<TankFirmwareUpdate>().checkForUpdates();
     });
   }
 
@@ -38,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       context.read<PumpSession>().onAppResumed();
       context.read<PumpFirmwareUpdate>().checkForUpdates();
+      context.read<TankFirmwareUpdate>().checkForUpdates();
     }
   }
 
@@ -118,6 +122,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onRename: () => showRenamePumpDialog(context, pump),
                 ),
                 const FirmwareUpdateBanner(),
+                const TankFirmwareUpdateBanner(),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),

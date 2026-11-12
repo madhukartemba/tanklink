@@ -116,6 +116,7 @@ class PumpSession extends ChangeNotifier {
   bool tankOnline = false;
   String tankIdHex = '';
   String tankFw = '';
+  Uint8List? tankBleToken;
   int tankFlags = 0;
   int tankBatteryPct = 0;
   /// Seconds since last LoRa packet; null if never heard / unknown.
@@ -145,6 +146,12 @@ class PumpSession extends ChangeNotifier {
   StreamSubscription<List<int>>? _tankNotifySub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
   Timer? _runTicker;
+
+  bool get tankOtaReady =>
+      tankBound &&
+      tankBleToken != null &&
+      tankBleToken!.length == TankLinkUuids.tokenLen &&
+      tankBleToken!.any((b) => b != 0);
 
   bool get tankFull => (tankFlags & TankLinkUuids.tankFlagFull) != 0;
   bool get tankEmpty => (tankFlags & TankLinkUuids.tankFlagEmpty) != 0;
@@ -715,7 +722,11 @@ class PumpSession extends ChangeNotifier {
         .sublist(2, 8)
         .map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join();
-    tankFw = '${bytes[8]}.${bytes[9]}.${bytes[10]}';
+    final maj = bytes[8];
+    final min = bytes[9];
+    final pat = bytes[10];
+    // 0.0.0 means "never heard / unknown" — don't treat as a real FW version.
+    tankFw = (maj == 0 && min == 0 && pat == 0) ? '' : '$maj.$min.$pat';
     tankFlags = bytes[11];
     tankBatteryPct = bytes[12].clamp(0, 100);
     if (bytes.length >= 16) {
@@ -734,11 +745,20 @@ class PumpSession extends ChangeNotifier {
       tankSnrDb = null;
     }
     pumpLastError = bytes.length >= 19 ? bytes[18] : 0;
+    if (bytes.length >= TankLinkUuids.tankStatusWithTokenLen) {
+      final tok = Uint8List.fromList(
+        bytes.sublist(19, 19 + TankLinkUuids.tokenLen),
+      );
+      tankBleToken = tok.any((b) => b != 0) ? tok : null;
+    } else {
+      tankBleToken = null;
+    }
     if (!tankBound) {
       tankOnline = false;
       tankAgeSec = null;
       tankRssiDbm = null;
       tankSnrDb = null;
+      tankBleToken = null;
     }
   }
 
@@ -942,6 +962,195 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Scan for the bound tank advertising after a button press, then BLE OTA.
+  Future<void> otaUpdateTank(
+    Uint8List image, {
+    void Function()? onScanning,
+    void Function(int done, int total)? onProgress,
+    void Function()? onVerifying,
+    void Function()? onRebooting,
+  }) async {
+    if (!tankOtaReady || tankIdHex.isEmpty) {
+      throw StateError('Re-pair the tank sensor to enable updates');
+    }
+    final wantId = tankIdHex.toLowerCase().replaceAll(':', '');
+    final token = Uint8List.fromList(tankBleToken!);
+
+    onScanning?.call();
+    await FlutterBluePlus.stopScan();
+    BluetoothDevice? tankDevice;
+    final sub = FlutterBluePlus.scanResults.listen((results) {
+      for (final r in results) {
+        final name = r.advertisementData.advName;
+        if (!name.startsWith(TankLinkUuids.tankAdvNamePrefix) &&
+            !name.startsWith('TL-Tank')) {
+          // Still allow mfg-data match without name.
+        }
+        final mfg = r.advertisementData.manufacturerData;
+        for (final entry in mfg.entries) {
+          final data = entry.value;
+          // FBP: key = company ID, value = payload after company bytes.
+          if (data.length < 6) continue;
+          final idBytes = data.length >= 8
+              ? data.sublist(data.length - 6)
+              : data.sublist(0, 6);
+          final hex = idBytes
+              .map((b) => b.toRadixString(16).padLeft(2, '0'))
+              .join();
+          if (hex == wantId) {
+            tankDevice = r.device;
+            return;
+          }
+        }
+        // Fallback: serial suffix in name TL-Tank-XXXX
+        if (name.startsWith(TankLinkUuids.tankAdvNamePrefix) &&
+            wantId.length >= 4) {
+          final suffix = wantId.substring(wantId.length - 4).toUpperCase();
+          if (name.toUpperCase().endsWith(suffix)) {
+            tankDevice = r.device;
+            return;
+          }
+        }
+      }
+    });
+
+    try {
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 90),
+        androidUsesFineLocation: false,
+      );
+      final deadline = DateTime.now().add(const Duration(seconds: 95));
+      while (tankDevice == null && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+      await FlutterBluePlus.stopScan();
+      await sub.cancel();
+      if (tankDevice == null) {
+        throw StateError(
+          'Tank not found — press the button once on the tank sensor',
+        );
+      }
+
+      final device = tankDevice!;
+      await device.connect(
+        license: License.nonprofit,
+        timeout: const Duration(seconds: 20),
+      );
+      try {
+        await device.requestMtu(512);
+      } catch (_) {}
+      final services = await device.discoverServices();
+      BluetoothCharacteristic? authChr;
+      BluetoothCharacteristic? otaCtrlChr;
+      BluetoothCharacteristic? otaDataChr;
+      BluetoothCharacteristic? otaStatusChr;
+      for (final s in services) {
+        if (s.uuid != TankLinkUuids.service) continue;
+        for (final c in s.characteristics) {
+          if (c.uuid == TankLinkUuids.auth) authChr = c;
+          if (c.uuid == TankLinkUuids.otaCtrl) otaCtrlChr = c;
+          if (c.uuid == TankLinkUuids.otaData) otaDataChr = c;
+          if (c.uuid == TankLinkUuids.otaStatus) otaStatusChr = c;
+        }
+      }
+      if (authChr == null ||
+          otaCtrlChr == null ||
+          otaDataChr == null ||
+          otaStatusChr == null) {
+        throw StateError('Tank firmware does not support BLE OTA yet');
+      }
+      final auth = authChr;
+      final otaCtrl = otaCtrlChr;
+      final otaData = otaDataChr;
+      final otaStatus = otaStatusChr;
+      await auth.write(token, withoutResponse: false);
+
+      final digest = sha256.convert(image);
+      final shaBytes = Uint8List.fromList(digest.bytes);
+      final size = image.length;
+
+      await otaStatus.setNotifyValue(true);
+      final statusCtrl = StreamController<List<int>>.broadcast();
+      final statusSub = otaStatus.onValueReceived.listen(statusCtrl.add);
+
+      Future<List<int>> waitStatus({
+        required bool Function(int state, int err) match,
+        Duration timeout = const Duration(seconds: 20),
+      }) async {
+        final existing = await otaStatus.read();
+        if (existing.length >= 2 && match(existing[0], existing[1])) {
+          return existing;
+        }
+        return statusCtrl.stream
+            .where((v) => v.length >= 2 && match(v[0], v[1]))
+            .first
+            .timeout(timeout);
+      }
+
+      try {
+        final start = BytesBuilder();
+        start.addByte(TankLinkUuids.otaOpStart);
+        start.addByte(size & 0xff);
+        start.addByte((size >> 8) & 0xff);
+        start.addByte((size >> 16) & 0xff);
+        start.addByte((size >> 24) & 0xff);
+        start.add(shaBytes);
+        await otaCtrl.write(start.toBytes(), withoutResponse: false);
+        await waitStatus(
+          match: (st, err) =>
+              (st == TankLinkUuids.otaStReady ||
+                  st == TankLinkUuids.otaStWriting) &&
+              err == 0,
+        );
+
+        final mtu = device.mtuNow;
+        final maxChunk = (mtu - 3 - 4).clamp(20, 480);
+        var offset = 0;
+        while (offset < size) {
+          final end = (offset + maxChunk).clamp(0, size);
+          final chunk = image.sublist(offset, end);
+          final packet = BytesBuilder();
+          packet.addByte(offset & 0xff);
+          packet.addByte((offset >> 8) & 0xff);
+          packet.addByte((offset >> 16) & 0xff);
+          packet.addByte((offset >> 24) & 0xff);
+          packet.add(chunk);
+          await otaData.write(packet.toBytes(), withoutResponse: false);
+          offset = end;
+          onProgress?.call(offset, size);
+        }
+
+        onVerifying?.call();
+        await otaCtrl.write([TankLinkUuids.otaOpFinish], withoutResponse: false);
+        await waitStatus(
+          match: (st, err) =>
+              (st == TankLinkUuids.otaStVerifyOk ||
+                  st == TankLinkUuids.otaStRebooting) &&
+              err == 0,
+          timeout: const Duration(seconds: 30),
+        );
+        onRebooting?.call();
+        await Future<void>.delayed(const Duration(seconds: 2));
+      } catch (e) {
+        try {
+          await otaCtrl.write([TankLinkUuids.otaOpAbort], withoutResponse: false);
+        } catch (_) {}
+        rethrow;
+      } finally {
+        await statusSub.cancel();
+        await statusCtrl.close();
+        try {
+          await device.disconnect();
+        } catch (_) {}
+      }
+    } finally {
+      try {
+        await FlutterBluePlus.stopScan();
+      } catch (_) {}
+      await sub.cancel();
+    }
+  }
+
   /// Push a firmware image over BLE OTA. [onProgress] reports bytes written.
   Future<void> otaUpdate(
     Uint8List image, {
@@ -1083,6 +1292,7 @@ class PumpSession extends ChangeNotifier {
     tankOnline = false;
     tankIdHex = '';
     tankFw = '';
+    tankBleToken = null;
     tankFlags = 0;
     tankBatteryPct = 0;
     tankAgeSec = null;

@@ -4,6 +4,8 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 class TankLinkUuids {
   static const deviceNamePrefix = 'TankLink-';
   static const deviceName = 'TankLink-Pump';
+  static const tankAdvNamePrefix = 'TL-Tank-';
+  static const tankMfgCompanyId = 0xFFFF;
 
   static final service = Guid('7f1a0001-ac01-4c8c-9b2e-74616e6b6c6e');
   static final info = Guid('7f1a0002-ac01-4c8c-9b2e-74616e6b6c6e');
@@ -38,8 +40,9 @@ class TankLinkUuids {
   static const pumpErrBlocked = 4;
   static const pumpErrNotPaired = 5;
 
-  /** Matches pump GATT tank char length (bound…snr…last_error). */
+  /** Base tank char length (bound…snr…last_error). Token may follow. */
   static const tankStatusLen = 19;
+  static const tankStatusWithTokenLen = 35;
   /** Warn when tank reports battery at or below this %. */
   static const tankBatteryLowPct = 20;
 

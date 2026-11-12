@@ -6,6 +6,8 @@ import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
 import '../update/firmware_update_flow.dart';
 import '../update/pump_firmware_update.dart';
+import '../update/tank_firmware_update.dart';
+import '../update/tank_firmware_update_flow.dart';
 import 'error_codes_screen.dart';
 import 'starter_settings_screen.dart';
 
@@ -13,6 +15,8 @@ Future<void> showPumpSettingsSheet(BuildContext context) {
   // Refresh release metadata when opening settings.
   context.read<PumpFirmwareUpdate>().checkForUpdates(force: true);
   context.read<PumpFirmwareUpdate>().clearSnooze();
+  context.read<TankFirmwareUpdate>().checkForUpdates(force: true);
+  context.read<TankFirmwareUpdate>().clearSnooze();
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -394,9 +398,12 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                       'Battery ${session.tankBatteryPct}%'
                           '${session.tankBatteryLow ? " (low)" : ""}',
                       if (session.tankFw.isNotEmpty) 'FW ${session.tankFw}',
+                      if (!session.tankOtaReady && session.tankBound)
+                        'Re-pair for OTA',
                     ].join(' · '),
                   ),
                 ),
+                if (session.tankBound) _TankFirmwareTile(ready: ready),
                 if (!session.tankOnline)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
@@ -953,6 +960,59 @@ class _BuzzerSettingsSheet extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TankFirmwareTile extends StatelessWidget {
+  const _TankFirmwareTile({required this.ready});
+
+  final bool ready;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<PumpSession>();
+    final fw = context.watch<TankFirmwareUpdate>();
+    final device = session.tankFw.isEmpty ? '—' : session.tankFw;
+    final available = ready &&
+        session.tankOnline &&
+        session.tankOtaReady &&
+        fw.updateAvailableFor(session.tankFw);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Badge(
+          isLabelVisible: available,
+          smallSize: 10,
+          child: const Icon(Icons.sensors),
+        ),
+        title: const Text('Tank firmware'),
+        subtitle: Text(
+          !session.tankOtaReady
+              ? '$device · re-pair to enable OTA'
+              : available
+                  ? '$device → ${fw.latestVersion}'
+                  : device,
+        ),
+        trailing: available
+            ? FilledButton.tonal(
+                onPressed: () => showTankFirmwareConfirmSheet(context),
+                child: Text('Update to ${fw.latestVersion}'),
+              )
+            : IconButton(
+                tooltip: 'Check for tank updates',
+                onPressed: () => fw.checkForUpdates(force: true),
+                icon: fw.phase == FwUpdatePhase.checking
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+              ),
       ),
     );
   }
