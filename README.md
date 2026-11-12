@@ -3,13 +3,13 @@
 Local rooftop **tank ↔ pump** control — no cloud required.
 
 - **Phone ↔ pump:** BLE (claim/pair, On/Off, settings)
-- **Tank ↔ pump:** LoRa (RA-02 / SX1278) — planned for float/level events
+- **Tank ↔ pump:** LoRa (RA-02 / SX1278) — tank TX done; pump RX TBD
 - **Hardware:** ESP32-C3 (pump + tank), Flutter app
 
 | Folder | Role |
 | --- | --- |
-| [`pump_node/`](pump_node/) | ESP32-C3 pump controller (BLE GATT, relays stub, LoRa stub) |
-| [`tank_node/`](tank_node/) | ESP32-C3 tank sensor (placeholder) |
+| [`pump_node/`](pump_node/) | ESP32-C3 pump controller (BLE GATT, relays, LoRa RX TBD) |
+| [`tank_node/`](tank_node/) | XIAO ESP32-C3 tank sensor (floats, LoRa TX, deep sleep) |
 | [`tanklink_app/`](tanklink_app/) | Flutter app — multi-pump, slide-to-start, settings |
 
 ## Quick start
@@ -55,7 +55,8 @@ First flash after the OTA partition change must be over **USB**. Later updates u
 - [x] NeoPixel status + slide-to-start UI
 - [x] BLE OTA + GitHub Releases check
 - [ ] Relay wiring / starter control
-- [ ] Tank floats + RA-02 LoRa link
+- [x] Tank node floats + LoRa TX + deep sleep / heartbeat
+- [ ] Pump LoRa RX + GPIO rethink for RA-02
 - [ ] Optional DS3231 schedules on pump
 - [ ] Tank solar (small panel + CN3065 + LiPo)
 

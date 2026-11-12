@@ -1,0 +1,80 @@
+menu "TankLink Tank Node"
+
+    config TANK_FLOAT_FULL_GPIO
+        int "Float FULL GPIO (HIGH = full / disconnect)"
+        range 0 21
+        default 4
+
+    config TANK_FLOAT_EMPTY_GPIO
+        int "Float ALMOST EMPTY GPIO (HIGH = empty / disconnect)"
+        range 0 21
+        default 5
+
+    config TANK_BUTTON_GPIO
+        int "Button GPIO (to GND, active low)"
+        range 0 21
+        default 3
+
+    config TANK_LED_GPIO
+        int "Status LED GPIO"
+        range 0 21
+        default 6
+
+    config TANK_BAT_ADC_GPIO
+        int "Battery ADC GPIO"
+        range 0 21
+        default 2
+
+    config TANK_LORA_SCK_GPIO
+        int "LoRa SCK GPIO"
+        default 8
+
+    config TANK_LORA_MISO_GPIO
+        int "LoRa MISO GPIO"
+        default 9
+
+    config TANK_LORA_MOSI_GPIO
+        int "LoRa MOSI GPIO"
+        default 10
+
+    config TANK_LORA_CS_GPIO
+        int "LoRa NSS/CS GPIO"
+        default 20
+
+    config TANK_LORA_RST_GPIO
+        int "LoRa RESET GPIO"
+        default 21
+
+    config TANK_LORA_DIO0_GPIO
+        int "LoRa DIO0 GPIO"
+        default 7
+
+    config TANK_LORA_FREQ_HZ
+        int "LoRa frequency (Hz)"
+        default 433000000
+
+    config TANK_HEARTBEAT_SEC
+        int "Heartbeat / max sleep interval (seconds)"
+        range 30 86400
+        default 300
+        help
+            Deep-sleep timer wake so the pump sees a periodic alive status.
+
+    config TANK_BUTTON_HOLD_MS
+        int "Button hold to restart pairing (ms)"
+        range 1000 15000
+        default 3000
+
+    config TANK_TX_RETRIES
+        int "LoRa TX attempts (until ACK)"
+        range 1 8
+        default 3
+        help
+            Each attempt: send packet, wait for pump ACK. Sleep after success or exhaustion.
+
+    config TANK_ACK_TIMEOUT_MS
+        int "LoRa ACK wait timeout per attempt (ms)"
+        range 100 5000
+        default 800
+
+endmenu
