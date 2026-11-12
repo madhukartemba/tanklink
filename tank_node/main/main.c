@@ -119,8 +119,14 @@ static void enter_deep_sleep(void)
     tank_ble_deinit();
     tank_link_deinit_radio();
     tank_led_prepare_deep_sleep();
-    tank_board_prepare_deep_sleep(CONFIG_TANK_HEARTBEAT_SEC);
-    ESP_LOGI(TAG, "entering deep sleep (%ds heartbeat)", CONFIG_TANK_HEARTBEAT_SEC);
+    const bool paired = load_paired();
+    const uint32_t hb = paired ? (uint32_t)CONFIG_TANK_HEARTBEAT_SEC : 0;
+    tank_board_prepare_deep_sleep(hb);
+    if (paired) {
+        ESP_LOGI(TAG, "entering deep sleep (%us heartbeat)", (unsigned)hb);
+    } else {
+        ESP_LOGI(TAG, "entering deep sleep (unpaired — button wake only)");
+    }
     esp_deep_sleep_start();
 }
 

@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
 
 #define TAG "TANK_LED"
 #define LEDC_MODE LEDC_LOW_SPEED_MODE
@@ -25,11 +26,24 @@ void tank_led_force_off_pin(int gpio)
     if (gpio < 0) {
         return;
     }
-    /* GPIO6 (MTCK) can sit weakly high / glitch through ROM boot — clamp ASAP. */
+    /*
+     * GPIO6 (MTCK) has a weak ROM/JTAG pull-up at reset — enough to faintly
+     * light an LED. Drive low + enable pulldown ASAP. A ~10 kΩ D4→GND on the
+     * board is still recommended to kill glow before app_main runs.
+     */
     gpio_hold_dis((gpio_num_t)gpio);
     gpio_reset_pin((gpio_num_t)gpio);
     gpio_set_direction((gpio_num_t)gpio, GPIO_MODE_OUTPUT);
+    gpio_pulldown_en((gpio_num_t)gpio);
+    gpio_pullup_dis((gpio_num_t)gpio);
     gpio_set_level((gpio_num_t)gpio, 0);
+}
+
+/* Runs before app_main — shrinks the post-wake LED glimmer window. */
+static void tank_led_early_off(void) __attribute__((constructor));
+static void tank_led_early_off(void)
+{
+    tank_led_force_off_pin(CONFIG_TANK_LED_GPIO);
 }
 
 static uint32_t duty_from_pct(uint8_t pct)
@@ -109,8 +123,7 @@ void tank_led_prepare_deep_sleep(void)
         ledc_stop(LEDC_MODE, LEDC_CHANNEL, 0);
         s_ok = false;
     }
-    /* Drive low only — do NOT gpio_hold / deep_sleep_hold on GPIO6.
-     * Hold on non-RTC digital pins leaks ~0.5–1 mA on ESP32-C3. */
+    /* Drive low + pulldown only — no digital gpio_deep_sleep_hold (leaks ~mA). */
     tank_led_force_off_pin(s_gpio);
 }
 
@@ -123,21 +136,20 @@ void tank_led_fade_to(uint8_t pct, uint32_t ms)
         tank_led_set_brightness(pct);
         return;
     }
-    const uint8_t from = s_pct;
-    const uint8_t to = pct > 100 ? 100 : pct;
+    const uint8_t start = s_pct;
     const int steps = (int)(ms / 20);
     for (int i = 1; i <= steps; i++) {
-        const int v = from + ((int)to - (int)from) * i / steps;
-        tank_led_set_brightness((uint8_t)v);
+        uint8_t v = (uint8_t)(start + ((int)pct - (int)start) * i / steps);
+        tank_led_set_brightness(v);
         vTaskDelay(pdMS_TO_TICKS(20));
     }
-    tank_led_set_brightness(to);
+    tank_led_set_brightness(pct);
 }
 
-void tank_led_fade_in_out(uint8_t peak_pct, uint32_t up_ms, uint32_t down_ms)
+void tank_led_fade_in_out(uint8_t peak, uint32_t in_ms, uint32_t out_ms)
 {
-    tank_led_fade_to(peak_pct, up_ms);
-    tank_led_fade_to(0, down_ms);
+    tank_led_fade_to(peak, in_ms);
+    tank_led_fade_to(0, out_ms);
 }
 
 void tank_led_blink(int times, int on_ms, int off_ms)
@@ -160,8 +172,9 @@ void tank_led_tx_pulse(void)
 
 void tank_led_boot(void)
 {
-    tank_led_fade_in_out(100, 350, 350);
-    tank_led_fade_in_out(70, 250, 250);
+    /* Intentionally empty: GPIO6 ROM pull-up already flashes the LED at reset.
+     * Avoid a second decorative pulse on every cold boot / USB reset. */
+    tank_led_force_off_pin(s_gpio >= 0 ? s_gpio : CONFIG_TANK_LED_GPIO);
 }
 
 void tank_led_success(void)
@@ -192,8 +205,8 @@ void tank_led_pairing_flash_tick(void)
     if (!s_pair_active) {
         return;
     }
-    /* ~1.2s soft triangle wave while LoRa pairing — not used for BLE OTA. */
     s_pair_phase_ms += 20;
+    /* Soft breathe ~1.2s period. */
     const int period = 1200;
     int t = (int)(s_pair_phase_ms % period);
     uint8_t pct;
@@ -207,35 +220,29 @@ void tank_led_pairing_flash_tick(void)
 
 void tank_led_pairing_flash_stop(void)
 {
-    if (!s_pair_active) {
-        return;
-    }
     s_pair_active = false;
-    tank_led_fade_to(0, 150);
+    tank_led_off();
 }
 
 void tank_led_show_error(uint8_t code)
 {
-    if (code == 0) {
+    if (code < 1) {
         code = 1;
     }
-    if (code > 9) {
-        code = 9;
+    if (code > 8) {
+        code = 8;
     }
-    /* Hard on/off blinks (not soft pulses) so codes are easy to count. */
     tank_led_off();
-    vTaskDelay(pdMS_TO_TICKS(500));
-    for (int rep = 0; rep < 2; rep++) {
-        for (uint8_t i = 0; i < code; i++) {
+    vTaskDelay(pdMS_TO_TICKS(200));
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < code; i++) {
             tank_led_set_brightness(100);
             vTaskDelay(pdMS_TO_TICKS(420));
             tank_led_off();
-            if (i + 1 < code) {
-                vTaskDelay(pdMS_TO_TICKS(280));
-            }
+            vTaskDelay(pdMS_TO_TICKS(220));
         }
-        if (rep + 1 < 2) {
-            vTaskDelay(pdMS_TO_TICKS(900));
+        if (pass == 0) {
+            vTaskDelay(pdMS_TO_TICKS(700));
         }
     }
 }

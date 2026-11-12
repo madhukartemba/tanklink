@@ -122,7 +122,7 @@ menu "TankLink Tank Node"
     config TANK_TX_RETRIES
         int "LoRa TX attempts (until ACK)"
         range 1 8
-        default 3
+        default 5
         help
             Each attempt: send packet, wait for pump ACK. Sleep after success or exhaustion.
 

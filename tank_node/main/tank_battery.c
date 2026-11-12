@@ -6,7 +6,7 @@
 
 #define TAG "TANK_BAT"
 
-/* 100k/100k divider → Vpin ≈ Vbat/2. Atten DB11 ~0-3100 mV. */
+/* 1:1 divider (e.g. 120k/120k) → Vpin ≈ Vbat/2. Atten DB12 ~0-3100 mV. */
 #define DIVIDER_RATIO 2.0f
 
 static adc_oneshot_unit_handle_t s_adc;

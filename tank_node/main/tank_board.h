@@ -20,7 +20,11 @@ void tank_board_read(tank_inputs_t *out);
 int tank_board_led_gpio(void);
 bool tank_board_button_down(void);
 
-/** Configure deep-sleep wake: floats HIGH, button LOW, plus timer. */
+/**
+ * Configure deep-sleep wake sources.
+ * heartbeat_sec > 0: timer + float edges + button (paired).
+ * heartbeat_sec == 0: button only (unpaired — no 10 min wakes).
+ */
 void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec);
 
 esp_sleep_wakeup_cause_t tank_board_wakeup_cause(void);

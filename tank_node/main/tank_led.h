@@ -19,7 +19,7 @@ void tank_led_set(bool on);
 /** 0–100 percent brightness (soft PWM). */
 void tank_led_set_brightness(uint8_t pct);
 void tank_led_off(void);
-/** GPIO out low + hold so the LED stays dark through deep sleep. */
+/** Drive LED GPIO low + pulldown before deep sleep (no digital hold). */
 void tank_led_prepare_deep_sleep(void);
 
 void tank_led_fade_to(uint8_t pct, uint32_t ms);

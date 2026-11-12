@@ -78,6 +78,23 @@ void tank_board_read(tank_inputs_t *out)
 
 void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
 {
+    /* Button wake always (pair / OTA / manual TX). */
+    if (gpio_get_level(pin_btn()) != 0) {
+        esp_err_t err = esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(
+            1ULL << pin_btn(), ESP_GPIO_WAKEUP_GPIO_LOW);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "button wake enable failed: %s", esp_err_to_name(err));
+        }
+    } else {
+        ESP_LOGW(TAG, "button wake skipped (held or stuck LOW)");
+    }
+
+    if (heartbeat_sec == 0) {
+        /* Unpaired: no timer, no float wake — only the button. */
+        ESP_LOGI(TAG, "sleep: button-only (unpaired, no heartbeat)");
+        return;
+    }
+
     uint64_t wake_high = 0;
     if (gpio_get_level(pin_full()) == 0) {
         wake_high |= 1ULL << pin_full();
@@ -97,21 +114,11 @@ void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
         ESP_LOGI(TAG, "float wake skipped (pins already HIGH / unwired)");
     }
 
-    if (gpio_get_level(pin_btn()) != 0) {
-        esp_err_t err = esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(
-            1ULL << pin_btn(), ESP_GPIO_WAKEUP_GPIO_LOW);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "button wake enable failed: %s", esp_err_to_name(err));
-        }
-    } else {
-        ESP_LOGW(TAG, "button wake skipped (held or stuck LOW)");
-    }
-
     if (heartbeat_sec < 5) {
         heartbeat_sec = 5;
     }
     ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup((uint64_t)heartbeat_sec * 1000000ULL));
-    ESP_LOGI(TAG, "sleep: timer=%us", (unsigned)heartbeat_sec);
+    ESP_LOGI(TAG, "sleep: timer=%us + floats + button", (unsigned)heartbeat_sec);
 }
 
 esp_sleep_wakeup_cause_t tank_board_wakeup_cause(void)

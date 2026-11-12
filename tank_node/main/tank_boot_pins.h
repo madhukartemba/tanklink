@@ -55,7 +55,7 @@ static inline void tank_boot_pins_log(const char *tag)
              CONFIG_TANK_LORA_MOSI_GPIO, CONFIG_TANK_LORA_CS_GPIO, CONFIG_TANK_LORA_RST_GPIO,
              CONFIG_TANK_LORA_DIO0_GPIO);
 #endif
-    ESP_LOGI(tag, "HW: 10k NSS→3V3 and 10k SCK→3V3 required for reliable boot/sleep");
+    ESP_LOGI(tag, "HW: 10k NSS+SCK+MOSI→3V3; 10k LED D4→GND (boot glimmer)");
     if (!tank_boot_pins_ok()) {
         ESP_LOGE(tag, "INVALID: LoRa MISO/MOSI/CS on GPIO9 (BOOT) — move MISO to D6/GPIO21");
     }

@@ -53,22 +53,23 @@ Firmware: `tank_node/` · `sdkconfig.defaults` · `tank_boot_pins.h`
 
 | Function | XIAO | GPIO | Wiring |
 | --- | --- | --- | --- |
-| Battery ADC | D0 | 2 | BAT+ → 100 k → D0 → 100 k → GND; 100 nF |
+| Battery ADC | D0 | 2 | BAT+ → **120 k** → D0 → **120 k** → GND; 100 nF |
 | Button | D1 | 3 | To GND, active low |
 | Float FULL | D2 | 4 | To GND; opens when full |
 | Float ALMOST EMPTY | D3 | 5 | To GND; opens when almost empty |
-| Status LED | D4 | 6 | → 1–2.2 kΩ → LED → GND |
+| Status LED | D4 | 6 | → 1–2.2 kΩ → LED → GND + **10 kΩ D4→GND** |
 | LoRa DIO0 | D5 | 7 | RA-02 DIO0 (optional; IRQ also polled over SPI) |
 | LoRa MISO | D6 | 21 | RA-02 MISO (**not** D9) |
 | LoRa NSS/CS | D7 | 20 | RA-02 NSS + **10 kΩ → 3V3** |
 | LoRa SCK | D8 | 8 | RA-02 SCK + **10 kΩ → 3V3** |
 | LoRa RESET | D9 | 9 | RA-02 RESET |
-| LoRa MOSI | D10 | 10 | RA-02 MOSI |
+| LoRa MOSI | D10 | 10 | RA-02 MOSI + **10 kΩ → 3V3** |
 
 RA-02: VCC→3V3, GND→GND, U.FL antenna, **433 MHz**.
 
 ### Deep sleep (~50 µA on BAT±, USB unplugged)
 
-- SX1278 is put to sleep; **10 kΩ NSS/SCK → 3V3** keep the bus quiet (no `gpio_deep_sleep_hold` on digital SPI/LED pins — that leaked ~0.8–0.9 mA on C3).
-- NimBLE starts only for the BLE OTA window, then is fully deinit’d before sleep.
-- Measure sleep current on **BAT±** with USB disconnected.
+- **10 kΩ → 3V3** on NSS, SCK, and MOSI (no digital `gpio_deep_sleep_hold` — that leaked ~mA on C3).
+- **10 kΩ D4→GND** kills GPIO6/MTCK boot glimmer (ROM JTAG pull-up).
+- NimBLE only for BLE OTA; unpaired nodes use **button wake only** (no 10 min timer).
+- Measure on **BAT±** with USB disconnected.
