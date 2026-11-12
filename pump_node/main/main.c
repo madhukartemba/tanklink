@@ -231,19 +231,28 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
-    ESP_ERROR_CHECK(buzzer_init());
+    /* Peripherals soft-fail so LoRa-only / partial wiring still boots. */
+    if (buzzer_init() != ESP_OK) {
+        ESP_LOGW(TAG, "buzzer init failed — continuing");
+    }
     ESP_ERROR_CHECK(pump_config_init());
-    /* Relays early: always force Stop before anything else can request Start. */
-    ESP_ERROR_CHECK(relay_control_init());
-    ESP_ERROR_CHECK(board_init()); /* NeoPixel + button before pair LED state */
+    if (relay_control_init() != ESP_OK) {
+        ESP_LOGW(TAG, "relay init failed — continuing");
+    }
+    if (board_init() != ESP_OK) {
+        ESP_LOGW(TAG, "board/LED/button init failed — continuing");
+    }
     pump_config_apply_led();
     ESP_ERROR_CHECK(pump_pair_init());
     board_set_long_press_callback(on_long_press);
     board_set_button_callback(on_short_press);
-    ESP_ERROR_CHECK(lora_link_init());
-    ESP_ERROR_CHECK(pump_ota_init());
+    if (lora_link_init() != ESP_OK) {
+        ESP_LOGW(TAG, "LoRa init failed — tank link offline");
+    }
+    if (pump_ota_init() != ESP_OK) {
+        ESP_LOGW(TAG, "OTA init failed — continuing");
+    }
 
-    /* Hardware self-test chirp (same board as kitchen gas alarm). */
     if (buzzer_enabled()) {
         buzzer_play(BUZZER_TONE_CLICK, true);
     }

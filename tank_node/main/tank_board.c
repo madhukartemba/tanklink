@@ -87,16 +87,43 @@ void tank_led_tx_pulse(void)
 
 void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
 {
-    /* Per-pin levels (IDF 6): floats wake HIGH, button wakes LOW. */
-    ESP_ERROR_CHECK(esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(
-        (1ULL << pin_full()) | (1ULL << pin_empty()), ESP_GPIO_WAKEUP_GPIO_HIGH));
-    ESP_ERROR_CHECK(esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(
-        (1ULL << pin_btn()), ESP_GPIO_WAKEUP_GPIO_LOW));
+    /*
+     * Level wake only if the pin is currently inactive — otherwise a floating
+     * pull-up (unwired float = HIGH) would prevent sleep / instant-wake.
+     * Unwired floats stuck HIGH → heartbeat-only until real floats are fitted.
+     */
+    uint64_t wake_high = 0;
+    if (gpio_get_level(pin_full()) == 0) {
+        wake_high |= 1ULL << pin_full();
+    }
+    if (gpio_get_level(pin_empty()) == 0) {
+        wake_high |= 1ULL << pin_empty();
+    }
+    if (wake_high) {
+        esp_err_t err = esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(
+            wake_high, ESP_GPIO_WAKEUP_GPIO_HIGH);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "float wake enable failed: %s", esp_err_to_name(err));
+        }
+    } else {
+        ESP_LOGI(TAG, "float wake skipped (pins already HIGH / unwired)");
+    }
+
+    if (gpio_get_level(pin_btn()) != 0) {
+        esp_err_t err = esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(
+            1ULL << pin_btn(), ESP_GPIO_WAKEUP_GPIO_LOW);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "button wake enable failed: %s", esp_err_to_name(err));
+        }
+    } else {
+        ESP_LOGW(TAG, "button wake skipped (held or stuck LOW)");
+    }
+
     if (heartbeat_sec < 30) {
         heartbeat_sec = 30;
     }
     ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup((uint64_t)heartbeat_sec * 1000000ULL));
-    ESP_LOGI(TAG, "sleep: wake floats=HIGH btn=LOW timer=%us", (unsigned)heartbeat_sec);
+    ESP_LOGI(TAG, "sleep: timer=%us", (unsigned)heartbeat_sec);
 }
 
 esp_sleep_wakeup_cause_t tank_board_wakeup_cause(void)

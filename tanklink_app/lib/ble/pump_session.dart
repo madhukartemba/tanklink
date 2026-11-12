@@ -111,6 +111,12 @@ class PumpSession extends ChangeNotifier {
   bool connected = false;
   bool authed = false;
   bool pumpOn = false;
+  bool tankBound = false;
+  bool tankPairing = false;
+  String tankIdHex = '';
+  String tankFw = '';
+  int tankFlags = 0;
+  int tankBatteryPct = 0;
   final List<ScanResult> scanResults = [];
 
   BluetoothDevice? _device;
@@ -122,12 +128,17 @@ class PumpSession extends ChangeNotifier {
   BluetoothCharacteristic? _otaCtrl;
   BluetoothCharacteristic? _otaData;
   BluetoothCharacteristic? _otaStatus;
+  BluetoothCharacteristic? _tank;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<List<int>>? _pairNotifySub;
   StreamSubscription<List<int>>? _stateNotifySub;
   StreamSubscription<List<int>>? _otaStatusSub;
+  StreamSubscription<List<int>>? _tankNotifySub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
   Timer? _runTicker;
+
+  bool get tankFull => (tankFlags & TankLinkUuids.tankFlagFull) != 0;
+  bool get tankEmpty => (tankFlags & TankLinkUuids.tankFlagEmpty) != 0;
 
   SavedPump? get selected {
     if (selectedRemoteId == null) return null;
@@ -602,6 +613,35 @@ class PumpSession extends ChangeNotifier {
     await _cmd!.write([TankLinkUuids.cmdTestBeep], withoutResponse: false);
   }
 
+  void _applyTankStatus(List<int> bytes) {
+    if (bytes.length < 13) return;
+    tankBound = bytes[0] != 0;
+    tankPairing = bytes[1] != 0;
+    tankIdHex = bytes
+        .sublist(2, 8)
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join();
+    tankFw = '${bytes[8]}.${bytes[9]}.${bytes[10]}';
+    tankFlags = bytes[11];
+    tankBatteryPct = bytes[12].clamp(0, 100);
+  }
+
+  Future<void> startTankPair() async {
+    if (_cmd == null || !authed) {
+      throw StateError('Not connected');
+    }
+    await _cmd!.write([TankLinkUuids.cmdTankPair], withoutResponse: false);
+    tankPairing = true;
+    notifyListeners();
+  }
+
+  Future<void> unpairTank() async {
+    if (_cmd == null || !authed) {
+      throw StateError('Not connected');
+    }
+    await _cmd!.write([TankLinkUuids.cmdTankUnpair], withoutResponse: false);
+  }
+
   Future<void> unpairOnDevice() async {
     if (_cmd == null || !authed) return;
     await _cmd!.write([TankLinkUuids.cmdUnpair], withoutResponse: false);
@@ -866,22 +906,30 @@ class PumpSession extends ChangeNotifier {
     await _pairNotifySub?.cancel();
     await _stateNotifySub?.cancel();
     await _otaStatusSub?.cancel();
+    await _tankNotifySub?.cancel();
     await _connSub?.cancel();
     _pairNotifySub = null;
     _stateNotifySub = null;
     _otaStatusSub = null;
+    _tankNotifySub = null;
     _connSub = null;
     try {
       await _device?.disconnect();
     } catch (_) {}
     _device = null;
     _pair = _auth = _state = _cmd = _settings = null;
-    _otaCtrl = _otaData = _otaStatus = null;
+    _otaCtrl = _otaData = _otaStatus = _tank = null;
     connected = false;
     authed = false;
     connecting = false;
     pumpOn = false;
     runSeconds = 0;
+    tankBound = false;
+    tankPairing = false;
+    tankIdHex = '';
+    tankFw = '';
+    tankFlags = 0;
+    tankBatteryPct = 0;
     notifyListeners();
   }
 
@@ -943,6 +991,12 @@ class PumpSession extends ChangeNotifier {
     } catch (_) {
       _otaCtrl = _otaData = _otaStatus = null;
     }
+    try {
+      _tank =
+          svc.characteristics.firstWhere((c) => c.uuid == TankLinkUuids.tank);
+    } catch (_) {
+      _tank = null;
+    }
 
     try {
       await device.requestMtu(512);
@@ -955,6 +1009,19 @@ class PumpSession extends ChangeNotifier {
         notifyListeners();
       }
     });
+
+    await _tankNotifySub?.cancel();
+    if (_tank != null) {
+      await _tank!.setNotifyValue(true);
+      _tankNotifySub = _tank!.onValueReceived.listen((value) {
+        _applyTankStatus(value);
+        notifyListeners();
+      });
+      try {
+        final v = await _tank!.read();
+        _applyTankStatus(v);
+      } catch (_) {}
+    }
   }
 
   @override

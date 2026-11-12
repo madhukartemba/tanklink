@@ -53,17 +53,31 @@ menu "TankLink Tank Node"
         int "LoRa frequency (Hz)"
         default 433000000
 
+    config TANK_DEMO_NO_SLEEP
+        bool "Stay awake (demo / USB monitor)"
+        default n
+        help
+            Skip deep sleep and loop heartbeats so USB-Serial/JTAG stays connected.
+
     config TANK_HEARTBEAT_SEC
         int "Heartbeat / max sleep interval (seconds)"
         range 30 86400
         default 300
         help
             Deep-sleep timer wake so the pump sees a periodic alive status.
+            In demo no-sleep mode this is the loop period instead.
 
     config TANK_BUTTON_HOLD_MS
         int "Button hold to restart pairing (ms)"
         range 1000 15000
         default 3000
+
+    config TANK_BUTTON_AWAKE_MS
+        int "Stay awake after short button press (ms)"
+        range 0 60000
+        default 10000
+        help
+            After a short-press status TX, remain awake this long (future tank BLE).
 
     config TANK_TX_RETRIES
         int "LoRa TX attempts (until ACK)"

@@ -27,6 +27,7 @@ void gatt_svr_set_pump_state(uint8_t on);
 void gatt_svr_set_pump_state_silent(uint8_t on);
 void gatt_svr_toggle_pump(void);
 void gatt_svr_notify_state_if_subscribed(void);
+void gatt_svr_notify_tank_if_subscribed(void);
 
 /** Call ~1 Hz: enforces auto-off while pump is running. */
 void gatt_svr_poll(void);

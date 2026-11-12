@@ -18,6 +18,7 @@ extern "C" {
  *   OtaCtrl  7f1a0008-ac01-4c8c-9b2e-74616e6b6c6e
  *   OtaData  7f1a0009-ac01-4c8c-9b2e-74616e6b6c6e
  *   OtaStatus 7f1a000a-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Tank      7f1a000b-ac01-4c8c-9b2e-74616e6b6c6e
  */
 #define TANKLINK_UUID_BASE_TAIL 0x6e, 0x6c, 0x6b, 0x6e, 0x61, 0x74, 0x2e, 0x9b, \
                                 0x8c, 0x4c, 0x01, 0xac
@@ -32,10 +33,11 @@ extern "C" {
 #define TANKLINK_CHR_OTA_CTRL_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x08, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_OTA_DATA_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x09, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_OTA_STATUS_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0a, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_TANK_INIT  BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0b, 0x00, 0x1a, 0x7f)
 
 #define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
 #define TANKLINK_DEVICE_NAME "TankLink-Pump"
-#define TANKLINK_FW_VERSION  "0.6.2"
+#define TANKLINK_FW_VERSION  "0.7.0"
 
 /* OTA_CTRL opcodes */
 #define TANKLINK_OTA_OP_START  0x01
@@ -68,7 +70,12 @@ extern "C" {
 #define TANKLINK_CMD_OFF       0x00
 #define TANKLINK_CMD_ON        0x01
 #define TANKLINK_CMD_TEST_BEEP 0xB1
+#define TANKLINK_CMD_TANK_PAIR 0xA1
+#define TANKLINK_CMD_TANK_UNPAIR 0xA2
 #define TANKLINK_CMD_UNPAIR    0xF0
+
+/** Tank char payload: bound(1) pairing(1) id(6) fw3 flags bat heard(1) = 13 bytes */
+#define TANKLINK_TANK_STATUS_LEN 13
 
 #ifdef __cplusplus
 }

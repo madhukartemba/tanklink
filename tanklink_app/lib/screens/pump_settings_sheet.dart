@@ -329,6 +329,91 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
               ),
             ],
             const Divider(height: 28),
+            Text('Tank sensor', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            if (ready) ...[
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(session.tankBound
+                    ? 'Paired · ${session.tankIdHex.length >= 4 ? session.tankIdHex.substring(session.tankIdHex.length - 4).toUpperCase() : "----"}'
+                    : (session.tankPairing ? 'Waiting for tank…' : 'Not paired')),
+                subtitle: Text(session.tankBound
+                    ? 'FW ${session.tankFw.isEmpty ? "—" : session.tankFw}'
+                        ' · bat ${session.tankBatteryPct}%'
+                        '${session.tankFull ? " · FULL" : ""}'
+                        '${session.tankEmpty ? " · EMPTY" : ""}'
+                    : 'Hold the tank button 3 seconds while pairing is open.'),
+              ),
+              if (!session.tankBound || session.tankPairing)
+                FilledButton.icon(
+                  onPressed: session.tankPairing
+                      ? null
+                      : () async {
+                          try {
+                            await session.startTankPair();
+                            if (!context.mounted) return;
+                            await showDialog<void>(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (ctx) =>
+                                  _TankPairDialog(session: session),
+                            );
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Tank pair failed: $e')),
+                              );
+                            }
+                          }
+                        },
+                  icon: const Icon(Icons.sensors),
+                  label: Text(session.tankPairing
+                      ? 'Listening…'
+                      : 'Pair tank sensor'),
+                ),
+              if (session.tankBound)
+                TextButton(
+                  style: TextButton.styleFrom(foregroundColor: scheme.error),
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Unpair tank sensor?'),
+                        content: const Text(
+                          'The pump will stop accepting this tank until you pair again.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Unpair'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok == true) {
+                      try {
+                        await session.unpairTank();
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Unpair tank failed: $e')),
+                          );
+                        }
+                      }
+                    }
+                  },
+                  child: const Text('Unpair tank sensor'),
+                ),
+            ] else
+              Text(
+                'Connect to the pump to pair a tank sensor.',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            const Divider(height: 28),
             if (ready)
               OutlinedButton.icon(
                 onPressed: () => session.disconnectAndStay(),
@@ -407,6 +492,53 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _TankPairDialog extends StatelessWidget {
+  const _TankPairDialog({required this.session});
+
+  final PumpSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: session,
+      builder: (context, _) {
+        if (session.tankBound && !session.tankPairing) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) Navigator.of(context).pop();
+          });
+        }
+        return AlertDialog(
+          title: Text(session.tankBound ? 'Tank paired' : 'Pairing tank…'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'On the tank sensor, press and hold the button for about 3 seconds.',
+              ),
+              const SizedBox(height: 12),
+              if (session.tankPairing)
+                const LinearProgressIndicator()
+              else if (session.tankBound)
+                Text(
+                  'Connected · #${session.tankIdHex.length >= 4 ? session.tankIdHex.substring(session.tankIdHex.length - 4).toUpperCase() : "----"}',
+                )
+              else
+                const Text('Window closed — try again.'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(session.tankBound ? 'Done' : 'Cancel'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

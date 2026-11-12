@@ -11,10 +11,15 @@
 #include "tank_battery.h"
 #include "tank_board.h"
 #include "tank_link.h"
+#include "tank_version.h"
 
 #define TAG "TANK"
 #define NVS_NS "tank"
 #define NVS_KEY_FLAGS "flags"
+
+#ifndef CONFIG_TANK_BUTTON_AWAKE_MS
+#define CONFIG_TANK_BUTTON_AWAKE_MS 10000
+#endif
 
 static uint8_t load_last_flags(void)
 {
@@ -61,9 +66,18 @@ static void clear_pairing_state(void)
     ESP_LOGI(TAG, "pairing state cleared");
 }
 
+static void enter_deep_sleep(void)
+{
+    tank_link_deinit_radio();
+    tank_led_set(false);
+    tank_board_prepare_deep_sleep(CONFIG_TANK_HEARTBEAT_SEC);
+    ESP_LOGI(TAG, "entering deep sleep (%ds heartbeat)", CONFIG_TANK_HEARTBEAT_SEC);
+    esp_deep_sleep_start();
+}
+
 void app_main(void)
 {
-    ESP_LOGI(TAG, "TankLink tank node");
+    ESP_LOGI(TAG, "TankLink tank node fw=%s", TANK_FW_VERSION_STR);
 
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -72,9 +86,15 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
-    ESP_ERROR_CHECK(tank_board_init());
-    (void)tank_battery_init();
-    (void)tank_link_init();
+    if (tank_board_init() != ESP_OK) {
+        ESP_LOGW(TAG, "board init failed — continuing");
+    }
+    if (tank_battery_init() != ESP_OK) {
+        ESP_LOGW(TAG, "battery ADC unavailable — pct=0");
+    }
+    if (tank_link_init() != ESP_OK) {
+        ESP_LOGW(TAG, "LoRa unavailable — TX will fail soft");
+    }
 
     esp_sleep_wakeup_cause_t cause = tank_board_wakeup_cause();
     ESP_LOGI(TAG, "wakeup cause=%d", (int)cause);
@@ -93,7 +113,7 @@ void app_main(void)
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
         do_tx = true;
         reason = "boot";
-        tank_led_blink(1, 120, 0);
+        tank_led_blink(3, 200, 150);
     } else if (tank_board_woke_from_timer()) {
         do_tx = true;
         reason = "heartbeat";
@@ -143,15 +163,25 @@ void app_main(void)
     } else if (do_tx) {
         err = tank_link_send_status(&in, bat, button_event);
         ESP_LOGI(TAG, "status result: %s", esp_err_to_name(err));
-        /* Persist last float snapshot even if ACK failed — avoids TX storm every wake.
-         * Heartbeat will retry soon anyway. */
         save_last_flags(now_flags);
     }
 
-    tank_link_deinit_radio();
-    tank_led_set(false);
-
-    tank_board_prepare_deep_sleep(CONFIG_TANK_HEARTBEAT_SEC);
-    ESP_LOGI(TAG, "entering deep sleep");
-    esp_deep_sleep_start();
+#if CONFIG_TANK_DEMO_NO_SLEEP
+    ESP_LOGW(TAG, "demo mode: no deep sleep — not used in production");
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(CONFIG_TANK_HEARTBEAT_SEC * 1000));
+        tank_board_read(&in);
+        bat = tank_battery_percent();
+        now_flags = flags_from_inputs(&in);
+        err = tank_link_send_status(&in, bat, false);
+        ESP_LOGI(TAG, "demo tick result: %s", esp_err_to_name(err));
+        save_last_flags(now_flags);
+    }
+#else
+    if (button_event && CONFIG_TANK_BUTTON_AWAKE_MS > 0) {
+        ESP_LOGI(TAG, "button awake window %d ms (future BLE)", CONFIG_TANK_BUTTON_AWAKE_MS);
+        vTaskDelay(pdMS_TO_TICKS(CONFIG_TANK_BUTTON_AWAKE_MS));
+    }
+    enter_deep_sleep();
+#endif
 }

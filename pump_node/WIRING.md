@@ -1,0 +1,34 @@
+# Pump node wiring (ESP32-C3 SuperMini)
+
+Canonical copy (pump + tank): [`../docs/PINMAPS.md`](../docs/PINMAPS.md).
+
+## LoRa-only bring-up
+
+Wire **only** the RA-02 for the first link test. Everything else can stay unconnected; firmware soft-fails missing peripherals.
+
+| RA-02 | ESP32-C3 GPIO |
+| --- | --- |
+| SCK | 10 |
+| MOSI | 3 |
+| MISO | 2 |
+| NSS | 5 |
+| RESET | 4 |
+| DIO0 | 8 |
+| VCC | 3V3 |
+| GND | GND |
+
+Match tank frequency **433 MHz**. Tank wiring: see [`../tank_node/WIRING.md`](../tank_node/WIRING.md).
+
+## Full board (when ready)
+
+| Function | GPIO |
+| --- | --- |
+| I2C SDA (DS3231) | 6 |
+| I2C SCL (DS3231) | 7 |
+| Button (pair hold / short = pump) | 0 |
+| Optional 2nd pump button | 1 |
+| Relay START | 18 |
+| Relay STOP | 19 |
+| NeoPixel | 20 |
+| Buzzer | 21 |
+| Relays unassigned in defaults (`-1`) until wired | |

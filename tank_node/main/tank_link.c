@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "esp_mac.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -9,6 +10,7 @@
 #include "sdkconfig.h"
 #include "sx1278.h"
 #include "tank_board.h"
+#include "tank_version.h"
 #include "tanklink_lora_proto.h"
 
 #define TAG "TANK_LINK"
@@ -17,6 +19,7 @@
 
 static uint16_t s_seq;
 static bool s_radio_ok;
+static uint8_t s_tank_id[TANKLINK_LORA_TANK_ID_LEN];
 
 static uint16_t next_seq(void)
 {
@@ -38,6 +41,10 @@ esp_err_t tank_link_init(void)
         nvs_close(h);
     }
 
+    if (esp_read_mac(s_tank_id, ESP_MAC_WIFI_STA) != ESP_OK) {
+        memset(s_tank_id, 0, sizeof(s_tank_id));
+    }
+
     sx1278_config_t cfg = {
         .pin_sck = CONFIG_TANK_LORA_SCK_GPIO,
         .pin_miso = CONFIG_TANK_LORA_MISO_GPIO,
@@ -53,6 +60,9 @@ esp_err_t tank_link_init(void)
         ESP_LOGW(TAG, "LoRa init failed — will skip TX (%s)", esp_err_to_name(err));
         return err;
     }
+    ESP_LOGI(TAG, "tank_id %02x:%02x:%02x:%02x:%02x:%02x fw=%s", s_tank_id[0],
+             s_tank_id[1], s_tank_id[2], s_tank_id[3], s_tank_id[4], s_tank_id[5],
+             TANK_FW_VERSION_STR);
     return ESP_OK;
 }
 
@@ -72,13 +82,11 @@ static void led_tx_attempt(void)
 
 static void led_success(void)
 {
-    /* Two calm blinks = ACK OK */
     tank_led_blink(2, 160, 120);
 }
 
 static void led_failure(void)
 {
-    /* Fast chatter = no ACK */
     tank_led_blink(5, 50, 50);
 }
 
@@ -146,7 +154,6 @@ static esp_err_t send_with_ack(tanklink_lora_status_t *pkt)
             led_success();
             return ESP_OK;
         }
-        /* Brief gap before retry */
         vTaskDelay(pdMS_TO_TICKS(40));
     }
 
@@ -164,6 +171,10 @@ static void fill_status(tanklink_lora_status_t *pkt, const tank_inputs_t *in,
     pkt->type = pairing ? TANKLINK_LORA_TYPE_PAIR : TANKLINK_LORA_TYPE_STATUS;
     pkt->battery_pct = battery_pct > 100 ? 100 : battery_pct;
     pkt->seq = next_seq();
+    memcpy(pkt->tank_id, s_tank_id, TANKLINK_LORA_TANK_ID_LEN);
+    pkt->fw_major = TANK_FW_MAJOR;
+    pkt->fw_minor = TANK_FW_MINOR;
+    pkt->fw_patch = TANK_FW_PATCH;
     if (in) {
         if (in->full) {
             pkt->flags |= TANKLINK_LORA_FLAG_FULL;
@@ -195,7 +206,5 @@ esp_err_t tank_link_send_pair_request(uint8_t battery_pct)
     led_pairing_start();
     tanklink_lora_status_t pkt;
     fill_status(&pkt, &in, battery_pct, true, true);
-    esp_err_t err = send_with_ack(&pkt);
-    /* send_with_ack already blinked success/fail */
-    return err;
+    return send_with_ack(&pkt);
 }

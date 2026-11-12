@@ -4,6 +4,7 @@
 
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "sdkconfig.h"
 #include "host/ble_gap.h"
 #include "host/ble_hs.h"
 #include "host/ble_uuid.h"
@@ -12,6 +13,7 @@
 
 #include "board.h"
 #include "buzzer.h"
+#include "lora_link.h"
 #include "pump_config.h"
 #include "pump_ota.h"
 #include "pump_pair.h"
@@ -27,6 +29,7 @@ typedef struct {
     bool authed;
     bool state_notify;
     bool ota_status_notify;
+    bool tank_notify;
 } conn_slot_t;
 
 static const ble_uuid128_t uuid_svc = TANKLINK_SVC_UUID_INIT;
@@ -39,11 +42,13 @@ static const ble_uuid128_t uuid_settings = TANKLINK_CHR_SETTINGS_INIT;
 static const ble_uuid128_t uuid_ota_ctrl = TANKLINK_CHR_OTA_CTRL_INIT;
 static const ble_uuid128_t uuid_ota_data = TANKLINK_CHR_OTA_DATA_INIT;
 static const ble_uuid128_t uuid_ota_status = TANKLINK_CHR_OTA_STATUS_INIT;
+static const ble_uuid128_t uuid_tank = TANKLINK_CHR_TANK_INIT;
 
 static conn_slot_t s_conns[TANKLINK_MAX_BLE_CONN];
 static uint16_t s_pair_val_handle;
 static uint16_t s_state_val_handle;
 static uint16_t s_ota_status_val_handle;
+static uint16_t s_tank_val_handle;
 static uint8_t s_pump_on;
 static int64_t s_pump_on_since_us;
 
@@ -101,6 +106,12 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
                 .uuid = &uuid_ota_status.u,
                 .access_cb = chr_access,
                 .val_handle = &s_ota_status_val_handle,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+            },
+            {
+                .uuid = &uuid_tank.u,
+                .access_cb = chr_access,
+                .val_handle = &s_tank_val_handle,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
             },
             { 0 },
@@ -213,6 +224,26 @@ static int append_info(struct os_mbuf *om, uint16_t conn_handle)
         (uint8_t)((run >> 24) & 0xff),
     };
     return os_mbuf_append(om, run_le, 4);
+}
+
+static void fill_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
+{
+    memset(out, 0, TANKLINK_TANK_STATUS_LEN);
+    out[0] = lora_link_tank_bound() ? 1 : 0;
+    out[1] = lora_link_tank_pairing_active() ? 1 : 0;
+    memcpy(&out[2], lora_link_tank_id(), TANKLINK_DEVICE_ID_LEN);
+    out[8] = lora_link_tank_fw_major();
+    out[9] = lora_link_tank_fw_minor();
+    out[10] = lora_link_tank_fw_patch();
+    out[11] = lora_link_tank_flags();
+    out[12] = lora_link_tank_battery_pct();
+}
+
+static int append_tank_status(struct os_mbuf *om)
+{
+    uint8_t buf[TANKLINK_TANK_STATUS_LEN];
+    fill_tank_status(buf);
+    return os_mbuf_append(om, buf, sizeof(buf));
 }
 
 static int append_settings(struct os_mbuf *om)
@@ -381,8 +412,30 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
             buzzer_play_user(true);
             return 0;
         }
+        if (cmd == TANKLINK_CMD_TANK_PAIR) {
+#ifndef CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS
+#define CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS 60000
+#endif
+            if (lora_link_start_tank_pair(CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS) != ESP_OK) {
+                return BLE_ATT_ERR_UNLIKELY;
+            }
+            return 0;
+        }
+        if (cmd == TANKLINK_CMD_TANK_UNPAIR) {
+            if (lora_link_unpair_tank() != ESP_OK) {
+                return BLE_ATT_ERR_UNLIKELY;
+            }
+            return 0;
+        }
         gatt_svr_set_pump_state(cmd ? 1 : 0);
         return 0;
+    }
+
+    if (ble_uuid_cmp(uuid, &uuid_tank.u) == 0) {
+        if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        return append_tank_status(ctxt->om) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
     }
 
     if (ble_uuid_cmp(uuid, &uuid_settings.u) == 0) {
@@ -710,6 +763,25 @@ void gatt_svr_notify_state_if_subscribed(void)
     }
 }
 
+void gatt_svr_notify_tank_if_subscribed(void)
+{
+    uint8_t buf[TANKLINK_TANK_STATUS_LEN];
+    fill_tank_status(buf);
+    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
+        if (!s_conns[i].in_use || !s_conns[i].tank_notify) {
+            continue;
+        }
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, sizeof(buf));
+        if (!om) {
+            continue;
+        }
+        int rc = ble_gatts_notify_custom(s_conns[i].conn_handle, s_tank_val_handle, om);
+        if (rc != 0) {
+            ESP_LOGW(TAG, "tank notify conn=%u rc=%d", s_conns[i].conn_handle, rc);
+        }
+    }
+}
+
 uint16_t gatt_svr_pair_val_handle(void)
 {
     return s_pair_val_handle;
@@ -731,5 +803,8 @@ void gatt_svr_on_subscribe(uint16_t conn_handle, uint16_t attr_handle, bool noti
     }
     if (attr_handle == s_ota_status_val_handle) {
         slot->ota_status_notify = notify_enabled;
+    }
+    if (attr_handle == s_tank_val_handle) {
+        slot->tank_notify = notify_enabled;
     }
 }
