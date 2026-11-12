@@ -28,6 +28,10 @@ extern "C" void status_led_set_hold_progress(uint8_t percent)
 {
     (void)percent;
 }
+extern "C" void status_led_set_hold_danger(bool danger)
+{
+    (void)danger;
+}
 extern "C" void status_led_set_update_progress(uint8_t percent)
 {
     (void)percent;
@@ -53,6 +57,10 @@ extern "C" bool status_led_get_tank_full(void)
     return false;
 }
 extern "C" void status_led_notify_ble_connect(void) {}
+extern "C" void status_led_show_error(uint8_t code)
+{
+    (void)code;
+}
 
 #else
 
@@ -76,6 +84,10 @@ volatile uint8_t s_ota_pct_target = 0;
 volatile uint8_t s_brightness_pct = 70;
 volatile bool s_tank_full = false;
 volatile bool s_connect_pulse_req = false;
+volatile uint8_t s_error_code = 1;
+volatile uint8_t s_pending_error = 0;
+volatile status_led_mode_t s_mode_before_error = STATUS_LED_IDLE;
+uint32_t s_hold_color = Color::rgb(40, 120, 255);
 float s_hold_pct = 0.0f;
 float s_ota_pct = 0.0f;
 float s_bri = 0.70f;
@@ -115,7 +127,8 @@ static uint32_t scale_bri(uint32_t c, float t)
 /** Progress fill — from_center expands outward; else left→right (OTA). */
 class ProgressFill final : public pixelengine::Animation {
    public:
-    ProgressFill(size_t led_count, const float *pct, uint32_t color, bool from_center = false)
+    ProgressFill(size_t led_count, const float *pct, const uint32_t *color,
+                 bool from_center = false)
         : pct_(pct), color_(color), from_center_(from_center)
     {
         led_count_ = led_count;
@@ -126,28 +139,28 @@ class ProgressFill final : public pixelengine::Animation {
 
     void update() override
     {
-        if (led_count_ == 0 || pct_ == nullptr) {
+        if (led_count_ == 0 || pct_ == nullptr || color_ == nullptr) {
             return;
         }
-        const float p = clamp01(*pct_ / 100.0f);
+        const uint32_t color = *color_;
+        /* Ease progress so expansion feels continuous, not stepped. */
+        const float p = smoother01(clamp01(*pct_ / 100.0f));
         if (from_center_) {
-            /* Radius grows from center to cover half-span at 100%. */
+            /* Soft bloom from center — wide falloff, never hard on/off edges. */
             const float max_r =
                 (led_count_ > 1) ? (static_cast<float>(led_count_ - 1) * 0.5f) : 0.5f;
-            const float radius = p * (max_r + 0.55f);
+            const float radius = 0.35f + p * (max_r + 0.85f);
+            const float soft = 1.6f + 0.9f * p; /* wider penumbra as it grows */
             for (size_t i = 0; i < led_count_; ++i) {
                 const float d = std::fabs(static_cast<float>(i) - center_);
-                float edge = radius - d;
-                if (edge <= 0.001f) {
-                    buffer_[i] = 0;
-                    continue;
-                }
-                edge = clamp01(edge);
-                float bri = 0.40f + 0.60f * edge;
-                if (d < 0.35f) {
-                    bri = std::min(1.0f, bri + 0.25f); /* brighter core */
-                }
-                buffer_[i] = scale_bri(color_, bri);
+                float t = 1.0f - (d - (radius - soft)) / soft;
+                t = clamp01(t);
+                t = t * t * (3.0f - 2.0f * t); /* smoothstep */
+                /* Dim floor under the bloom so mode changes don't flash black. */
+                const float floor = 0.04f + 0.06f * p;
+                const float core = (d < 0.55f) ? (0.12f * p) : 0.0f;
+                const float bri = floor + (0.55f + 0.33f * p) * t + core;
+                buffer_[i] = scale_bri(color, bri);
             }
             return;
         }
@@ -164,15 +177,102 @@ class ProgressFill final : public pixelengine::Animation {
             if (fill < 1.0f) {
                 bri = 0.35f + 0.65f * fill;
             }
-            buffer_[i] = scale_bri(color_, bri);
+            buffer_[i] = scale_bri(color, bri);
         }
     }
 
    private:
     const float *pct_;
-    uint32_t color_;
+    const uint32_t *color_;
     bool from_center_ = false;
     float center_ = 0.0f;
+};
+
+/** Hard whole-strip blinks for numbered error codes (matches tank LED pattern). */
+class ErrorBlink final : public pixelengine::Animation {
+   public:
+    ErrorBlink(size_t led_count, uint8_t code)
+        : code_(code < 1 ? 1 : (code > 9 ? 9 : code))
+    {
+        led_count_ = led_count;
+        layout_ = Layout::Linear;
+        buffer_.assign(led_count_, 0);
+        t0_ = now_sec();
+        stage_ = Stage::PauseBefore;
+    }
+
+    bool finished() const
+    {
+        return stage_ == Stage::Done;
+    }
+
+    void update() override
+    {
+        if (led_count_ == 0) {
+            stage_ = Stage::Done;
+            return;
+        }
+        const float now = now_sec();
+        const float elapsed = now - t0_;
+        bool on = false;
+
+        switch (stage_) {
+        case Stage::PauseBefore:
+            if (elapsed >= 0.50f) {
+                stage_ = Stage::BlinkOn;
+                blink_i_ = 0;
+                rep_ = 0;
+                t0_ = now;
+            }
+            break;
+        case Stage::BlinkOn:
+            on = true;
+            if (elapsed >= 0.42f) {
+                stage_ = Stage::BlinkOff;
+                t0_ = now;
+            }
+            break;
+        case Stage::BlinkOff:
+            if (elapsed >= 0.28f) {
+                blink_i_++;
+                if (blink_i_ >= code_) {
+                    rep_++;
+                    if (rep_ >= 2) {
+                        stage_ = Stage::Done;
+                    } else {
+                        stage_ = Stage::GroupPause;
+                        t0_ = now;
+                    }
+                } else {
+                    stage_ = Stage::BlinkOn;
+                    t0_ = now;
+                }
+            }
+            break;
+        case Stage::GroupPause:
+            if (elapsed >= 0.90f) {
+                blink_i_ = 0;
+                stage_ = Stage::BlinkOn;
+                t0_ = now;
+            }
+            break;
+        case Stage::Done:
+            break;
+        }
+
+        const uint32_t c = on ? scale_bri(Color::Red, 0.85f) : 0;
+        for (size_t i = 0; i < led_count_; ++i) {
+            buffer_[i] = c;
+        }
+    }
+
+   private:
+    enum class Stage { PauseBefore, BlinkOn, BlinkOff, GroupPause, Done };
+    uint8_t code_;
+    uint8_t blink_i_ = 0;
+    uint8_t rep_ = 0;
+    float t0_ = 0.0f;
+    Stage stage_ = Stage::PauseBefore;
 };
 
 /**
@@ -492,8 +592,10 @@ class SoftBreathe final : public pixelengine::Animation {
 };
 
 BootLoading *s_boot = nullptr;
+ErrorBlink *s_error = nullptr;
 bool s_boot_hold = true;
 status_led_mode_t s_applied = static_cast<status_led_mode_t>(-1);
+static uint32_t s_ota_color = Color::rgb(0, 200, 220);
 
 void apply_mode(status_led_mode_t mode)
 {
@@ -502,10 +604,13 @@ void apply_mode(status_led_mode_t mode)
         s_boot = nullptr;
     }
 
-    /* Pump start/stop: crossfade through black before the next pattern. */
+    /* Pump start/stop: brief blank — skip when leaving hold so the expand
+     * eases into the next mode instead of flashing off. */
+    const bool from_hold = (s_applied == STATUS_LED_HOLD_PROGRESS);
     const bool pump_edge =
         (mode == STATUS_LED_PUMP_ON) || (s_applied == STATUS_LED_PUMP_ON);
-    if (pump_edge && mode != STATUS_LED_UPDATE_OK && mode != STATUS_LED_UPDATE_ERR) {
+    if (pump_edge && !from_hold && mode != STATUS_LED_UPDATE_OK &&
+        mode != STATUS_LED_UPDATE_ERR) {
         s_px.blank();
     }
 
@@ -523,7 +628,8 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<PingPong>(kN, Color::rgb(40, 120, 255)));
         break;
     case STATUS_LED_TANK_PAIRING:
-        s_px.addAnimation(std::make_unique<PingPong>(kN, Color::rgb(0, 200, 170)));
+        /* Warm amber — distinct from BLE blue and idle teal. */
+        s_px.addAnimation(std::make_unique<PingPong>(kN, Color::rgb(255, 150, 30)));
         break;
     case STATUS_LED_IDLE:
     case STATUS_LED_CONNECTED: /* legacy: no separate connected anim */
@@ -534,11 +640,11 @@ void apply_mode(status_led_mode_t mode)
         break;
     case STATUS_LED_HOLD_PROGRESS:
         s_px.addAnimation(std::make_unique<ProgressFill>(
-            kN, &s_hold_pct, Color::rgb(40, 120, 255), /*from_center=*/true));
+            kN, &s_hold_pct, &s_hold_color, /*from_center=*/true));
         break;
     case STATUS_LED_UPDATING:
         s_px.addAnimation(std::make_unique<ProgressFill>(
-            kN, &s_ota_pct, Color::rgb(0, 200, 220), /*from_center=*/false));
+            kN, &s_ota_pct, &s_ota_color, /*from_center=*/false));
         break;
     case STATUS_LED_UPDATE_OK:
         s_px.setAnimationImmediate(std::make_unique<pixelengine::SolidColor>(
@@ -548,6 +654,12 @@ void apply_mode(status_led_mode_t mode)
         s_px.setAnimationImmediate(std::make_unique<pixelengine::SolidColor>(
             kN, Color::scale(Color::Red, std::max(0.35f, s_bri))));
         break;
+    case STATUS_LED_ERROR: {
+        auto err = std::make_unique<ErrorBlink>(kN, s_error_code);
+        s_error = err.get();
+        s_px.addAnimation(std::move(err));
+        break;
+    }
     default:
         s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN));
         break;
@@ -573,19 +685,31 @@ void anim_task(void *arg)
                 s_boot_hold = false;
                 s_boot = nullptr;
                 last = static_cast<status_led_mode_t>(-1);
-                if (s_mode == STATUS_LED_BOOT) {
+                if (s_pending_error != 0) {
+                    s_error_code = s_pending_error;
+                    s_pending_error = 0;
+                    s_mode_before_error = (s_mode == STATUS_LED_BOOT) ? STATUS_LED_IDLE : s_mode;
+                    s_mode = STATUS_LED_ERROR;
+                } else if (s_mode == STATUS_LED_BOOT) {
                     s_mode = STATUS_LED_IDLE;
                 }
             }
         } else {
             const status_led_mode_t mode = s_mode;
             if (mode != last) {
+                s_error = nullptr;
                 apply_mode(mode);
                 last = mode;
             }
+            if (mode == STATUS_LED_ERROR && s_error && s_error->finished()) {
+                s_error = nullptr;
+                s_mode = s_mode_before_error;
+                last = static_cast<status_led_mode_t>(-1);
+            }
         }
 
-        s_hold_pct += (static_cast<float>(s_hold_pct_target) - s_hold_pct) * 0.28f;
+        /* Follow hold target quickly but without hard steps. */
+        s_hold_pct += (static_cast<float>(s_hold_pct_target) - s_hold_pct) * 0.42f;
         s_ota_pct += (static_cast<float>(s_ota_pct_target) - s_ota_pct) * 0.22f;
 
         s_px.update();
@@ -627,6 +751,11 @@ extern "C" void status_led_set_hold_progress(uint8_t percent)
     s_hold_pct_target = percent > 100 ? 100 : percent;
 }
 
+extern "C" void status_led_set_hold_danger(bool danger)
+{
+    s_hold_color = danger ? Color::rgb(220, 40, 40) : Color::rgb(40, 120, 255);
+}
+
 extern "C" void status_led_set_update_progress(uint8_t percent)
 {
     s_ota_pct_target = percent > 100 ? 100 : percent;
@@ -666,6 +795,29 @@ extern "C" bool status_led_get_tank_full(void)
 extern "C" void status_led_notify_ble_connect(void)
 {
     s_connect_pulse_req = true;
+}
+
+extern "C" void status_led_show_error(uint8_t code)
+{
+    if (code == 0) {
+        code = 1;
+    }
+    if (code > 9) {
+        code = 9;
+    }
+    if (s_boot_hold) {
+        s_pending_error = code;
+        return;
+    }
+    const status_led_mode_t cur = s_mode;
+    if (cur != STATUS_LED_ERROR && cur != STATUS_LED_UPDATING &&
+        cur != STATUS_LED_HOLD_PROGRESS) {
+        s_mode_before_error = cur;
+    } else if (cur != STATUS_LED_ERROR) {
+        s_mode_before_error = STATUS_LED_IDLE;
+    }
+    s_error_code = code;
+    s_mode = STATUS_LED_ERROR;
 }
 
 #endif /* CONFIG_PUMP_ENABLE_NEOPIXEL */

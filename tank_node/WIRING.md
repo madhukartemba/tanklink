@@ -9,7 +9,7 @@ Fail-safe floats: **pull-up**, common to **GND**, contact **opens** when asserte
 | Battery ADC | D0 | 2 | Divider from BAT+ (e.g. 100k/100k) → D0, 100 nF to GND |
 | Button | D1 | 3 | To GND; internal pull-up; press = LOW (wake) |
 | Float FULL | D2 | 4 | To GND; **opens when full** → HIGH = full / disconnect |
-| Float ALMOST EMPTY | D3 | 5 | To GND; **opens when empty** → HIGH = empty / disconnect |
+| Float ALMOST EMPTY (optional) | D3 | 5 | Only if `CONFIG_TANK_ENABLE_EMPTY_FLOAT=y`. To GND; **opens when empty** → HIGH = empty / disconnect |
 | Status LED | D4 | 6 | D4 → 1–2.2 kΩ → LED → GND |
 | LoRa DIO0 | D5 | 7 | RA-02 DIO0 |
 | LoRa MISO | D6 | 21 | RA-02 MISO |
@@ -24,7 +24,8 @@ RA-02: **VCC → 3V3**, GND → GND, antenna on module U.FL.
 
 - Mid-tank: both floats **closed** → both pins **LOW**
 - Full: full float **open** → D2 **HIGH** (disconnect also looks full → stop fill)
-- Almost empty: empty float **open** → D3 **HIGH** (disconnect also looks empty)
+- Almost empty (only when enabled in Kconfig): empty float **open** → D3 **HIGH** (disconnect also looks empty)
+- If you skip the empty float, leave `CONFIG_TANK_ENABLE_EMPTY_FLOAT` **disabled** (default) so the tank never reports Empty from a floating pin.
 
 ### Button
 

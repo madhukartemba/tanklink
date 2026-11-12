@@ -6,7 +6,6 @@ import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
 import '../update/firmware_update_flow.dart';
 import '../update/pump_firmware_update.dart';
-import '../widgets/ping_pong_indicator.dart';
 import 'error_codes_screen.dart';
 import 'starter_settings_screen.dart';
 
@@ -335,7 +334,7 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.numbers_rounded),
               title: const Text('Error codes'),
-              subtitle: const Text('Tank LED blink meanings'),
+              subtitle: const Text('Tank LED & pump NeoPixel meanings'),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () {
                 Navigator.of(context).push(
@@ -349,18 +348,64 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
             Text('Tank sensor', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             if (ready) ...[
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(session.tankBound
-                    ? 'Paired · ${session.tankIdHex.length >= 4 ? session.tankIdHex.substring(session.tankIdHex.length - 4).toUpperCase() : "----"}'
-                    : (session.tankPairing ? 'Waiting for tank…' : 'Not paired')),
-                subtitle: Text(session.tankBound
-                    ? 'FW ${session.tankFw.isEmpty ? "—" : session.tankFw}'
-                        ' · bat ${session.tankBatteryPct}%'
-                        '${session.tankFull ? " · FULL" : ""}'
-                        '${session.tankEmpty ? " · EMPTY" : ""}'
-                    : 'Hold the tank button 3 seconds while pairing is open.'),
-              ),
+              if (session.tankBound) ...[
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    session.tankOnline
+                        ? Icons.sensors
+                        : Icons.signal_wifi_off_rounded,
+                    color: session.tankOnline
+                        ? (session.tankBatteryLow ? scheme.error : scheme.primary)
+                        : scheme.error,
+                  ),
+                  title: Text(
+                    session.tankOnline
+                        ? 'Paired · #${session.tankShortId}'
+                        : 'Out of range · #${session.tankShortId}',
+                  ),
+                  subtitle: Text(
+                    [
+                      if (session.tankOnline)
+                        'Level ${session.tankLevelLabel}'
+                      else
+                        'Last heard ${session.tankAgeLabel}',
+                      if (session.tankOnline) session.tankAgeLabel,
+                      if (session.tankOnline)
+                        'Signal ${session.tankSignalLabel}'
+                            '${session.tankRssiDbm != null ? " (${session.tankRssiDbm} dBm)" : ""}',
+                      'Battery ${session.tankBatteryPct}%'
+                          '${session.tankBatteryLow ? " (low)" : ""}',
+                      if (session.tankFw.isNotEmpty) 'FW ${session.tankFw}',
+                    ].join(' · '),
+                  ),
+                ),
+                if (!session.tankOnline)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'No LoRa heartbeat recently. Check tank power, antenna, and distance.',
+                      style: TextStyle(color: scheme.error, height: 1.35),
+                    ),
+                  ),
+                if (session.tankBatteryLow)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'Tank battery is low — replace or recharge soon.',
+                      style: TextStyle(color: scheme.error, height: 1.35),
+                    ),
+                  ),
+              ] else
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(session.tankPairing
+                      ? 'Waiting for tank…'
+                      : 'Not paired'),
+                  subtitle: const Text(
+                    'Hold the tank button 3 seconds while pairing is open.',
+                  ),
+                ),
               if (!session.tankBound || session.tankPairing)
                 FilledButton.icon(
                   onPressed: session.tankPairing
@@ -506,9 +551,111 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 },
                 child: const Text('Unpair on pump'),
               ),
+            if (ready) ...[
+              const Divider(height: 28),
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: scheme.error),
+                onPressed: () async {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => const _FactoryResetDialog(),
+                  );
+                  if (ok == true && context.mounted) {
+                    try {
+                      await session.factoryResetOnDevice();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Factory reset sent — pump will reboot.',
+                            ),
+                          ),
+                        );
+                        Navigator.pop(context);
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Factory reset failed: $e')),
+                        );
+                      }
+                    }
+                  }
+                },
+                child: const Text('Factory reset pump…'),
+              ),
+              Text(
+                'Or hold Start+Stop ~5 s (BLE pair), then keep holding ~10 s more until the red fill completes.',
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 12,
+                  height: 1.35,
+                ),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _FactoryResetDialog extends StatefulWidget {
+  const _FactoryResetDialog();
+
+  @override
+  State<_FactoryResetDialog> createState() => _FactoryResetDialogState();
+}
+
+class _FactoryResetDialogState extends State<_FactoryResetDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  bool get _matches => _controller.text.trim().toUpperCase() == 'RESET';
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Factory reset?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Erases phone pairing, tank sensor bind, and settings on this pump, '
+            'then reboots. Type RESET to confirm.',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(
+              labelText: 'Type RESET',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) {
+              if (_matches) Navigator.pop(context, true);
+            },
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _matches ? () => Navigator.pop(context, true) : null,
+          child: const Text('Factory reset'),
+        ),
+      ],
     );
   }
 }
@@ -539,7 +686,7 @@ class _TankPairDialog extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               if (session.tankPairing)
-                const PingPongIndicator()
+                const LinearProgressIndicator()
               else if (session.tankBound)
                 Text(
                   'Connected · #${session.tankIdHex.length >= 4 ? session.tankIdHex.substring(session.tankIdHex.length - 4).toUpperCase() : "----"}',

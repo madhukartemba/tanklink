@@ -6,6 +6,7 @@ idf_component_register(
         "status_led.cpp"
         "pump_config.c"
         "pump_pair.c"
+        "pump_factory.c"
         "pump_ota.c"
         "gatt_svr.c"
         "lora_link.c"

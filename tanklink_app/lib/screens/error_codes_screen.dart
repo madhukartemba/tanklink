@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Mirrors docs/ERROR_CODES.md — keep in sync when adding tank LED codes.
+/// Mirrors docs/ERROR_CODES.md — keep in sync when adding LED codes.
 class ErrorCodesScreen extends StatelessWidget {
   const ErrorCodesScreen({super.key});
 
@@ -35,6 +35,37 @@ class ErrorCodesScreen extends StatelessWidget {
     ),
   ];
 
+  static const _pumpCodes = <({int code, String name, String detail})>[
+    (
+      code: 1,
+      name: 'Tank full',
+      detail:
+          'Start denied because the tank reports full. The pump also stops if a full packet arrives while running.',
+    ),
+    (
+      code: 2,
+      name: 'LoRa missing',
+      detail: 'RA-02 did not initialize at boot. Check radio wiring and power.',
+    ),
+    (
+      code: 3,
+      name: 'Tank offline',
+      detail:
+          'Bound tank missed its heartbeat. Check tank power, antenna, and range. Clears when a packet returns.',
+    ),
+    (
+      code: 4,
+      name: 'Blocked',
+      detail: 'Start denied during firmware update or BLE pairing lockout.',
+    ),
+    (
+      code: 5,
+      name: 'Not paired',
+      detail:
+          'Local Start was held while this pump has no phone owner. Claim it from the app first.',
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -49,31 +80,46 @@ class ErrorCodesScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'The LED blinks the code number twice (smooth pulses), with a pause between groups.',
+            'Long hard blinks (not soft pulses), twice, with a pause between groups. Boot, TX, success, and pairing use soft pulses.',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
-          for (final e in _tankCodes) ...[
-            Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: scheme.primaryContainer,
-                  child: Text(
-                    '${e.code}',
-                    style: TextStyle(
-                      color: scheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                title: Text(e.name),
-                subtitle: Text(e.detail),
-                isThreeLine: true,
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
+          for (final e in _tankCodes) _CodeCard(entry: e, scheme: scheme),
+          const SizedBox(height: 20),
+          Text(
+            'Pump NeoPixel',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Same pattern: N long hard red blinks, pause, repeat. The app also shows the last pump code on the home screen.',
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 16),
+          for (final e in _pumpCodes) _CodeCard(entry: e, scheme: scheme),
+          const SizedBox(height: 20),
+          Text(
+            'Factory reset',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Hold Start+Stop ~5 s for BLE pairing (blue), then keep holding ~10 s more (red progress). '
+            'Or use Settings → Factory reset and type RESET. Clears pairing, tank bind, and settings, then reboots.',
+            style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Almost-empty float',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Optional. Tank firmware leaves it disabled by default so an unwired pin does not always show Empty. '
+            'Enable CONFIG_TANK_ENABLE_EMPTY_FLOAT only if you wire the empty float.',
+            style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
+          ),
+          const SizedBox(height: 16),
           Text(
             'Pairing tip',
             style: Theme.of(context).textTheme.titleMedium,
@@ -82,9 +128,38 @@ class ErrorCodesScreen extends StatelessWidget {
           Text(
             'Hold the tank button to ramp the LED, then keep holding until breathing flash starts. '
             'Press once to cancel. Short press after pairing sends status; hold still works during the short awake window.',
-            style: TextStyle(color: scheme.onSurfaceVariant),
+            style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CodeCard extends StatelessWidget {
+  const _CodeCard({required this.entry, required this.scheme});
+
+  final ({int code, String name, String detail}) entry;
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: scheme.primaryContainer,
+          child: Text(
+            '${entry.code}',
+            style: TextStyle(
+              color: scheme.onPrimaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        title: Text(entry.name),
+        subtitle: Text(entry.detail),
+        isThreeLine: true,
       ),
     );
   }

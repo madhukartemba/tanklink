@@ -12,10 +12,12 @@ static int pin_full(void)
 {
     return CONFIG_TANK_FLOAT_FULL_GPIO;
 }
+#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
 static int pin_empty(void)
 {
     return CONFIG_TANK_FLOAT_EMPTY_GPIO;
 }
+#endif
 static int pin_btn(void)
 {
     return CONFIG_TANK_BUTTON_GPIO;
@@ -27,17 +29,26 @@ static int pin_led(void)
 
 esp_err_t tank_board_init(void)
 {
+    uint64_t mask = (1ULL << pin_full()) | (1ULL << pin_btn());
+#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
+    mask |= (1ULL << pin_empty());
+#endif
     gpio_config_t in = {
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
-        .pin_bit_mask = (1ULL << pin_full()) | (1ULL << pin_empty()) | (1ULL << pin_btn()),
+        .pin_bit_mask = mask,
     };
     ESP_ERROR_CHECK(gpio_config(&in));
 
+#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
     ESP_LOGI(TAG, "full=GPIO%d empty=GPIO%d btn=GPIO%d led=GPIO%d", pin_full(),
              pin_empty(), pin_btn(), pin_led());
+#else
+    ESP_LOGI(TAG, "full=GPIO%d empty=disabled btn=GPIO%d led=GPIO%d", pin_full(),
+             pin_btn(), pin_led());
+#endif
     return ESP_OK;
 }
 
@@ -57,7 +68,11 @@ void tank_board_read(tank_inputs_t *out)
         return;
     }
     out->full = gpio_get_level(pin_full()) != 0;
+#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
     out->empty = gpio_get_level(pin_empty()) != 0;
+#else
+    out->empty = false;
+#endif
     out->button_down = tank_board_button_down();
 }
 
@@ -67,9 +82,11 @@ void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
     if (gpio_get_level(pin_full()) == 0) {
         wake_high |= 1ULL << pin_full();
     }
+#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
     if (gpio_get_level(pin_empty()) == 0) {
         wake_high |= 1ULL << pin_empty();
     }
+#endif
     if (wake_high) {
         esp_err_t err = esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(
             wake_high, ESP_GPIO_WAKEUP_GPIO_HIGH);
@@ -122,8 +139,17 @@ bool tank_board_woke_from_float(void)
     if (!(esp_sleep_get_wakeup_causes() & BIT(ESP_SLEEP_WAKEUP_GPIO))) {
         return false;
     }
-    return gpio_get_level(pin_btn()) != 0 &&
-           (gpio_get_level(pin_full()) != 0 || gpio_get_level(pin_empty()) != 0);
+    if (gpio_get_level(pin_btn()) == 0) {
+        return false;
+    }
+    if (gpio_get_level(pin_full()) != 0) {
+        return true;
+    }
+#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
+    return gpio_get_level(pin_empty()) != 0;
+#else
+    return false;
+#endif
 }
 
 bool tank_board_woke_from_timer(void)
@@ -158,13 +184,14 @@ void tank_board_classify_button(uint32_t hold_threshold_ms, bool *is_hold,
             on_progress(pct, ctx);
         }
         if (ms >= hold_threshold_ms) {
+            /* Enter hold/pair as soon as threshold is met — do not wait for
+             * release (pairing mode waits for release before accepting cancel). */
             if (is_hold) {
                 *is_hold = true;
             }
-            while (gpio_get_level(pin_btn()) == 0) {
-                vTaskDelay(pdMS_TO_TICKS(20));
+            if (held_ms) {
+                *held_ms = ms;
             }
-            vTaskDelay(pdMS_TO_TICKS(30));
             return;
         }
         vTaskDelay(pdMS_TO_TICKS(20));

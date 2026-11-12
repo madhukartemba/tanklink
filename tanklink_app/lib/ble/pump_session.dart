@@ -113,10 +113,19 @@ class PumpSession extends ChangeNotifier {
   bool pumpOn = false;
   bool tankBound = false;
   bool tankPairing = false;
+  bool tankOnline = false;
   String tankIdHex = '';
   String tankFw = '';
   int tankFlags = 0;
   int tankBatteryPct = 0;
+  /// Seconds since last LoRa packet; null if never heard / unknown.
+  int? tankAgeSec;
+  /// Last LoRa packet RSSI (dBm); null if unknown.
+  int? tankRssiDbm;
+  /// Last LoRa packet SNR (dB); null if unknown.
+  int? tankSnrDb;
+  /// Last pump NeoPixel / start-deny error (0 = none).
+  int pumpLastError = 0;
   final List<ScanResult> scanResults = [];
 
   BluetoothDevice? _device;
@@ -139,6 +148,91 @@ class PumpSession extends ChangeNotifier {
 
   bool get tankFull => (tankFlags & TankLinkUuids.tankFlagFull) != 0;
   bool get tankEmpty => (tankFlags & TankLinkUuids.tankFlagEmpty) != 0;
+  bool get tankBatteryLow =>
+      tankBound &&
+      tankBatteryPct > 0 &&
+      tankBatteryPct <= TankLinkUuids.tankBatteryLowPct;
+
+  String get tankShortId {
+    if (tankIdHex.length < 4) return '----';
+    return tankIdHex.substring(tankIdHex.length - 4).toUpperCase();
+  }
+
+  String get tankLevelLabel {
+    if (tankFull) return 'Full';
+    if (tankEmpty) return 'Empty';
+    return 'Ok';
+  }
+
+  String get tankAgeLabel {
+    final age = tankAgeSec;
+    if (age == null) return 'Never heard';
+    if (age < 60) return 'Just now';
+    if (age < 3600) return '${age ~/ 60}m ago';
+    if (age < 86400) {
+      final h = age ~/ 3600;
+      final m = (age % 3600) ~/ 60;
+      return m == 0 ? '${h}h ago' : '${h}h ${m}m ago';
+    }
+    return '${age ~/ 86400}d ago';
+  }
+
+  /// 0..1 relative LoRa quality from RSSI (−120 weak … −40 strong).
+  double get tankSignalQuality {
+    final r = tankRssiDbm;
+    if (r == null || !tankOnline) return 0;
+    return ((r + 120) / 80).clamp(0.0, 1.0);
+  }
+
+  String get tankSignalLabel {
+    if (!tankBound) return '—';
+    if (!tankOnline || tankRssiDbm == null) return 'No signal';
+    final q = tankSignalQuality;
+    if (q >= 0.75) return 'Strong';
+    if (q >= 0.45) return 'Good';
+    if (q >= 0.25) return 'Fair';
+    return 'Weak';
+  }
+
+  String? get pumpErrorTitle {
+    switch (pumpLastError) {
+      case TankLinkUuids.pumpErrTankFull:
+        return 'Tank is full';
+      case TankLinkUuids.pumpErrLoraMissing:
+        return 'LoRa radio missing';
+      case TankLinkUuids.pumpErrTankOffline:
+        return 'Tank out of range';
+      case TankLinkUuids.pumpErrBlocked:
+        return 'Pump start blocked';
+      case TankLinkUuids.pumpErrNotPaired:
+        return 'Pump not paired';
+      default:
+        return null;
+    }
+  }
+
+  String? get pumpErrorDetail {
+    switch (pumpLastError) {
+      case TankLinkUuids.pumpErrTankFull:
+        return 'Cannot start while the tank reports full (pump code 1).';
+      case TankLinkUuids.pumpErrLoraMissing:
+        return 'RA-02 did not start — check wiring (pump code 2).';
+      case TankLinkUuids.pumpErrTankOffline:
+        return 'No recent heartbeat from the tank sensor (pump code 3).';
+      case TankLinkUuids.pumpErrBlocked:
+        return 'OTA or pairing lockout is active (pump code 4).';
+      case TankLinkUuids.pumpErrNotPaired:
+        return 'Claim this pump from the app first (pump code 5).';
+      default:
+        return null;
+    }
+  }
+
+  bool get canStartPump {
+    if (!authed || !connected) return false;
+    if (tankBound && tankOnline && tankFull) return false;
+    return true;
+  }
 
   SavedPump? get selected {
     if (selectedRemoteId == null) return null;
@@ -624,6 +718,28 @@ class PumpSession extends ChangeNotifier {
     tankFw = '${bytes[8]}.${bytes[9]}.${bytes[10]}';
     tankFlags = bytes[11];
     tankBatteryPct = bytes[12].clamp(0, 100);
+    if (bytes.length >= 16) {
+      tankOnline = bytes[13] != 0;
+      final age = bytes[14] | (bytes[15] << 8);
+      tankAgeSec = age == 0xFFFF ? null : age;
+    } else {
+      tankOnline = tankBound;
+      tankAgeSec = null;
+    }
+    if (bytes.length >= 18) {
+      tankRssiDbm = bytes[16] > 127 ? bytes[16] - 256 : bytes[16];
+      tankSnrDb = bytes[17] > 127 ? bytes[17] - 256 : bytes[17];
+    } else {
+      tankRssiDbm = null;
+      tankSnrDb = null;
+    }
+    pumpLastError = bytes.length >= 19 ? bytes[18] : 0;
+    if (!tankBound) {
+      tankOnline = false;
+      tankAgeSec = null;
+      tankRssiDbm = null;
+      tankSnrDb = null;
+    }
   }
 
   Future<void> startTankPair() async {
@@ -645,6 +761,18 @@ class PumpSession extends ChangeNotifier {
   Future<void> unpairOnDevice() async {
     if (_cmd == null || !authed) return;
     await _cmd!.write([TankLinkUuids.cmdUnpair], withoutResponse: false);
+    final pump = selected;
+    if (pump != null) {
+      await forgetPump(pump);
+    }
+  }
+
+  /// Clears BLE pairing, tank bind, and settings on the device (reboots).
+  Future<void> factoryResetOnDevice() async {
+    if (_cmd == null || !authed) {
+      throw StateError('Not connected');
+    }
+    await _cmd!.write([TankLinkUuids.cmdFactoryReset], withoutResponse: false);
     final pump = selected;
     if (pump != null) {
       await forgetPump(pump);
@@ -788,8 +916,17 @@ class PumpSession extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    if (on && tankBound && tankOnline && tankFull) {
+      pumpLastError = TankLinkUuids.pumpErrTankFull;
+      status = 'Tank is full';
+      notifyListeners();
+      return;
+    }
     await _cmd!.write([on ? 1 : 0], withoutResponse: false);
     _applyPumpOn(on);
+    if (on) {
+      pumpLastError = TankLinkUuids.pumpErrNone;
+    }
     status = on ? 'Pump running' : 'Pump stopped';
     notifyListeners();
   }
@@ -932,10 +1069,15 @@ class PumpSession extends ChangeNotifier {
     runSeconds = 0;
     tankBound = false;
     tankPairing = false;
+    tankOnline = false;
     tankIdHex = '';
     tankFw = '';
     tankFlags = 0;
     tankBatteryPct = 0;
+    tankAgeSec = null;
+    tankRssiDbm = null;
+    tankSnrDb = null;
+    pumpLastError = 0;
     notifyListeners();
   }
 

@@ -15,10 +15,13 @@
 #include "buzzer.h"
 #include "lora_link.h"
 #include "pump_config.h"
+#include "pump_errors.h"
+#include "pump_factory.h"
 #include "pump_ota.h"
 #include "pump_pair.h"
 #include "relay_control.h"
 #include "status_led.h"
+#include "tanklink_lora_proto.h"
 #include "tanklink_uuid.h"
 
 #define TAG "GATT_SVR"
@@ -51,6 +54,7 @@ static uint16_t s_ota_status_val_handle;
 static uint16_t s_tank_val_handle;
 static uint8_t s_pump_on;
 static int64_t s_pump_on_since_us;
+static uint8_t s_last_error;
 
 static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
                       struct ble_gatt_access_ctxt *ctxt, void *arg);
@@ -237,6 +241,20 @@ static void fill_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
     out[10] = lora_link_tank_fw_patch();
     out[11] = lora_link_tank_flags();
     out[12] = lora_link_tank_battery_pct();
+    out[13] = lora_link_tank_online() ? 1 : 0;
+    uint16_t age = lora_link_tank_age_sec();
+    out[14] = (uint8_t)(age & 0xff);
+    out[15] = (uint8_t)((age >> 8) & 0xff);
+    int16_t rssi = lora_link_tank_rssi_dbm();
+    if (rssi < -128) {
+        rssi = -128;
+    }
+    if (rssi > 127) {
+        rssi = 127;
+    }
+    out[16] = (uint8_t)(int8_t)rssi;
+    out[17] = (uint8_t)lora_link_tank_snr_db();
+    out[18] = s_last_error;
 }
 
 static int append_tank_status(struct os_mbuf *om)
@@ -423,6 +441,12 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         }
         if (cmd == TANKLINK_CMD_TANK_UNPAIR) {
             if (lora_link_unpair_tank() != ESP_OK) {
+                return BLE_ATT_ERR_UNLIKELY;
+            }
+            return 0;
+        }
+        if (cmd == TANKLINK_CMD_FACTORY_RESET) {
+            if (pump_factory_reset() != ESP_OK) {
                 return BLE_ATT_ERR_UNLIKELY;
             }
             return 0;
@@ -671,16 +695,33 @@ uint32_t gatt_svr_run_seconds(void)
     return (uint32_t)elapsed;
 }
 
+static void report_start_denied(uint8_t code)
+{
+    s_last_error = code;
+    status_led_show_error(code);
+    gatt_svr_notify_tank_if_subscribed();
+}
+
 static void set_pump_state_internal(uint8_t on, bool allow_pump_buzz)
 {
     uint8_t next = on ? 1 : 0;
     if (next && (relay_control_is_blocked() || pump_ota_is_active())) {
         ESP_LOGW(TAG, "Pump ON denied — blocked/OTA");
+        report_start_denied(PUMP_ERR_BLOCKED);
+        return;
+    }
+    if (next && lora_link_tank_bound() && lora_link_tank_online() &&
+        ((lora_link_tank_flags() & TANKLINK_LORA_FLAG_FULL) != 0 ||
+         status_led_get_tank_full())) {
+        ESP_LOGW(TAG, "Pump ON denied — tank full");
+        report_start_denied(PUMP_ERR_TANK_FULL);
         return;
     }
     bool changed = next != s_pump_on;
     if (next && !s_pump_on) {
         s_pump_on_since_us = esp_timer_get_time();
+        s_last_error = PUMP_ERR_NONE;
+        gatt_svr_notify_tank_if_subscribed();
     }
     if (!next) {
         s_pump_on_since_us = 0;
@@ -701,6 +742,26 @@ static void set_pump_state_internal(uint8_t on, bool allow_pump_buzz)
         refresh_connected_led();
     }
     gatt_svr_notify_state_if_subscribed();
+}
+
+void gatt_svr_set_last_error(uint8_t code)
+{
+    s_last_error = code;
+    gatt_svr_notify_tank_if_subscribed();
+}
+
+void gatt_svr_clear_last_error(void)
+{
+    if (s_last_error == PUMP_ERR_NONE) {
+        return;
+    }
+    s_last_error = PUMP_ERR_NONE;
+    gatt_svr_notify_tank_if_subscribed();
+}
+
+uint8_t gatt_svr_last_error(void)
+{
+    return s_last_error;
 }
 
 void gatt_svr_set_pump_state(uint8_t on)

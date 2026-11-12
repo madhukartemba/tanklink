@@ -20,11 +20,14 @@ typedef enum {
     STATUS_LED_UPDATING,      /* BLE OTA in progress */
     STATUS_LED_UPDATE_OK,     /* OTA verified — solid green */
     STATUS_LED_UPDATE_ERR,    /* OTA failed — solid red */
+    STATUS_LED_ERROR,         /* numbered hard blinks (NeoPixel) */
 } status_led_mode_t;
 
 esp_err_t status_led_init(void);
 void status_led_set_mode(status_led_mode_t mode);
 void status_led_set_hold_progress(uint8_t percent); /* 0-100 */
+/** Red hold fill for factory-reset phase (vs blue BLE-pair hold). */
+void status_led_set_hold_danger(bool danger);
 void status_led_set_update_progress(uint8_t percent); /* 0-100 OTA bar */
 void status_led_set_brightness(uint8_t percent); /* 1-100 global master */
 uint8_t status_led_get_brightness(void);
@@ -36,6 +39,12 @@ bool status_led_get_tank_full(void);
 
 /** Short center accent pulse on standby when a phone links, then back to glow. */
 void status_led_notify_ble_connect(void);
+
+/**
+ * Show pump error code as long hard red blinks (N, pause, N), then restore
+ * previous mode. Non-blocking — runs on the LED task.
+ */
+void status_led_show_error(uint8_t code);
 
 #ifdef __cplusplus
 }

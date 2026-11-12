@@ -41,6 +41,8 @@ typedef struct {
 esp_err_t pump_config_init(void);
 const pump_config_t *pump_config_get(void);
 esp_err_t pump_config_set(const pump_config_t *cfg);
+/** Restore factory defaults and persist. */
+esp_err_t pump_config_reset_defaults(void);
 esp_err_t pump_config_set_time_unix(int64_t unix_sec);
 esp_err_t pump_config_set_auto_off_min(uint8_t minutes);
 uint8_t pump_config_auto_off_min(void);

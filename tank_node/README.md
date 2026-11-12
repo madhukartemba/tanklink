@@ -26,7 +26,7 @@ See [WIRING.md](WIRING.md) for the pin map.
 | No ACK / radio fail | 5 fast blinks |
 | Pairing start | 8 fast blinks, then TX/ACK patterns |
 
-Float polarity: **HIGH = asserted** (full or empty). Open/disconnect matches the safe default.
+Float polarity: **HIGH = asserted** (full or empty). Open/disconnect matches the safe default. The almost-empty float is **optional** and disabled by default (`CONFIG_TANK_ENABLE_EMPTY_FLOAT`); enable it only when wired.
 
 ## Build / flash
 

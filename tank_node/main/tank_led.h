@@ -26,7 +26,10 @@ void tank_led_pairing_flash_start(void);
 void tank_led_pairing_flash_tick(void);
 void tank_led_pairing_flash_stop(void);
 
-/** LED error code: blink N times, pause, repeat (see docs/ERROR_CODES.md). */
+/**
+ * LED error code: N long hard blinks, pause, repeat twice.
+ * Soft pulses are reserved for boot / TX / success / pairing (see docs/ERROR_CODES.md).
+ */
 void tank_led_show_error(uint8_t code);
 
 #ifdef __cplusplus

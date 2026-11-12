@@ -5,8 +5,17 @@ menu "TankLink Tank Node"
         range 0 21
         default 4
 
+    config TANK_ENABLE_EMPTY_FLOAT
+        bool "Enable almost-empty float switch"
+        default n
+        help
+            Optional. Leave disabled if you only wire the FULL float — an
+            unwired empty pin with pull-up would otherwise always report Empty.
+            When enabled: HIGH = almost empty or disconnect (fail-safe).
+
     config TANK_FLOAT_EMPTY_GPIO
         int "Float ALMOST EMPTY GPIO (HIGH = empty / disconnect)"
+        depends on TANK_ENABLE_EMPTY_FLOAT
         range 0 21
         default 5
 

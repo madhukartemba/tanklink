@@ -138,11 +138,12 @@ void tank_led_success(void)
 
 void tank_led_failure(void)
 {
-    for (int i = 0; i < 5; i++) {
+    /* Generic failure: short hard blinks (distinct from numbered error codes). */
+    for (int i = 0; i < 3; i++) {
         tank_led_set_brightness(100);
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(200));
         tank_led_off();
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(160));
     }
 }
 
@@ -179,17 +180,20 @@ void tank_led_show_error(uint8_t code)
     if (code > 9) {
         code = 9;
     }
+    /* Hard on/off blinks (not soft pulses) so codes are easy to count. */
     tank_led_off();
-    vTaskDelay(pdMS_TO_TICKS(400));
+    vTaskDelay(pdMS_TO_TICKS(500));
     for (int rep = 0; rep < 2; rep++) {
         for (uint8_t i = 0; i < code; i++) {
-            tank_led_fade_to(100, 80);
-            vTaskDelay(pdMS_TO_TICKS(120));
-            tank_led_fade_to(0, 80);
-            vTaskDelay(pdMS_TO_TICKS(180));
+            tank_led_set_brightness(100);
+            vTaskDelay(pdMS_TO_TICKS(420));
+            tank_led_off();
+            if (i + 1 < code) {
+                vTaskDelay(pdMS_TO_TICKS(280));
+            }
         }
         if (rep + 1 < 2) {
-            vTaskDelay(pdMS_TO_TICKS(700));
+            vTaskDelay(pdMS_TO_TICKS(900));
         }
     }
 }

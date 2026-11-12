@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
-import '../widgets/ping_pong_indicator.dart';
 
 /// Shown after claiming a pump that has no tank bound yet.
 class PairTankPromptScreen extends StatefulWidget {
@@ -126,7 +125,7 @@ class _ListeningDialog extends StatelessWidget {
                 'and starts breathing. Press once to cancel on the tank.',
               ),
               const SizedBox(height: 16),
-              if (session.tankPairing) const PingPongIndicator(),
+              if (session.tankPairing) const LinearProgressIndicator(),
             ],
           ),
           actions: [

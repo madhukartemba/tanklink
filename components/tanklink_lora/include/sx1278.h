@@ -25,6 +25,12 @@ esp_err_t sx1278_send(const uint8_t *data, size_t len, uint32_t timeout_ms);
 esp_err_t sx1278_start_rx(void);
 /** Non-blocking: copy packet if ready. Returns ESP_OK, ESP_ERR_NOT_FOUND, or error. */
 esp_err_t sx1278_poll_recv(uint8_t *buf, size_t buf_len, size_t *out_len);
+/**
+ * Same as poll_recv; on success fills optional last-packet RSSI (dBm) and SNR (dB).
+ * 433 MHz: RSSI ≈ -164 + RegPktRssiValue. SNR is RegPktSnrValue/4.
+ */
+esp_err_t sx1278_poll_recv_ex(uint8_t *buf, size_t buf_len, size_t *out_len,
+                              int16_t *rssi_dbm, int8_t *snr_db);
 uint8_t sx1278_read_version(void);
 
 #ifdef __cplusplus

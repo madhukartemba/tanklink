@@ -19,6 +19,7 @@ class TankLinkUuids {
 
   static const tokenLen = 16;
   static const cmdUnpair = 0xF0;
+  static const cmdFactoryReset = 0xF1;
   static const cmdTestBeep = 0xB1;
   static const cmdTankPair = 0xA1;
   static const cmdTankUnpair = 0xA2;
@@ -27,6 +28,19 @@ class TankLinkUuids {
   static const tankFlagEmpty = 1 << 1;
   static const tankFlagBtn = 1 << 2;
   static const tankFlagPairing = 1 << 3;
+
+  /** Pump NeoPixel / home-banner codes (match docs/ERROR_CODES.md). */
+  static const pumpErrNone = 0;
+  static const pumpErrTankFull = 1;
+  static const pumpErrLoraMissing = 2;
+  static const pumpErrTankOffline = 3;
+  static const pumpErrBlocked = 4;
+  static const pumpErrNotPaired = 5;
+
+  /** Matches pump GATT tank char length (bound…snr…last_error). */
+  static const tankStatusLen = 19;
+  /** Warn when tank reports battery at or below this %. */
+  static const tankBatteryLowPct = 20;
 
   static const otaOpStart = 0x01;
   static const otaOpAbort = 0x02;

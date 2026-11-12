@@ -11,7 +11,7 @@ extern "C" {
 
 typedef struct {
     bool full;  /* HIGH = full / disconnect */
-    bool empty; /* HIGH = empty / disconnect */
+    bool empty; /* HIGH = empty / disconnect; always false if empty float disabled */
     bool button_down; /* true while held (active low) */
 } tank_inputs_t;
 

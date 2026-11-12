@@ -23,6 +23,8 @@
 #include "gatt_svr.h"
 #include "lora_link.h"
 #include "pump_config.h"
+#include "pump_errors.h"
+#include "pump_factory.h"
 #include "pump_ota.h"
 #include "pump_pair.h"
 #include "relay_control.h"
@@ -40,6 +42,11 @@ static int gap_event(struct ble_gap_event *event, void *arg);
 static void on_ble_pair_hold(void)
 {
     pump_pair_enter_pairing_mode();
+}
+
+static void on_factory_reset_hold(void)
+{
+    pump_factory_reset();
 }
 
 static void maybe_exit_ble_pairing(void)
@@ -60,6 +67,11 @@ static void on_start(void)
     }
     if (pump_pair_pairing_active()) {
         maybe_exit_ble_pairing();
+        return;
+    }
+    if (!pump_pair_is_paired()) {
+        gatt_svr_set_last_error(PUMP_ERR_NOT_PAIRED);
+        status_led_show_error(PUMP_ERR_NOT_PAIRED);
         return;
     }
     if (pump_config_buzzer_on_button()) {
@@ -269,10 +281,13 @@ void app_main(void)
     pump_config_apply_led();
     ESP_ERROR_CHECK(pump_pair_init());
     board_set_long_press_callback(on_ble_pair_hold);
+    board_set_factory_reset_callback(on_factory_reset_hold);
     board_set_start_callback(on_start);
     board_set_stop_callback(on_stop);
     if (lora_link_init() != ESP_OK) {
         ESP_LOGW(TAG, "LoRa init failed — tank link offline");
+        gatt_svr_set_last_error(PUMP_ERR_LORA_MISSING);
+        status_led_show_error(PUMP_ERR_LORA_MISSING);
     }
     if (pump_ota_init() != ESP_OK) {
         ESP_LOGW(TAG, "OTA init failed — continuing");

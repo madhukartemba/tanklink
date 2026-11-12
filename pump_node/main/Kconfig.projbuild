@@ -51,11 +51,29 @@ menu "Pump Board"
         help
             Buttons to GND with internal pull-up (inverted).
 
+    config PUMP_ACTION_HOLD_MS
+        int "Hold Start or Stop to actuate pump (ms)"
+        depends on PUMP_ENABLE_BUTTON
+        range 200 5000
+        default 1000
+        help
+            Center LED expands while held; action fires at threshold.
+
     config PUMP_PAIRING_HOLD_MS
         int "Hold both buttons to enter BLE pairing (ms)"
         depends on PUMP_ENABLE_BUTTON
         range 1000 15000
         default 5000
+
+    config PUMP_FACTORY_RESET_EXTRA_MS
+        int "Extra hold after BLE pair for factory reset (ms)"
+        depends on PUMP_ENABLE_BUTTON
+        range 5000 60000
+        default 10000
+        help
+            Keep holding Start+Stop after the 5s BLE-pair cue. Red progress
+            fills for this long, then factory reset + reboot. Hard to trigger
+            by accident (default 5s pair + 10s = 15s total).
 
     config PUMP_PAIRING_TIMEOUT_MS
         int "Pairing window timeout (ms)"
@@ -132,6 +150,15 @@ menu "Pump Board"
         depends on PUMP_ENABLE_LORA
         range 10000 300000
         default 60000
+
+    config PUMP_TANK_STALE_SEC
+        int "Tank offline after no packet (seconds)"
+        depends on PUMP_ENABLE_LORA
+        range 60 7200
+        default 1500
+        help
+            Mark tank out of range if no LoRa packet within this window
+            (about 2.5× the default 600s heartbeat).
 
     config PUMP_RELAY_ACTIVE_HIGH
         bool "Relays active high"

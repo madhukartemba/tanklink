@@ -1,10 +1,10 @@
 # TankLink error codes
 
-Human-readable codes used by the tank sensor LED and the phone app.
+Human-readable codes used by the tank sensor LED, pump NeoPixel, and the phone app.
 
 ## Tank sensor LED codes
 
-The status LED blinks the **error number** twice (smooth pulses), with a longer pause between the two groups.
+The status LED shows the **error number** as **long hard blinks** (on/off, not soft pulses), twice, with a longer pause between the two groups. Soft fade pulses are used for boot, TX, success, and pairing — not for error codes.
 
 | Code | Name | When |
 | --- | --- | --- |
@@ -18,15 +18,35 @@ The status LED blinks the **error number** twice (smooth pulses), with a longer 
 
 | Action | LED |
 | --- | --- |
-| Boot | Soft fade in/out |
-| Hold to pair | Brightness ramps 0→100 over ~3 s, then breathing flash in pairing mode |
+| Boot | Soft fade pulses |
+| Hold to pair | Brightness ramps 0→100 over ~3 s, then soft breathing pulses |
 | Pairing success | Two calm fade pulses |
-| Short press (paired) | TX pulse, then success or code **3** |
-| Short press (unpaired) | Code **1** |
-| Cancel pairing | Code **4** |
-| Pairing timeout | Code **5** |
+| Short press (paired) | Soft TX pulse, then success pulses or code **3** blinks |
+| Short press (unpaired) | Code **1** long blinks |
+| Cancel pairing | Code **4** long blinks |
+| Pairing timeout | Code **5** long blinks |
 
 Pairing mode lasts **60 s** by default (`CONFIG_TANK_PAIR_WINDOW_MS`). Press the button once to cancel.
+
+## Pump NeoPixel codes
+
+Same blink pattern as the tank: **N long hard red blinks**, pause, repeat twice. Soft animations (idle glow, pump-on wave, blue/amber pairing) are unrelated to these codes. The last code is also shown in the app on the home screen.
+
+| Code | Name | When |
+| --- | --- | --- |
+| **1** | Tank full | Start denied because the bound tank reports full (or full packet while running forces stop). |
+| **2** | LoRa missing | RA-02 did not initialize at boot — tank link offline until fixed. |
+| **3** | Tank offline | Bound tank missed its heartbeat window (out of range / power). Cleared when a packet returns. |
+| **4** | Blocked | Start denied during OTA or while BLE pairing lockout is active. |
+| **5** | Not paired | Local Start held while the pump has no phone owner token. |
+
+### Factory reset (not an error code)
+
+Hold **Start + Stop** for BLE pairing (~5 s, blue progress), then **keep holding** (~10 s more, red progress). On completion the strip flashes green and the pump reboots with pairing, tank bind, and settings cleared. From the app: Settings → Factory reset → type `RESET`.
+
+## Almost-empty float (optional)
+
+The almost-empty float is **optional**. Tank firmware defaults to **disabled** (`CONFIG_TANK_ENABLE_EMPTY_FLOAT=n`). Enable it only if you wire the empty float; an unwired pin with pull-up would otherwise always look Empty. Full float remains required for auto-stop.
 
 ## Pump / app (BLE)
 
@@ -38,6 +58,7 @@ These are not LED blink codes; they appear in the app when a BLE command fails.
 | Not authenticated | Cmd rejected |
 | Tank pair window / LoRa down | Tank pair failed |
 | Unpair tank | Unpair tank failed |
+| Tank full (start) | NeoPixel / home banner code **1** |
 
 ## Related docs
 

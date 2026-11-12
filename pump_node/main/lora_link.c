@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 #include "gatt_svr.h"
 #include "nvs.h"
+#include "pump_errors.h"
 #include "pump_pair.h"
 #include "relay_control.h"
 #include "sdkconfig.h"
@@ -56,6 +57,22 @@ bool lora_link_tank_heard(void)
 {
     return false;
 }
+bool lora_link_tank_online(void)
+{
+    return false;
+}
+uint16_t lora_link_tank_age_sec(void)
+{
+    return 0xFFFF;
+}
+int16_t lora_link_tank_rssi_dbm(void)
+{
+    return 0;
+}
+int8_t lora_link_tank_snr_db(void)
+{
+    return 0;
+}
 const uint8_t *lora_link_tank_id(void)
 {
     static const uint8_t z[TANKLINK_LORA_TANK_ID_LEN];
@@ -84,17 +101,25 @@ uint8_t lora_link_tank_fw_patch(void)
 
 #else
 
+#ifndef CONFIG_PUMP_TANK_STALE_SEC
+#define CONFIG_PUMP_TANK_STALE_SEC 1500
+#endif
+
 static bool s_ready;
 static bool s_bound;
 static bool s_heard;
 static bool s_pairing;
+static bool s_was_online;
 static int64_t s_pair_deadline_us;
+static int64_t s_last_rx_us;
 static uint8_t s_tank_id[TANKLINK_LORA_TANK_ID_LEN];
 static uint8_t s_flags;
 static uint8_t s_bat;
 static uint8_t s_fw_maj;
 static uint8_t s_fw_min;
 static uint8_t s_fw_pat;
+static int16_t s_rssi_dbm;
+static int8_t s_snr_db;
 static uint16_t s_last_seq = 0xFFFF;
 
 static esp_err_t save_bind(void)
@@ -155,22 +180,52 @@ static void send_ack(const tanklink_lora_status_t *pkt)
     (void)sx1278_start_rx();
 }
 
-static void apply_tank_packet(const tanklink_lora_status_t *pkt)
+static uint16_t tank_age_sec_now(void)
+{
+    if (!s_heard || s_last_rx_us == 0) {
+        return 0xFFFF;
+    }
+    int64_t age = (esp_timer_get_time() - s_last_rx_us) / 1000000LL;
+    if (age < 0) {
+        age = 0;
+    }
+    if (age > 65535) {
+        age = 65535;
+    }
+    return (uint16_t)age;
+}
+
+static bool tank_online_now(void)
+{
+    if (!s_bound || !s_heard) {
+        return false;
+    }
+    return tank_age_sec_now() <= (uint16_t)CONFIG_PUMP_TANK_STALE_SEC;
+}
+
+static void apply_tank_packet(const tanklink_lora_status_t *pkt, int16_t rssi_dbm,
+                              int8_t snr_db)
 {
     s_heard = true;
+    s_last_rx_us = esp_timer_get_time();
+    s_was_online = true;
     s_flags = pkt->flags;
     s_bat = pkt->battery_pct;
     s_fw_maj = pkt->fw_major;
     s_fw_min = pkt->fw_minor;
     s_fw_pat = pkt->fw_patch;
+    s_rssi_dbm = rssi_dbm;
+    s_snr_db = snr_db;
     const bool full = (pkt->flags & TANKLINK_LORA_FLAG_FULL) != 0;
     status_led_set_tank_full(full);
-    if (full) {
-        relay_control_force_off();
+    if (full && gatt_svr_pump_state()) {
+        gatt_svr_set_pump_state_silent(0);
     }
-    ESP_LOGI(TAG, "tank RX type=%u flags=0x%02x bat=%u%% seq=%u fw=%u.%u.%u full=%d",
+    ESP_LOGI(TAG,
+             "tank RX type=%u flags=0x%02x bat=%u%% seq=%u fw=%u.%u.%u full=%d "
+             "rssi=%d snr=%d",
              pkt->type, pkt->flags, pkt->battery_pct, pkt->seq, pkt->fw_major,
-             pkt->fw_minor, pkt->fw_patch, (int)full);
+             pkt->fw_minor, pkt->fw_patch, (int)full, (int)rssi_dbm, (int)snr_db);
     gatt_svr_notify_tank_if_subscribed();
 }
 
@@ -211,8 +266,22 @@ static void lora_task(void *arg)
     uint8_t buf[64];
     while (true) {
         (void)pairing_window_open();
+        /* Notify app when a bound tank drops out of range. */
+        const bool online = tank_online_now();
+        if (s_bound && s_was_online && !online) {
+            s_was_online = false;
+            ESP_LOGW(TAG, "tank went offline (no packet ≥%ds)", CONFIG_PUMP_TANK_STALE_SEC);
+            gatt_svr_set_last_error(PUMP_ERR_TANK_OFFLINE);
+        } else if (online) {
+            if (!s_was_online && gatt_svr_last_error() == PUMP_ERR_TANK_OFFLINE) {
+                gatt_svr_clear_last_error();
+            }
+            s_was_online = true;
+        }
         size_t n = 0;
-        esp_err_t err = sx1278_poll_recv(buf, sizeof(buf), &n);
+        int16_t rssi = 0;
+        int8_t snr = 0;
+        esp_err_t err = sx1278_poll_recv_ex(buf, sizeof(buf), &n, &rssi, &snr);
         if (err == ESP_OK && n >= sizeof(tanklink_lora_status_t)) {
             const tanklink_lora_status_t *pkt = (const tanklink_lora_status_t *)buf;
             if (pkt->magic0 != TANKLINK_LORA_MAGIC0 ||
@@ -233,8 +302,10 @@ static void lora_task(void *arg)
                     send_ack(pkt);
                     if (pkt->seq != s_last_seq) {
                         s_last_seq = pkt->seq;
-                        apply_tank_packet(pkt);
+                        apply_tank_packet(pkt, rssi, snr);
                     } else {
+                        s_rssi_dbm = rssi;
+                        s_snr_db = snr;
                         gatt_svr_notify_tank_if_subscribed();
                     }
                     ESP_LOGI(TAG, "tank paired %02x:%02x:%02x:%02x:%02x:%02x",
@@ -249,7 +320,11 @@ static void lora_task(void *arg)
                     send_ack(pkt);
                     if (pkt->seq != s_last_seq) {
                         s_last_seq = pkt->seq;
-                        apply_tank_packet(pkt);
+                        apply_tank_packet(pkt, rssi, snr);
+                    } else {
+                        s_rssi_dbm = rssi;
+                        s_snr_db = snr;
+                        gatt_svr_notify_tank_if_subscribed();
                     }
                 }
             }
@@ -335,8 +410,12 @@ esp_err_t lora_link_unpair_tank(void)
 {
     s_bound = false;
     s_heard = false;
+    s_was_online = false;
+    s_last_rx_us = 0;
     s_flags = 0;
     s_bat = 0;
+    s_rssi_dbm = 0;
+    s_snr_db = 0;
     memset(s_tank_id, 0, sizeof(s_tank_id));
     status_led_set_tank_full(false);
     esp_err_t err = save_bind();
@@ -358,6 +437,22 @@ bool lora_link_tank_bound(void)
 bool lora_link_tank_heard(void)
 {
     return s_heard;
+}
+bool lora_link_tank_online(void)
+{
+    return tank_online_now();
+}
+uint16_t lora_link_tank_age_sec(void)
+{
+    return tank_age_sec_now();
+}
+int16_t lora_link_tank_rssi_dbm(void)
+{
+    return s_heard ? s_rssi_dbm : 0;
+}
+int8_t lora_link_tank_snr_db(void)
+{
+    return s_heard ? s_snr_db : 0;
 }
 const uint8_t *lora_link_tank_id(void)
 {

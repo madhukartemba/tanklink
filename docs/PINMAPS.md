@@ -23,8 +23,8 @@ Firmware: `pump_node/` · defaults: `pump_node/sdkconfig.defaults`
 
 | Function | GPIO |
 | --- | --- |
-| Start (short = pump ON; hold both = BLE pair) | 0 |
-| Stop (short = pump OFF / exit BLE pair) | 1 |
+| Start (hold ~1 s = ON; both ~5 s = BLE pair; keep both ~10 s more = factory reset) | 0 |
+| Stop (hold ~1 s = OFF / exit BLE pair; dual-hold as above) | 1 |
 | I2C SDA (DS3231) | 6 |
 | I2C SCL (DS3231) | 7 |
 | Relay START | 18 |
@@ -47,7 +47,7 @@ Fail-safe floats: **pull-up**, common to **GND**, contact **opens** when asserte
 | Battery ADC | D0 | 2 |
 | Button (short = TX, hold ≈3 s = pair) | D1 | 3 |
 | Float FULL (HIGH = full / disconnect) | D2 | 4 |
-| Float ALMOST EMPTY (HIGH = empty / disconnect) | D3 | 5 |
+| Float ALMOST EMPTY (optional; enable in Kconfig) | D3 | 5 |
 | Status LED | D4 | 6 |
 | LoRa DIO0 | D5 | 7 |
 | LoRa SCK | D8 | 8 |

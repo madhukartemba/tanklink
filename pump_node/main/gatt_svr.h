@@ -29,6 +29,11 @@ void gatt_svr_toggle_pump(void);
 void gatt_svr_notify_state_if_subscribed(void);
 void gatt_svr_notify_tank_if_subscribed(void);
 
+/** Last pump NeoPixel / start-deny error (see pump_errors.h). */
+uint8_t gatt_svr_last_error(void);
+void gatt_svr_set_last_error(uint8_t code);
+void gatt_svr_clear_last_error(void);
+
 /** Call ~1 Hz: enforces auto-off while pump is running. */
 void gatt_svr_poll(void);
 

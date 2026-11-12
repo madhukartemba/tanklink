@@ -122,27 +122,36 @@ class _SlideToStartState extends State<SlideToStart> {
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 140),
                     opacity: hintHidden ? 0.0 : 1.0,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          widget.label,
-                          textAlign: TextAlign.center,
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                    child: Padding(
+                      // Clear the thumb on the left; align label toward the end.
+                      padding: EdgeInsets.only(left: thumbSize + _pad * 2, right: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              widget.label,
+                              textAlign: TextAlign.right,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 0.2,
                                     color: scheme.onSurface,
                                   ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.keyboard_double_arrow_right_rounded,
-                          size: 22,
-                          color: scheme.primary,
-                        ),
-                      ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.keyboard_double_arrow_right_rounded,
+                            size: 22,
+                            color: scheme.primary,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

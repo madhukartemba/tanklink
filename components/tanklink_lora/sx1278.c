@@ -24,6 +24,8 @@
 #define REG_FIFO_RX_CURRENT_ADDR 0x10
 #define REG_IRQ_FLAGS 0x12
 #define REG_RX_NB_BYTES 0x13
+#define REG_PKT_SNR_VALUE 0x19
+#define REG_PKT_RSSI_VALUE 0x1A
 #define REG_MODEM_CONFIG_1 0x1D
 #define REG_MODEM_CONFIG_2 0x1E
 #define REG_PREAMBLE_MSB 0x20
@@ -46,6 +48,7 @@
 
 static spi_device_handle_t s_spi;
 static bool s_ok;
+static uint32_t s_freq_hz;
 
 static esp_err_t write_reg(uint8_t reg, uint8_t val)
 {
@@ -188,10 +191,11 @@ esp_err_t sx1278_init(const sx1278_config_t *cfg)
         ESP_LOGE(TAG, "SX1278 not detected (ver=0x%02x)", ver);
         return ESP_ERR_NOT_FOUND;
     }
-    ESP_LOGI(TAG, "SX1278 version 0x%02x freq=%lu", ver, (unsigned long)cfg->freq_hz);
+    s_freq_hz = cfg->freq_hz ? cfg->freq_hz : 433000000UL;
+    ESP_LOGI(TAG, "SX1278 version 0x%02x freq=%lu", ver, (unsigned long)s_freq_hz);
 
     set_mode(MODE_STDBY);
-    set_frequency(cfg->freq_hz ? cfg->freq_hz : 433000000UL);
+    set_frequency(s_freq_hz);
 
     /* PA boost, ~14 dBm starting point */
     write_reg(REG_PA_CONFIG, 0x8F);
@@ -260,7 +264,8 @@ esp_err_t sx1278_start_rx(void)
     return set_mode(MODE_RX_CONTINUOUS);
 }
 
-esp_err_t sx1278_poll_recv(uint8_t *buf, size_t buf_len, size_t *out_len)
+esp_err_t sx1278_poll_recv_ex(uint8_t *buf, size_t buf_len, size_t *out_len,
+                              int16_t *rssi_dbm, int8_t *snr_db)
 {
     if (!s_ok || !buf || !out_len) {
         return ESP_ERR_INVALID_ARG;
@@ -290,10 +295,32 @@ esp_err_t sx1278_poll_recv(uint8_t *buf, size_t buf_len, size_t *out_len)
         write_reg(REG_IRQ_FLAGS, 0xFF);
         return ESP_ERR_INVALID_SIZE;
     }
+
+    /* Snapshot link quality before clearing IRQ / reading FIFO. */
+    uint8_t pkt_rssi = 0;
+    uint8_t pkt_snr = 0;
+    (void)read_reg(REG_PKT_RSSI_VALUE, &pkt_rssi);
+    (void)read_reg(REG_PKT_SNR_VALUE, &pkt_snr);
+
     esp_err_t err = read_fifo(buf, n);
     write_reg(REG_IRQ_FLAGS, 0xFF);
     if (err == ESP_OK) {
         *out_len = n;
+        if (rssi_dbm) {
+            /* Semtech: HF (≥862 MHz) offset −157; LF (433/470) offset −164. */
+            const int offset = (s_freq_hz >= 862000000UL) ? -157 : -164;
+            *rssi_dbm = (int16_t)(offset + (int)pkt_rssi);
+        }
+        if (snr_db) {
+            /* Signed SNR in 0.25 dB units → dB. */
+            int8_t snr_raw = (int8_t)pkt_snr;
+            *snr_db = (int8_t)(snr_raw / 4);
+        }
     }
     return err;
+}
+
+esp_err_t sx1278_poll_recv(uint8_t *buf, size_t buf_len, size_t *out_len)
+{
+    return sx1278_poll_recv_ex(buf, buf_len, out_len, NULL, NULL);
 }

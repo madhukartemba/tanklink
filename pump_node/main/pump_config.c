@@ -112,6 +112,12 @@ const pump_config_t *pump_config_get(void)
     return &s_cfg;
 }
 
+esp_err_t pump_config_reset_defaults(void)
+{
+    load_defaults(&s_cfg);
+    return pump_config_set(&s_cfg);
+}
+
 esp_err_t pump_config_set(const pump_config_t *cfg)
 {
     if (!cfg) {
