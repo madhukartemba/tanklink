@@ -38,30 +38,37 @@ Relays default to unassigned (`-1`) until wired.
 
 ## Tank — Seeed XIAO ESP32-C3 + RA-02
 
-Firmware: `tank_node/` · defaults: `tank_node/sdkconfig.defaults`
+Firmware: `tank_node/` · `sdkconfig.defaults` · `tank_boot_pins.h`
 
-Fail-safe floats: **pull-up**, common to **GND**, contact **opens** when asserted (disconnected wire = safe default).
+### C3 + RA-02 rules (Seeed / community)
 
-| Function | XIAO | GPIO |
-| --- | --- | --- |
-| Battery ADC | D0 | 2 |
-| Button (short = TX, hold ≈3 s = pair) | D1 | 3 |
-| Float FULL (HIGH = full / disconnect) | D2 | 4 |
-| Float ALMOST EMPTY (optional; enable in Kconfig) | D3 | 5 |
-| Status LED | D4 | 6 |
-| LoRa DIO0 | D5 | 7 |
-| LoRa SCK | D8 | 8 |
-| LoRa RESET | D9 | 9 |
-| LoRa MOSI | D10 | 10 |
-| LoRa NSS/CS | D7 | 20 |
-| LoRa MISO | D6 | 21 |
+| Rule | Why |
+| --- | --- |
+| **Never put LoRa MISO on D9** | SX1278 pulls MISO low at power-up → forces download boot |
+| **SCK on D8 is OK** | Default XIAO SPI; add **10 kΩ SCK→3V3** so GPIO8 straps HIGH |
+| **RESET on D9 is OK** | Idle-high (normal boot); hold **BOOT** to flash |
+| **10 kΩ NSS→3V3** | Required — keeps radio deselected at boot and in deep sleep |
 
-RA-02: **VCC → 3V3**, GND → GND, antenna on module U.FL. Frequency **433 MHz** (must match pump).
+### Pin table
 
-**Status LED:** D4 → **1–2.2 kΩ** → LED anode, cathode → GND (active-high). Firmware drives the pin low ASAP on wake and holds it low in deep sleep. A brief ROM-boot glimmer on D4/GPIO6 (MTCK) can still happen before the app runs; wiring the LED active-low (anode→3V3, cathode→GPIO via resistor) removes that if it bothers you.
+| Function | XIAO | GPIO | Wiring |
+| --- | --- | --- | --- |
+| Battery ADC | D0 | 2 | BAT+ → 100 k → D0 → 100 k → GND; 100 nF |
+| Button | D1 | 3 | To GND, active low |
+| Float FULL | D2 | 4 | To GND; opens when full |
+| Float ALMOST EMPTY | D3 | 5 | To GND; opens when almost empty |
+| Status LED | D4 | 6 | → 1–2.2 kΩ → LED → GND |
+| LoRa DIO0 | D5 | 7 | RA-02 DIO0 (optional; IRQ also polled over SPI) |
+| LoRa MISO | D6 | 21 | RA-02 MISO (**not** D9) |
+| LoRa NSS/CS | D7 | 20 | RA-02 NSS + **10 kΩ → 3V3** |
+| LoRa SCK | D8 | 8 | RA-02 SCK + **10 kΩ → 3V3** |
+| LoRa RESET | D9 | 9 | RA-02 RESET |
+| LoRa MOSI | D10 | 10 | RA-02 MOSI |
 
-**Battery:** BAT+ → **100 kΩ** → D0 → **100 kΩ** → GND, **100 nF** D0–GND.
+RA-02: VCC→3V3, GND→GND, U.FL antenna, **433 MHz**.
 
-**Boot note:** GPIO9 is the download strap — do **not** put LoRa MISO on D9. RESET on D9 is fine (idle high).
+### Deep sleep (~50 µA on BAT±, USB unplugged)
 
-**Pairing:** In the app, open pump settings → **Pair tank sensor**, then hold the tank button ~3 s. First PAIR packet auto-binds (one tank per pump).
+- SX1278 is put to sleep; **10 kΩ NSS/SCK → 3V3** keep the bus quiet (no `gpio_deep_sleep_hold` on digital SPI/LED pins — that leaked ~0.8–0.9 mA on C3).
+- NimBLE starts only for the BLE OTA window, then is fully deinit’d before sleep.
+- Measure sleep current on **BAT±** with USB disconnected.

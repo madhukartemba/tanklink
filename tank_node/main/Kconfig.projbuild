@@ -7,11 +7,9 @@ menu "TankLink Tank Node"
 
     config TANK_ENABLE_EMPTY_FLOAT
         bool "Enable almost-empty float switch"
-        default n
+        default y
         help
-            Optional. Leave disabled if you only wire the FULL float — an
-            unwired empty pin with pull-up would otherwise always report Empty.
-            When enabled: HIGH = almost empty or disconnect (fail-safe).
+            HIGH = almost empty or disconnect (fail-safe). Default D3/GPIO5.
 
     config TANK_FLOAT_EMPTY_GPIO
         int "Float ALMOST EMPTY GPIO (HIGH = empty / disconnect)"
@@ -37,10 +35,15 @@ menu "TankLink Tank Node"
     config TANK_LORA_SCK_GPIO
         int "LoRa SCK GPIO"
         default 8
+        help
+            XIAO D8/GPIO8 (default SPI SCK). Add 10 kΩ pull-up to 3V3 so boot
+            strap stays HIGH (Seeed + SX1278 on C3 guidance).
 
     config TANK_LORA_MISO_GPIO
         int "LoRa MISO GPIO"
-        default 9
+        default 21
+        help
+            Must NOT be GPIO9/D9 (BOOT). SX1278 pulls MISO low at power-up.
 
     config TANK_LORA_MOSI_GPIO
         int "LoRa MOSI GPIO"
@@ -49,14 +52,23 @@ menu "TankLink Tank Node"
     config TANK_LORA_CS_GPIO
         int "LoRa NSS/CS GPIO"
         default 20
+        help
+            10 kΩ pull-up to 3V3 required (boot + deep sleep).
 
     config TANK_LORA_RST_GPIO
-        int "LoRa RESET GPIO"
-        default 21
+        int "LoRa RESET GPIO (-1 = 10k to 3V3 only)"
+        range -1 21
+        default 9
+        help
+            Default D9/GPIO9. Idle-high is fine for normal boot; hold BOOT to
+            flash. Use -1 only if RESET is hard-wired high with 10 kΩ.
 
     config TANK_LORA_DIO0_GPIO
-        int "LoRa DIO0 GPIO"
+        int "LoRa DIO0 GPIO (-1 = unused)"
+        range -1 21
         default 7
+        help
+            Default D5/GPIO7. Firmware can also poll IRQ over SPI.
 
     config TANK_LORA_FREQ_HZ
         int "LoRa frequency (Hz)"

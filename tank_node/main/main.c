@@ -13,6 +13,7 @@
 #include "tank_ble.h"
 #include "tank_ble_token.h"
 #include "tank_board.h"
+#include "tank_boot_pins.h"
 #include "tank_errors.h"
 #include "tank_led.h"
 #include "tank_link.h"
@@ -115,7 +116,7 @@ static bool pair_should_cancel(void *ctx)
 
 static void enter_deep_sleep(void)
 {
-    tank_ble_stop();
+    tank_ble_deinit();
     tank_link_deinit_radio();
     tank_led_prepare_deep_sleep();
     tank_board_prepare_deep_sleep(CONFIG_TANK_HEARTBEAT_SEC);
@@ -237,6 +238,7 @@ void app_main(void)
     tank_led_force_off_pin(CONFIG_TANK_LED_GPIO);
 
     ESP_LOGI(TAG, "TankLink tank node fw=%s", TANK_FW_VERSION_STR);
+    tank_boot_pins_log(TAG);
 
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -260,9 +262,7 @@ void app_main(void)
     if (tank_ble_token_init() != ESP_OK) {
         ESP_LOGW(TAG, "BLE token init failed");
     }
-    if (tank_ble_init() != ESP_OK) {
-        ESP_LOGW(TAG, "BLE unavailable — OTA window will fail soft");
-    }
+    /* Do not start NimBLE until an OTA window — BT left up was ~0.9 mA in "sleep". */
 
     esp_sleep_wakeup_cause_t cause = tank_board_wakeup_cause();
     ESP_LOGI(TAG, "wakeup cause=%d paired=%d", (int)cause, (int)load_paired());

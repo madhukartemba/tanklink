@@ -43,6 +43,7 @@ idf.py build
 - First USB flash after dual-OTA partition change: `erase-flash` then flash (clears NVS).
 - Re-pair the tank once so the BLE OTA token reaches the pump/app.
 - Short-press the tank button to open a ~10 s BLE advertise window; the app scans for `TL-Tank-XXXX` / `tank_id` and pushes the image.
+- From **0.2.4**: deep sleep ~50 µA on BAT± (USB out); NimBLE only during OTA; wire **10 kΩ** on NSS + SCK.
 
 ## First flash after OTA partition change
 

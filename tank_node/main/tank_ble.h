@@ -26,7 +26,10 @@ esp_err_t tank_ble_wait_ota_window(void);
 esp_err_t tank_ble_run_ota_window(uint32_t timeout_ms);
 
 bool tank_ble_ota_busy(void);
+/** Stop advertising / abort OTA window (stack stays up). */
 void tank_ble_stop(void);
+/** Tear down NimBLE + BT controller before deep sleep (~mA → µA). */
+void tank_ble_deinit(void);
 
 #ifdef __cplusplus
 }

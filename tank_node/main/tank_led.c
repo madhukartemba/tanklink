@@ -109,9 +109,9 @@ void tank_led_prepare_deep_sleep(void)
         ledc_stop(LEDC_MODE, LEDC_CHANNEL, 0);
         s_ok = false;
     }
+    /* Drive low only — do NOT gpio_hold / deep_sleep_hold on GPIO6.
+     * Hold on non-RTC digital pins leaks ~0.5–1 mA on ESP32-C3. */
     tank_led_force_off_pin(s_gpio);
-    gpio_hold_en((gpio_num_t)s_gpio);
-    gpio_deep_sleep_hold_en();
 }
 
 void tank_led_fade_to(uint8_t pct, uint32_t ms)

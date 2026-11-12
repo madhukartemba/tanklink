@@ -49,6 +49,120 @@
 static spi_device_handle_t s_spi;
 static bool s_ok;
 static uint32_t s_freq_hz;
+static sx1278_config_t s_cfg;
+static bool s_cfg_valid;
+
+static void hold_dis_pin(int gpio)
+{
+    if (gpio >= 0) {
+        gpio_hold_dis((gpio_num_t)gpio);
+    }
+}
+
+static void release_pin_holds(void)
+{
+    if (!s_cfg_valid) {
+        return;
+    }
+    hold_dis_pin(s_cfg.pin_sck);
+    hold_dis_pin(s_cfg.pin_miso);
+    hold_dis_pin(s_cfg.pin_mosi);
+    hold_dis_pin(s_cfg.pin_cs);
+    hold_dis_pin(s_cfg.pin_rst);
+    hold_dis_pin(s_cfg.pin_dio0);
+}
+
+static void gpio_out(int gpio, int level)
+{
+    if (gpio < 0) {
+        return;
+    }
+    hold_dis_pin(gpio);
+    gpio_set_direction((gpio_num_t)gpio, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)gpio, level);
+}
+
+static void gpio_in_float(int gpio)
+{
+    if (gpio < 0) {
+        return;
+    }
+    hold_dis_pin(gpio);
+    gpio_set_direction((gpio_num_t)gpio, GPIO_MODE_INPUT);
+    gpio_pullup_dis((gpio_num_t)gpio);
+    gpio_pulldown_dis((gpio_num_t)gpio);
+}
+
+/** Mode-0 bitbang write after SPI driver released the bus. */
+static void bitbang_write_reg(uint8_t reg, uint8_t val)
+{
+    if (!s_cfg_valid || s_cfg.pin_cs < 0 || s_cfg.pin_sck < 0 || s_cfg.pin_mosi < 0) {
+        return;
+    }
+    const int cs = s_cfg.pin_cs;
+    const int sck = s_cfg.pin_sck;
+    const int mosi = s_cfg.pin_mosi;
+    gpio_set_level((gpio_num_t)sck, 0);
+    gpio_set_level((gpio_num_t)cs, 0);
+    esp_rom_delay_us(2);
+    const uint16_t word = (uint16_t)(((reg | 0x80) << 8) | val);
+    for (int i = 15; i >= 0; i--) {
+        gpio_set_level((gpio_num_t)mosi, (word >> i) & 1);
+        esp_rom_delay_us(1);
+        gpio_set_level((gpio_num_t)sck, 1);
+        esp_rom_delay_us(1);
+        gpio_set_level((gpio_num_t)sck, 0);
+    }
+    gpio_set_level((gpio_num_t)cs, 1);
+    esp_rom_delay_us(2);
+}
+
+static void park_bus_pins(void)
+{
+    if (!s_cfg_valid) {
+        return;
+    }
+    /*
+     * Deep-sleep leakage fix (community / StuartsProjects / Seeed):
+     *  - NSS must stay HIGH (add a 10 kΩ pull-up to 3V3 on the PCB).
+     *  - Do NOT drive RESET low into sleep — ESP deep-sleep glitches on RST
+     *    put the SX1278 into ~1.5–2 mA standby. Leave RST as input; the
+     *    module has an internal pull-up (optional external 10 kΩ to 3V3).
+     *  - Pull SCK/MOSI high so they do not float into the radio.
+     */
+    gpio_out(s_cfg.pin_cs, 1);
+    gpio_out(s_cfg.pin_sck, 1);
+    gpio_out(s_cfg.pin_mosi, 1);
+    gpio_in_float(s_cfg.pin_miso);
+    gpio_in_float(s_cfg.pin_dio0);
+
+    bitbang_write_reg(REG_OP_MODE, (uint8_t)(MODE_LONG_RANGE_BIT | MODE_SLEEP));
+    esp_rom_delay_us(500);
+    bitbang_write_reg(REG_OP_MODE, (uint8_t)(MODE_LONG_RANGE_BIT | MODE_SLEEP));
+
+    gpio_out(s_cfg.pin_cs, 1);
+    gpio_out(s_cfg.pin_sck, 1);
+    gpio_out(s_cfg.pin_mosi, 1);
+
+    /* RESET: input + pull-up — never hold as driven output across deep sleep. */
+    if (s_cfg.pin_rst >= 0) {
+        hold_dis_pin(s_cfg.pin_rst);
+        gpio_set_direction((gpio_num_t)s_cfg.pin_rst, GPIO_MODE_INPUT);
+        gpio_pullup_en((gpio_num_t)s_cfg.pin_rst);
+        gpio_pulldown_dis((gpio_num_t)s_cfg.pin_rst);
+    }
+
+    /*
+     * Do NOT gpio_hold / deep_sleep_hold SPI pins. On ESP32-C3 those are
+     * digital (non-RTC) GPIOs; holding them leaks ~0.5–1 mA in deep sleep.
+     * Keep NSS/SCK high with external 10 kΩ → 3V3 instead.
+     */
+    hold_dis_pin(s_cfg.pin_cs);
+    hold_dis_pin(s_cfg.pin_sck);
+    hold_dis_pin(s_cfg.pin_mosi);
+    hold_dis_pin(s_cfg.pin_miso);
+    hold_dis_pin(s_cfg.pin_dio0);
+}
 
 static esp_err_t write_reg(uint8_t reg, uint8_t val)
 {
@@ -140,19 +254,27 @@ esp_err_t sx1278_init(const sx1278_config_t *cfg)
         return ESP_ERR_INVALID_ARG;
     }
     s_ok = false;
+    s_cfg = *cfg;
+    s_cfg_valid = true;
+    release_pin_holds();
 
-    gpio_config_t io = {
-        .pin_bit_mask = 1ULL << cfg->pin_rst,
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    ESP_ERROR_CHECK(gpio_config(&io));
-    gpio_set_level(cfg->pin_rst, 0);
-    esp_rom_delay_us(1000);
-    gpio_set_level(cfg->pin_rst, 1);
-    vTaskDelay(pdMS_TO_TICKS(10));
+    if (cfg->pin_rst >= 0) {
+        gpio_config_t io = {
+            .pin_bit_mask = 1ULL << cfg->pin_rst,
+            .mode = GPIO_MODE_OUTPUT,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        ESP_ERROR_CHECK(gpio_config(&io));
+        gpio_set_level(cfg->pin_rst, 0);
+        esp_rom_delay_us(1000);
+        gpio_set_level(cfg->pin_rst, 1);
+        vTaskDelay(pdMS_TO_TICKS(10));
+    } else {
+        /* RESET tied high on the module (10 kΩ to 3V3) — POR only. */
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 
     spi_bus_config_t bus = {
         .mosi_io_num = cfg->pin_mosi,
@@ -213,6 +335,8 @@ esp_err_t sx1278_init(const sx1278_config_t *cfg)
     write_reg(REG_FIFO_RX_BASE_ADDR, 0x00);
     write_reg(REG_IRQ_FLAGS, 0xFF);
 
+    /* Stay in sleep between TX/RX — standby alone is ~1.5–2 mA. */
+    set_mode(MODE_SLEEP);
     s_ok = true;
     return ESP_OK;
 }
@@ -223,6 +347,29 @@ void sx1278_sleep(void)
         return;
     }
     set_mode(MODE_SLEEP);
+}
+
+void sx1278_prepare_deep_sleep(void)
+{
+    if (s_ok) {
+        set_mode(MODE_SLEEP);
+        vTaskDelay(pdMS_TO_TICKS(5));
+        uint8_t op = 0xff;
+        (void)read_reg(REG_OP_MODE, &op);
+        ESP_LOGI(TAG, "opmode before park=0x%02x (want LoRa sleep ~0x80)", op);
+        if (s_spi) {
+            spi_bus_remove_device(s_spi);
+            s_spi = NULL;
+        }
+        /* NSS must not float after remove_device or the radio wakes to ~2 mA standby. */
+        gpio_out(s_cfg.pin_cs, 1);
+        gpio_out(s_cfg.pin_sck, 0);
+        gpio_out(s_cfg.pin_mosi, 0);
+        (void)spi_bus_free(SPI2_HOST);
+        s_ok = false;
+    }
+    park_bus_pins();
+    ESP_LOGI(TAG, "radio slept; NSS/SCK/MOSI latched high, RST input (use 10k NSS pull-up)");
 }
 
 esp_err_t sx1278_send(const uint8_t *data, size_t len, uint32_t timeout_ms)
@@ -242,12 +389,12 @@ esp_err_t sx1278_send(const uint8_t *data, size_t len, uint32_t timeout_ms)
         uint8_t flags = 0;
         if (read_reg(REG_IRQ_FLAGS, &flags) == ESP_OK && (flags & IRQ_TX_DONE)) {
             write_reg(REG_IRQ_FLAGS, 0xFF);
-            set_mode(MODE_STDBY);
+            set_mode(MODE_SLEEP);
             return ESP_OK;
         }
         vTaskDelay(pdMS_TO_TICKS(2));
     }
-    set_mode(MODE_STDBY);
+    set_mode(MODE_SLEEP);
     return ESP_ERR_TIMEOUT;
 }
 

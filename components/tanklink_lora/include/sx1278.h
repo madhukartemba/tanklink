@@ -14,13 +14,19 @@ typedef struct {
     int pin_miso;
     int pin_mosi;
     int pin_cs;
-    int pin_rst;
+    int pin_rst;  /* -1 = tie RESET to 3V3 via 10k (no MCU pin) */
     int pin_dio0; /* -1 if unused */
     uint32_t freq_hz; /* e.g. 433000000 */
 } sx1278_config_t;
 
 esp_err_t sx1278_init(const sx1278_config_t *cfg);
 void sx1278_sleep(void);
+/**
+ * Sleep the radio, release the SPI bus, and latch bus pins so ESP deep sleep
+ * does not float NSS/SCK/MOSI into the SX1278 (which wakes it to ~2 mA standby).
+ * Call immediately before esp_deep_sleep_start(); enable gpio deep-sleep hold.
+ */
+void sx1278_prepare_deep_sleep(void);
 esp_err_t sx1278_send(const uint8_t *data, size_t len, uint32_t timeout_ms);
 esp_err_t sx1278_start_rx(void);
 /** Non-blocking: copy packet if ready. Returns ESP_OK, ESP_ERR_NOT_FOUND, or error. */

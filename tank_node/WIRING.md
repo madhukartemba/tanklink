@@ -1,35 +1,34 @@
 # Tank node wiring (Seeed XIAO ESP32-C3 + RA-02)
 
-Canonical copy (pump + tank): [`../docs/PINMAPS.md`](../docs/PINMAPS.md).
-
-Fail-safe floats: **pull-up**, common to **GND**, contact **opens** when asserted so a disconnected wire reads the safe default.
+Full notes: [`../docs/PINMAPS.md`](../docs/PINMAPS.md).
 
 | Function | XIAO | GPIO | Wiring |
 | --- | --- | --- | --- |
-| Battery ADC | D0 | 2 | Divider from BAT+ (e.g. 100k/100k) → D0, 100 nF to GND |
-| Button | D1 | 3 | To GND; internal pull-up; press = LOW (wake) |
-| Float FULL | D2 | 4 | To GND; **opens when full** → HIGH = full / disconnect |
-| Float ALMOST EMPTY (optional) | D3 | 5 | Only if `CONFIG_TANK_ENABLE_EMPTY_FLOAT=y`. To GND; **opens when empty** → HIGH = empty / disconnect |
-| Status LED | D4 | 6 | D4 → 1–2.2 kΩ → LED → GND |
+| Battery ADC | D0 | 2 | BAT+ → 100 k → D0 → 100 k → GND; 100 nF |
+| Button | D1 | 3 | To GND; press = LOW |
+| Float FULL | D2 | 4 | To GND; opens when full |
+| Float ALMOST EMPTY | D3 | 5 | To GND; opens when almost empty |
+| Status LED | D4 | 6 | → 1–2.2 kΩ → LED → GND |
 | LoRa DIO0 | D5 | 7 | RA-02 DIO0 |
-| LoRa MISO | D6 | 21 | RA-02 MISO |
-| LoRa NSS/CS | D7 | 20 | RA-02 NSS |
-| LoRa SCK | D8 | 8 | RA-02 SCK |
+| LoRa MISO | D6 | 21 | RA-02 MISO — **never D9** |
+| LoRa NSS/CS | D7 | 20 | RA-02 NSS + **10 kΩ → 3V3** |
+| LoRa SCK | D8 | 8 | RA-02 SCK + **10 kΩ → 3V3** |
 | LoRa RESET | D9 | 9 | RA-02 RESET |
 | LoRa MOSI | D10 | 10 | RA-02 MOSI |
 
-RA-02: **VCC → 3V3**, GND → GND, antenna on module U.FL.
+RA-02: VCC→3V3, GND→GND, antenna on U.FL.
 
-### Float orientation
+### Required pull-ups
 
-- Mid-tank: both floats **closed** → both pins **LOW**
-- Full: full float **open** → D2 **HIGH** (disconnect also looks full → stop fill)
-- Almost empty (only when enabled in Kconfig): empty float **open** → D3 **HIGH** (disconnect also looks empty)
-- If you skip the empty float, leave `CONFIG_TANK_ENABLE_EMPTY_FLOAT` **disabled** (default) so the tank never reports Empty from a floating pin.
+Without these, C3 can stick in download boot or the radio can wake to ~mA standby:
 
-### Button
+1. **NSS → 10 kΩ → 3V3**  
+2. **SCK → 10 kΩ → 3V3**  
 
-- Short press: wake → status TX → wait for pump ACK (retries) → sleep  
-- Hold ~3 s: pairing restart TX + ACK retries → sleep  
+### Deep sleep
 
-Until the pump answers ACKs, the tank will show the **failure** LED pattern (5 fast blinks) after retries, then still sleep.
+Expect ~**50 µA** on BAT± with USB unplugged. External NSS/SCK pull-ups are required; firmware does not use digital GPIO hold (leaks ~mA on C3).
+
+### Flash
+
+Hold **BOOT**, tap **RESET**, keep holding **BOOT** until flash starts (D9 is shared with BOOT/RESET net idle-high).

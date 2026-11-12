@@ -31,6 +31,7 @@
 
 static uint8_t s_own_addr_type;
 static bool s_nimble_ready;
+static bool s_stack_up;
 static bool s_window_active;
 static bool s_connected;
 static int64_t s_window_deadline_us;
@@ -173,6 +174,9 @@ static int gap_event(struct ble_gap_event *event, void *arg)
 
 esp_err_t tank_ble_init(void)
 {
+    if (s_stack_up) {
+        return ESP_OK;
+    }
     esp_err_t err = nimble_port_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "nimble_port_init: %s", esp_err_to_name(err));
@@ -190,7 +194,9 @@ esp_err_t tank_ble_init(void)
     if (err != ESP_OK) {
         return err;
     }
+    s_nimble_ready = false;
     nimble_port_freertos_init(ble_host_task);
+    s_stack_up = true;
 
     /* Wait briefly for sync. */
     for (int i = 0; i < 50 && !s_nimble_ready; i++) {
@@ -210,14 +216,46 @@ bool tank_ble_ota_busy(void)
 void tank_ble_stop(void)
 {
     s_window_active = false;
-    ble_gap_adv_stop();
+    if (s_stack_up) {
+        ble_gap_adv_stop();
+    }
     tank_ota_abort();
+}
+
+void tank_ble_deinit(void)
+{
+    if (!s_stack_up) {
+        return;
+    }
+    s_window_active = false;
+    tank_ota_abort();
+    ble_gap_adv_stop();
+
+    /* Espressif: stop host then deinit (disables BT controller). */
+    int rc = nimble_port_stop();
+    if (rc != 0) {
+        ESP_LOGW(TAG, "nimble_port_stop rc=%d — trying deinit anyway", rc);
+    }
+    esp_err_t err = nimble_port_deinit();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nimble_port_deinit: %s", esp_err_to_name(err));
+    }
+    s_nimble_ready = false;
+    s_connected = false;
+    s_stack_up = false;
+    ESP_LOGI(TAG, "BLE stack powered down for deep sleep");
 }
 
 esp_err_t tank_ble_start_ota_window(uint32_t timeout_ms)
 {
     if (timeout_ms < 5000) {
         timeout_ms = 120000;
+    }
+    if (!s_stack_up) {
+        esp_err_t err = tank_ble_init();
+        if (err != ESP_OK) {
+            return err;
+        }
     }
     if (!s_nimble_ready) {
         for (int i = 0; i < 50 && !s_nimble_ready; i++) {

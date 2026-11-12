@@ -10,6 +10,7 @@
 #include "sdkconfig.h"
 #include "sx1278.h"
 #include "tank_ble_token.h"
+#include "tank_boot_pins.h"
 #include "tank_errors.h"
 #include "tank_led.h"
 #include "tank_version.h"
@@ -47,6 +48,13 @@ esp_err_t tank_link_init(void)
         memset(s_tank_id, 0, sizeof(s_tank_id));
     }
 
+    tank_boot_pins_log(TAG);
+    if (!tank_boot_pins_ok()) {
+        ESP_LOGE(TAG, "refusing LoRa init — fix strap pin wiring (see docs/PINMAPS.md)");
+        s_radio_ok = false;
+        return ESP_ERR_INVALID_ARG;
+    }
+
     sx1278_config_t cfg = {
         .pin_sck = CONFIG_TANK_LORA_SCK_GPIO,
         .pin_miso = CONFIG_TANK_LORA_MISO_GPIO,
@@ -70,9 +78,9 @@ esp_err_t tank_link_init(void)
 
 void tank_link_deinit_radio(void)
 {
-    if (s_radio_ok) {
-        sx1278_sleep();
-    }
+    /* Sleep SX1278 and latch SPI pins — floating NSS wakes ~2 mA standby. */
+    sx1278_prepare_deep_sleep();
+    s_radio_ok = false;
 }
 
 bool tank_link_radio_ok(void)
