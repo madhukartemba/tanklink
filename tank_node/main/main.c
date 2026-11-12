@@ -209,19 +209,25 @@ static void handle_button_gesture(void)
         return;
     }
 
+    /* Advertise BLE first so the phone can connect during LoRa TX/ACK. */
+    ESP_LOGI(TAG, "BLE OTA advertise start (%d ms)", CONFIG_TANK_BLE_OTA_WINDOW_MS);
+    esp_err_t ble_err = tank_ble_start_ota_window(CONFIG_TANK_BLE_OTA_WINDOW_MS);
+    if (ble_err != ESP_OK) {
+        ESP_LOGW(TAG, "BLE OTA window failed: %s", esp_err_to_name(ble_err));
+    }
+
     esp_err_t err = tank_link_send_status(&in, bat, true);
     ESP_LOGI(TAG, "status result: %s", esp_err_to_name(err));
     save_last_flags(now_flags);
     /* Success / no-ACK LED handled inside tank_link_send_status. */
 
-    /* BLE OTA window: phone can connect after this short press. Hold = LoRa re-pair. */
-    ESP_LOGI(TAG, "BLE OTA window %d ms", CONFIG_TANK_BLE_OTA_WINDOW_MS);
-    err = tank_ble_run_ota_window(CONFIG_TANK_BLE_OTA_WINDOW_MS);
-    if (err == ESP_ERR_INVALID_STATE) {
-        /* Hold detected during window — stop BLE and enter LoRa pair. */
-        tank_ble_stop();
-        bat = tank_battery_percent();
-        (void)run_pairing_mode(bat);
+    if (ble_err == ESP_OK) {
+        err = tank_ble_wait_ota_window();
+        if (err == ESP_ERR_INVALID_STATE) {
+            tank_ble_stop();
+            bat = tank_battery_percent();
+            (void)run_pairing_mode(bat);
+        }
     }
 }
 

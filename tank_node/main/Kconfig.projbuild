@@ -79,7 +79,10 @@ menu "TankLink Tank Node"
     config TANK_BUTTON_HOLD_MS
         int "Button hold to restart pairing (ms)"
         range 1000 15000
-        default 3000
+        default 5000
+        help
+            Must be clearly longer than a short press used for status TX / BLE OTA.
+            Default 5s so a firm press for OTA is not mistaken for LoRa re-pair.
 
     config TANK_BUTTON_AWAKE_MS
         int "Stay awake after short button press (ms)"

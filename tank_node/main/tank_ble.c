@@ -214,13 +214,12 @@ void tank_ble_stop(void)
     tank_ota_abort();
 }
 
-esp_err_t tank_ble_run_ota_window(uint32_t timeout_ms)
+esp_err_t tank_ble_start_ota_window(uint32_t timeout_ms)
 {
     if (timeout_ms < 5000) {
         timeout_ms = 120000;
     }
     if (!s_nimble_ready) {
-        /* One more wait. */
         for (int i = 0; i < 50 && !s_nimble_ready; i++) {
             vTaskDelay(pdMS_TO_TICKS(20));
         }
@@ -233,7 +232,15 @@ esp_err_t tank_ble_run_ota_window(uint32_t timeout_ms)
     s_window_deadline_us = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
     tank_led_pairing_flash_start();
     advertise();
-    ESP_LOGI(TAG, "OTA window open %u ms", (unsigned)timeout_ms);
+    ESP_LOGI(TAG, "OTA advertise started (%u ms window)", (unsigned)timeout_ms);
+    return ESP_OK;
+}
+
+esp_err_t tank_ble_wait_ota_window(void)
+{
+    if (!s_window_active) {
+        return ESP_OK;
+    }
 
     bool want_pair = false;
     int64_t hold_start_us = 0;
@@ -269,4 +276,13 @@ esp_err_t tank_ble_run_ota_window(uint32_t timeout_ms)
         tank_led_off();
     }
     return want_pair ? ESP_ERR_INVALID_STATE : ESP_OK;
+}
+
+esp_err_t tank_ble_run_ota_window(uint32_t timeout_ms)
+{
+    esp_err_t err = tank_ble_start_ota_window(timeout_ms);
+    if (err != ESP_OK) {
+        return err;
+    }
+    return tank_ble_wait_ota_window();
 }
