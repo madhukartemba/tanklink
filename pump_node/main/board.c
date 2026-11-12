@@ -141,8 +141,6 @@ void board_set_pump_on(bool on)
     }
     if (on) {
         status_led_set_mode(STATUS_LED_PUMP_ON);
-    } else if (mode == STATUS_LED_CONNECTED) {
-        /* keep connected glow */
     } else {
         status_led_set_mode(STATUS_LED_IDLE);
     }

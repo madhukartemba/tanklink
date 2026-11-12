@@ -44,6 +44,15 @@ extern "C" status_led_mode_t status_led_get_mode(void)
 {
     return STATUS_LED_IDLE;
 }
+extern "C" void status_led_set_tank_full(bool full)
+{
+    (void)full;
+}
+extern "C" bool status_led_get_tank_full(void)
+{
+    return false;
+}
+extern "C" void status_led_notify_ble_connect(void) {}
 
 #else
 
@@ -65,9 +74,16 @@ volatile status_led_mode_t s_mode = STATUS_LED_BOOT;
 volatile uint8_t s_hold_pct_target = 0;
 volatile uint8_t s_ota_pct_target = 0;
 volatile uint8_t s_brightness_pct = 70;
+volatile bool s_tank_full = false;
+volatile bool s_connect_pulse_req = false;
 float s_hold_pct = 0.0f;
 float s_ota_pct = 0.0f;
 float s_bri = 0.70f;
+
+/* Standby: not full = soft white; full = soft teal. Connect pulse = sky blue. */
+static constexpr uint32_t kStandbyNotFull = Color::rgb(220, 225, 235);
+static constexpr uint32_t kStandbyFull = Color::rgb(0, 200, 170);
+static constexpr uint32_t kConnectPulse = Color::rgb(70, 150, 255);
 
 static float clamp01(float v)
 {
@@ -136,17 +152,12 @@ class ProgressFill final : public pixelengine::Animation {
 };
 
 /**
- * Idle / connected: mostly dim, brief bright pulse (10s low → 1s pulse).
- * neighbors_: ±1 soft surrounds; ±2 on bright peak.
- * surrounds_pulse_only_: ±1 stay off during the dim dwell (standby).
+ * Standby glow: mostly dim, brief bright pulse (10s low → 1s pulse).
+ * Color follows tank full; BLE connect triggers a short sky-blue center bloom.
  */
 class CenterIdleGlow final : public pixelengine::Animation {
    public:
-    explicit CenterIdleGlow(size_t led_count, uint32_t color = Color::White,
-                            float brightness_mul = 1.0f, bool neighbors = false,
-                            bool surrounds_pulse_only = false)
-        : color_(color), brightness_mul_(brightness_mul), neighbors_(neighbors),
-          surrounds_pulse_only_(surrounds_pulse_only)
+    explicit CenterIdleGlow(size_t led_count)
     {
         led_count_ = led_count;
         layout_ = Layout::Linear;
@@ -160,6 +171,34 @@ class CenterIdleGlow final : public pixelengine::Animation {
         if (led_count_ == 0) {
             return;
         }
+
+        /* Arm one-shot connect pulse without leaving standby. */
+        if (s_connect_pulse_req) {
+            s_connect_pulse_req = false;
+            connect_t0_ = now_sec();
+            connect_active_ = true;
+        }
+
+        std::fill(buffer_.begin(), buffer_.end(), 0);
+
+        if (connect_active_) {
+            constexpr float kConnDur = 0.85f;
+            const float u = (now_sec() - connect_t0_) / kConnDur;
+            if (u >= 1.0f) {
+                connect_active_ = false;
+                /* Fall through to normal standby this frame. */
+            } else {
+                float pulse;
+                if (u < 0.35f) {
+                    pulse = smoother01(u / 0.35f);
+                } else {
+                    pulse = 1.0f - smoother01((u - 0.35f) / 0.65f);
+                }
+                paint_center(kConnectPulse, 0.18f + 0.72f * pulse, pulse);
+                return;
+            }
+        }
+
         constexpr float kDim = 10.0f;
         constexpr float kPulse = 1.0f;
         constexpr float kPeriod = kDim + kPulse;
@@ -180,32 +219,34 @@ class CenterIdleGlow final : public pixelengine::Animation {
             }
         }
         const float level = kFloor + (kPeak - kFloor) * pulse;
-        const float bri = level * brightness_mul_;
+        const uint32_t color = s_tank_full ? kStandbyFull : kStandbyNotFull;
+        paint_center(color, level, pulse);
+    }
 
-        std::fill(buffer_.begin(), buffer_.end(), 0);
+   private:
+    void paint_center(uint32_t color, float bri, float pulse)
+    {
         for (size_t i = 0; i < led_count_; ++i) {
             const float d = std::fabs(static_cast<float>(i) - center_);
             float weight = 0.0f;
             if (d < 0.55f) {
                 weight = 1.0f;
-            } else if (neighbors_ && d < 1.55f) {
-                weight = surrounds_pulse_only_ ? (0.75f * pulse) : (0.22f + 0.55f * pulse);
-            } else if (neighbors_ && d < 2.55f) {
+            } else if (d < 1.55f) {
+                /* ±1 only during the bright pulse (standby / connect). */
+                weight = 0.75f * pulse;
+            } else if (d < 2.55f) {
                 weight = 0.45f * pulse * pulse;
             }
             if (weight > 0.001f) {
-                buffer_[i] = scale_bri(color_, bri * weight);
+                buffer_[i] = scale_bri(color, bri * weight);
             }
         }
     }
 
-   private:
-    uint32_t color_;
-    float brightness_mul_ = 1.0f;
-    bool neighbors_ = false;
-    bool surrounds_pulse_only_ = false;
     float center_ = 0.0f;
     float t0_ = 0.0f;
+    float connect_t0_ = 0.0f;
+    bool connect_active_ = false;
 };
 
 /** Traveling soft wave — pump-on (punchy blue). */
@@ -455,12 +496,8 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<PingPong>(kN));
         break;
     case STATUS_LED_IDLE:
-        /* Same neighbor pulse as connected; ±1 off during dim dwell. */
-        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::White, 1.0f, true, true));
-        break;
-    case STATUS_LED_CONNECTED:
-        /* Same 10s/1s pulse; ±1 soft (incl. dim), ±2 on bright peak. */
-        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::Green, 1.25f, true, false));
+    case STATUS_LED_CONNECTED: /* legacy: no separate connected anim */
+        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN));
         break;
     case STATUS_LED_PUMP_ON:
         s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::Blue, 9.5f, 0.42f, 0.05f, 2.2f));
@@ -482,7 +519,7 @@ void apply_mode(status_led_mode_t mode)
             kN, Color::scale(Color::Red, std::max(0.35f, s_bri))));
         break;
     default:
-        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN, Color::White, 1.0f, true, true));
+        s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN));
         break;
     }
     s_applied = mode;
@@ -584,6 +621,21 @@ extern "C" uint8_t status_led_get_brightness(void)
 extern "C" status_led_mode_t status_led_get_mode(void)
 {
     return s_mode;
+}
+
+extern "C" void status_led_set_tank_full(bool full)
+{
+    s_tank_full = full;
+}
+
+extern "C" bool status_led_get_tank_full(void)
+{
+    return s_tank_full;
+}
+
+extern "C" void status_led_notify_ble_connect(void)
+{
+    s_connect_pulse_req = true;
 }
 
 #endif /* CONFIG_PUMP_ENABLE_NEOPIXEL */

@@ -275,9 +275,8 @@ static void refresh_connected_led(void)
         mode == STATUS_LED_UPDATE_ERR) {
         return;
     }
-    if (gatt_svr_is_connected() && !s_pump_on) {
-        status_led_set_mode(STATUS_LED_CONNECTED);
-    } else if (!s_pump_on) {
+    /* Standby always — tank-full color lives in the idle glow; no connected anim. */
+    if (!s_pump_on) {
         status_led_set_mode(STATUS_LED_IDLE);
     }
 }
@@ -550,7 +549,12 @@ void gatt_svr_on_connect(uint16_t conn_handle)
         ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
         return;
     }
-    ESP_LOGI(TAG, "conn add handle=%u count=%d", conn_handle, gatt_svr_conn_count());
+    const int count = gatt_svr_conn_count();
+    ESP_LOGI(TAG, "conn add handle=%u count=%d", conn_handle, count);
+    if (count == 1) {
+        /* First phone link: short accent pulse on standby, then stay idle. */
+        status_led_notify_ble_connect();
+    }
     refresh_connected_led();
 }
 
