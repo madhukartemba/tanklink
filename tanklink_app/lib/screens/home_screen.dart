@@ -118,17 +118,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onRename: () => showRenamePumpDialog(context, pump),
                 ),
                 const FirmwareUpdateBanner(),
-                if (ready && session.pumpErrorTitle != null) ...[
-                  const SizedBox(height: 8),
-                  _PumpErrorBanner(session: session),
-                ],
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: _TankHero(
-                      session: session,
-                      ready: ready,
-                      onOpenSettings: () => showPumpSettingsSheet(context),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (ready && session.pumpErrorTitle != null) ...[
+                          _PumpErrorBanner(session: session),
+                          const SizedBox(height: 8),
+                        ],
+                        Expanded(
+                          child: _TankHero(
+                            session: session,
+                            ready: ready,
+                            onOpenSettings: () => showPumpSettingsSheet(context),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -347,7 +354,6 @@ class _TankHero extends StatelessWidget {
     if (!session.tankBound) {
       return _HeroFrame(
         accent: scheme.primary,
-        onTap: onOpenSettings,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -411,98 +417,139 @@ class _TankHero extends StatelessWidget {
       subtitle = 'Level looks good';
     }
 
+    final batPct = session.tankBatteryPct;
+    final batUnknown = batPct <= 0;
+    final String batDetail;
+    if (batUnknown) {
+      batDetail = 'No reading';
+    } else if (lowBat) {
+      batDetail = 'Low — recharge soon';
+    } else {
+      batDetail = 'OK';
+    }
+    final batAccent = (batUnknown || lowBat) ? scheme.error : accent;
+
     return _HeroFrame(
       accent: accent,
-      onTap: onOpenSettings,
-      child: Column(
-        children: [
-          const Spacer(flex: 2),
-          _LevelGlyph(
-            accent: accent,
-            full: session.tankFull && !offline,
-            empty: session.tankEmpty && !offline,
-            offline: offline,
-          ),
-          const SizedBox(height: 20),
-          Text(
-            title,
-            style: text.displaySmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              letterSpacing: -1.0,
-              color: accent,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: text.titleMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const Spacer(flex: 2),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final h = constraints.maxHeight;
+          final tight = h < 420;
+          final veryTight = h < 340;
+          final gap = veryTight ? 6.0 : (tight ? 10.0 : 20.0);
+          final titleStyle = (veryTight ? text.titleLarge : text.displaySmall)
+              ?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: -1.0,
+            color: accent,
+          );
+
+          return Column(
             children: [
-              Expanded(
-                child: _MetricTile(
-                  icon: Icons.signal_cellular_alt_rounded,
-                  label: 'Signal',
-                  value: offline ? 'Offline' : session.tankSignalLabel,
-                  detail: (!offline && session.tankRssiDbm != null)
-                      ? '${session.tankRssiDbm} dBm'
-                      : '—',
-                  progress: offline ? 0 : session.tankSignalQuality,
-                  accent: offline ? scheme.error : accent,
+              Spacer(flex: veryTight ? 1 : 2),
+              Flexible(
+                flex: veryTight ? 2 : 3,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: _LevelGlyph(
+                    accent: accent,
+                    full: session.tankFull && !offline,
+                    empty: session.tankEmpty && !offline,
+                    offline: offline,
+                    size: veryTight ? 88 : 120,
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _MetricTile(
-                  icon: Icons.battery_std_rounded,
-                  label: 'Battery',
-                  value: '${session.tankBatteryPct}%',
-                  detail: lowBat ? 'Low — recharge soon' : 'OK',
-                  progress: (session.tankBatteryPct / 100).clamp(0.0, 1.0),
-                  accent: lowBat ? scheme.error : accent,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Icon(
-                Icons.schedule_rounded,
-                size: 16,
-                color: scheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 6),
+              SizedBox(height: gap),
+              Text(title, style: titleStyle, textAlign: TextAlign.center),
+              SizedBox(height: veryTight ? 2 : 6),
               Text(
-                'Last seen ${session.tankAgeLabel}',
-                style: text.bodyMedium?.copyWith(
+                subtitle,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: text.titleMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w500,
+                  fontSize: veryTight ? 14 : null,
                 ),
               ),
-            ],
-          ),
-          if (offline || lowBat) ...[
-            const SizedBox(height: 12),
-            Text(
-              offline
-                  ? 'Check tank power, antenna, and range.'
-                  : 'Tank battery is getting low.',
-              textAlign: TextAlign.center,
-              style: text.bodyMedium?.copyWith(
-                color: scheme.error,
-                height: 1.35,
+              Spacer(flex: veryTight ? 1 : 2),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _MetricTile(
+                      icon: Icons.signal_cellular_alt_rounded,
+                      label: 'Signal',
+                      value: offline ? 'Offline' : session.tankSignalLabel,
+                      detail: (!offline && session.tankRssiDbm != null)
+                          ? '${session.tankRssiDbm} dBm'
+                          : '—',
+                      progress: offline ? 0 : session.tankSignalQuality,
+                      accent: offline ? scheme.error : accent,
+                      compact: tight,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _MetricTile(
+                      icon: Icons.battery_std_rounded,
+                      label: 'Battery',
+                      value: batUnknown ? '—' : '$batPct%',
+                      detail: batDetail,
+                      progress:
+                          batUnknown ? 0 : (batPct / 100).clamp(0.0, 1.0),
+                      accent: batAccent,
+                      compact: tight,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-          const Spacer(flex: 1),
-        ],
+              SizedBox(height: tight ? 8 : 14),
+              Row(
+                children: [
+                  Icon(
+                    Icons.schedule_rounded,
+                    size: 16,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Last seen ${session.tankAgeLabel}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (offline || lowBat || batUnknown) ...[
+                SizedBox(height: tight ? 6 : 12),
+                Text(
+                  offline
+                      ? 'Check tank power, antenna, and range.'
+                      : batUnknown
+                          ? 'Battery reading missing — check the tank ADC wiring.'
+                          : 'Tank battery is getting low.',
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.bodyMedium?.copyWith(
+                    color: scheme.error,
+                    height: 1.35,
+                    fontSize: veryTight ? 12.5 : null,
+                  ),
+                ),
+              ],
+              Spacer(flex: 1),
+            ],
+          );
+        },
       ),
     );
   }
@@ -523,7 +570,7 @@ class _PumpErrorBanner extends StatelessWidget {
       color: scheme.errorContainer.withValues(alpha: 0.85),
       borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -544,6 +591,8 @@ class _PumpErrorBanner extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       detail,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: scheme.onErrorContainer.withValues(alpha: 0.9),
                             height: 1.3,
@@ -560,6 +609,12 @@ class _PumpErrorBanner extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
             ),
+            IconButton(
+              tooltip: 'Clear error',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => session.clearPumpError(),
+              icon: Icon(Icons.close_rounded, color: scheme.onErrorContainer),
+            ),
           ],
         ),
       ),
@@ -573,12 +628,14 @@ class _LevelGlyph extends StatelessWidget {
     required this.full,
     required this.empty,
     required this.offline,
+    this.size = 120,
   });
 
   final Color accent;
   final bool full;
   final bool empty;
   final bool offline;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -590,8 +647,8 @@ class _LevelGlyph extends StatelessWidget {
                 ? 0.18
                 : 0.55;
     return SizedBox(
-      width: 120,
-      height: 120,
+      width: size,
+      height: size,
       child: DecoratedBox(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
@@ -609,7 +666,7 @@ class _LevelGlyph extends StatelessWidget {
                 : full
                     ? Icons.water_drop
                     : Icons.water_drop_outlined,
-            size: 52,
+            size: size * 0.43,
             color: accent,
           ),
         ),
@@ -626,6 +683,7 @@ class _MetricTile extends StatelessWidget {
     required this.progress,
     required this.accent,
     this.detail,
+    this.compact = false,
   });
 
   final IconData icon;
@@ -634,6 +692,7 @@ class _MetricTile extends StatelessWidget {
   final String? detail;
   final double progress;
   final Color accent;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -641,43 +700,49 @@ class _MetricTile extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Row(
           children: [
-            Icon(icon, size: 18, color: accent),
+            Icon(icon, size: compact ? 16 : 18, color: accent),
             const SizedBox(width: 6),
             Text(
               label,
               style: text.labelLarge?.copyWith(
                 color: scheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
+                fontSize: compact ? 12 : null,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: compact ? 4 : 8),
         Text(
           value,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: text.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          style: (compact ? text.titleMedium : text.titleLarge)
+              ?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 2),
         SizedBox(
-          height: 16,
+          height: compact ? 14 : 16,
           child: Text(
             detail ?? ' ',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            style: text.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontSize: compact ? 11 : null,
+            ),
           ),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: compact ? 6 : 10),
         ClipRRect(
           borderRadius: BorderRadius.circular(99),
           child: LinearProgressIndicator(
             value: progress.clamp(0.0, 1.0),
-            minHeight: 6,
+            minHeight: compact ? 4 : 6,
             backgroundColor: scheme.surfaceContainerHighest,
             color: accent,
           ),
@@ -703,7 +768,8 @@ class _HeroFrame extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final content = Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+      height: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 16, 22, 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         gradient: LinearGradient(

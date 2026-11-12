@@ -154,7 +154,7 @@ menu "Pump Board"
     config PUMP_TANK_STALE_SEC
         int "Tank offline after no packet (seconds)"
         depends on PUMP_ENABLE_LORA
-        range 60 7200
+        range 10 7200
         default 1500
         help
             Mark tank out of range if no LoRa packet within this window

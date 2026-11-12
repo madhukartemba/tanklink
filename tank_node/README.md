@@ -20,11 +20,10 @@ See [WIRING.md](WIRING.md) for the pin map.
 
 | Event | Pattern |
 | --- | --- |
-| Boot | 1 medium blink |
-| Each TX attempt | Short pulse |
-| ACK success | 2 calm blinks |
-| No ACK / radio fail | 5 fast blinks |
-| Pairing start | 8 fast blinks, then TX/ACK patterns |
+| Boot | Soft fade pulses |
+| Status TX success (after ACK) | One soft pulse |
+| No ACK after retries | Error code **3** long hard blinks (twice) |
+| Pairing | Soft breathing, then success pulse or error codes 4/5 |
 
 Float polarity: **HIGH = asserted** (full or empty). Open/disconnect matches the safe default. The almost-empty float is **optional** and disabled by default (`CONFIG_TANK_ENABLE_EMPTY_FLOAT`); enable it only when wired.
 

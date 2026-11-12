@@ -132,7 +132,7 @@ void tank_led_boot(void)
 
 void tank_led_success(void)
 {
-    tank_led_fade_in_out(100, 180, 180);
+    /* Single soft pulse after a successful TX / pair ACK. */
     tank_led_fade_in_out(100, 180, 220);
 }
 

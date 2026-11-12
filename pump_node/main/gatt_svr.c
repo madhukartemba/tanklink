@@ -451,6 +451,10 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
             }
             return 0;
         }
+        if (cmd == TANKLINK_CMD_CLEAR_ERROR) {
+            gatt_svr_clear_last_error();
+            return 0;
+        }
         gatt_svr_set_pump_state(cmd ? 1 : 0);
         return 0;
     }

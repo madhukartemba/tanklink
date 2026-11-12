@@ -20,6 +20,7 @@ class TankLinkUuids {
   static const tokenLen = 16;
   static const cmdUnpair = 0xF0;
   static const cmdFactoryReset = 0xF1;
+  static const cmdClearError = 0xE0;
   static const cmdTestBeep = 0xB1;
   static const cmdTankPair = 0xA1;
   static const cmdTankUnpair = 0xA2;

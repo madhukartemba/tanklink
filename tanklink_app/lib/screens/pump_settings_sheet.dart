@@ -344,6 +344,23 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 );
               },
             ),
+            if (ready && session.pumpLastError != 0)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.clear_all_rounded, color: scheme.error),
+                title: const Text('Clear pump error'),
+                subtitle: Text(
+                  'Dismiss code ${session.pumpLastError} on the home screen',
+                ),
+                onTap: () async {
+                  await session.clearPumpError();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Pump error cleared')),
+                    );
+                  }
+                },
+              ),
             const Divider(height: 28),
             Text('Tank sensor', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),

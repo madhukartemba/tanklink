@@ -74,6 +74,7 @@ extern "C" {
 #define TANKLINK_CMD_TANK_UNPAIR 0xA2
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
+#define TANKLINK_CMD_CLEAR_ERROR   0xE0
 
 /**
  * Tank char payload:

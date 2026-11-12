@@ -17,8 +17,9 @@ void tank_led_off(void);
 void tank_led_fade_to(uint8_t pct, uint32_t ms);
 void tank_led_fade_in_out(uint8_t peak_pct, uint32_t up_ms, uint32_t down_ms);
 void tank_led_blink(int times, int on_ms, int off_ms);
-void tank_led_tx_pulse(void);
+void tank_led_tx_pulse(void); /* short soft pulse (optional mid-TX cue) */
 void tank_led_boot(void);
+/** One soft fade pulse — successful full TX / pair ACK. */
 void tank_led_success(void);
 void tank_led_failure(void);
 void tank_led_pairing_flash_start(void);

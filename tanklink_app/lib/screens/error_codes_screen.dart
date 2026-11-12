@@ -20,7 +20,8 @@ class ErrorCodesScreen extends StatelessWidget {
       code: 3,
       name: 'No ACK',
       detail:
-          'Tank is paired but the pump did not acknowledge. Check range, power, and that this tank is still bound to that pump.',
+          'After wake (heartbeat, float, or button), the tank sent status but got no pump ACK within retries. '
+          'LED shows this code as long hard blinks. Check range, power, and that this tank is still bound.',
     ),
     (
       code: 4,
@@ -80,7 +81,8 @@ class ErrorCodesScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Long hard blinks (not soft pulses), twice, with a pause between groups. Boot, TX, success, and pairing use soft pulses.',
+            'Long hard blinks (not soft pulses), twice, with a pause between groups. '
+            'After a wake TX, success is one soft pulse; failure uses the numbered blink code. Boot and pairing use soft pulses.',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
@@ -127,7 +129,8 @@ class ErrorCodesScreen extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             'Hold the tank button to ramp the LED, then keep holding until breathing flash starts. '
-            'Press once to cancel. Short press after pairing sends status; hold still works during the short awake window.',
+            'Press once to cancel. Short press or heartbeat TX: one soft pulse on success, code 3 blinks on failure. '
+            'Hold still works during the short awake window after a press.',
             style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
           ),
         ],

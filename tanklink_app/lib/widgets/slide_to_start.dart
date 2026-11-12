@@ -21,10 +21,12 @@ class SlideToStart extends StatefulWidget {
   State<SlideToStart> createState() => _SlideToStartState();
 }
 
-class _SlideToStartState extends State<SlideToStart> {
+class _SlideToStartState extends State<SlideToStart>
+    with SingleTickerProviderStateMixin {
   double _progress = 0;
   bool _dragging = false;
   bool _busy = false;
+  late final AnimationController _shimmer;
 
   static const double _height = kHomeControlHeight;
   static const double _border = 1.5;
@@ -32,12 +34,48 @@ class _SlideToStartState extends State<SlideToStart> {
   static const double _radius = 20;
   static const double _completeAt = 0.92;
 
+  @override
+  void initState() {
+    super.initState();
+    _shimmer = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    );
+    _syncShimmer();
+  }
+
+  @override
+  void didUpdateWidget(covariant SlideToStart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.enabled != widget.enabled) {
+      _syncShimmer();
+    }
+  }
+
+  void _syncShimmer() {
+    final play = widget.enabled && !_busy && !_dragging && _progress <= 0.12;
+    if (play) {
+      if (!_shimmer.isAnimating) {
+        _shimmer.repeat();
+      }
+    } else if (_shimmer.isAnimating) {
+      _shimmer.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _shimmer.dispose();
+    super.dispose();
+  }
+
   Future<void> _finish() async {
     if (_busy || !widget.enabled) return;
     setState(() {
       _busy = true;
       _progress = 1;
     });
+    _syncShimmer();
     HapticFeedback.heavyImpact();
     try {
       await widget.onCompleted();
@@ -48,6 +86,7 @@ class _SlideToStartState extends State<SlideToStart> {
           _progress = 0;
           _dragging = false;
         });
+        _syncShimmer();
       }
     }
   }
@@ -57,7 +96,53 @@ class _SlideToStartState extends State<SlideToStart> {
       _progress = 0;
       _dragging = false;
     });
+    _syncShimmer();
     HapticFeedback.selectionClick();
+  }
+
+  Widget _hintLabel(ColorScheme scheme, TextStyle? style, bool shimmer) {
+    final text = Text(
+      widget.label,
+      textAlign: TextAlign.right,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: style?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.2,
+        color: scheme.onSurface,
+      ),
+    );
+    if (!shimmer) return text;
+
+    return AnimatedBuilder(
+      animation: _shimmer,
+      builder: (context, child) {
+        final t = _shimmer.value;
+        // Sweep a bright band across muted text (slide-to-unlock style).
+        final shift = (t * 2.4) - 0.7;
+        return ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) {
+            return LinearGradient(
+              begin: Alignment(-1.2 + shift, 0),
+              end: Alignment(0.2 + shift, 0),
+              colors: [
+                scheme.onSurface.withValues(alpha: 0.28),
+                scheme.onSurface.withValues(alpha: 0.28),
+                scheme.onSurface.withValues(alpha: 0.95),
+                Colors.white,
+                scheme.onSurface.withValues(alpha: 0.95),
+                scheme.onSurface.withValues(alpha: 0.28),
+                scheme.onSurface.withValues(alpha: 0.28),
+              ],
+              stops: const [0.0, 0.32, 0.44, 0.50, 0.56, 0.68, 1.0],
+            ).createShader(bounds);
+          },
+          child: child,
+        );
+      },
+      child: text,
+    );
   }
 
   @override
@@ -70,6 +155,8 @@ class _SlideToStartState extends State<SlideToStart> {
     final innerH = _height - _border * 2;
     final thumbSize = innerH - _pad * 2;
     final thumbRadius = BorderRadius.circular(_radius - 4);
+    final showChevron = enabled;
+    final useShimmer = enabled && !_dragging && _progress <= 0.12;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -124,32 +211,28 @@ class _SlideToStartState extends State<SlideToStart> {
                     opacity: hintHidden ? 0.0 : 1.0,
                     child: Padding(
                       // Clear the thumb on the left; align label toward the end.
-                      padding: EdgeInsets.only(left: thumbSize + _pad * 2, right: 16),
+                      padding: EdgeInsets.only(
+                        left: thumbSize + _pad * 2,
+                        right: 16,
+                      ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Flexible(
-                            child: Text(
-                              widget.label,
-                              textAlign: TextAlign.right,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.2,
-                                    color: scheme.onSurface,
-                                  ),
+                            child: _hintLabel(
+                              scheme,
+                              Theme.of(context).textTheme.titleMedium,
+                              useShimmer,
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          Icon(
-                            Icons.keyboard_double_arrow_right_rounded,
-                            size: 22,
-                            color: scheme.primary,
-                          ),
+                          if (showChevron) ...[
+                            const SizedBox(width: 6),
+                            Icon(
+                              Icons.keyboard_double_arrow_right_rounded,
+                              size: 22,
+                              color: scheme.primary.withValues(alpha: 0.85),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -165,6 +248,7 @@ class _SlideToStartState extends State<SlideToStart> {
                     onHorizontalDragStart: enabled
                         ? (_) {
                             setState(() => _dragging = true);
+                            _syncShimmer();
                             HapticFeedback.selectionClick();
                           }
                         : null,

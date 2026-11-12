@@ -107,8 +107,8 @@ void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
         ESP_LOGW(TAG, "button wake skipped (held or stuck LOW)");
     }
 
-    if (heartbeat_sec < 30) {
-        heartbeat_sec = 30;
+    if (heartbeat_sec < 5) {
+        heartbeat_sec = 5;
     }
     ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup((uint64_t)heartbeat_sec * 1000000ULL));
     ESP_LOGI(TAG, "sleep: timer=%us", (unsigned)heartbeat_sec);

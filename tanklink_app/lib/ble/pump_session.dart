@@ -779,6 +779,17 @@ class PumpSession extends ChangeNotifier {
     }
   }
 
+  Future<void> clearPumpError() async {
+    pumpLastError = TankLinkUuids.pumpErrNone;
+    notifyListeners();
+    if (_cmd == null || !authed) return;
+    try {
+      await _cmd!.write([TankLinkUuids.cmdClearError], withoutResponse: false);
+    } catch (_) {
+      /* Local clear already applied. */
+    }
+  }
+
   Future<void> startScan() async {
     scanResults.clear();
     scanning = true;

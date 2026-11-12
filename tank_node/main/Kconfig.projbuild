@@ -70,7 +70,7 @@ menu "TankLink Tank Node"
 
     config TANK_HEARTBEAT_SEC
         int "Heartbeat / max sleep interval (seconds)"
-        range 30 86400
+        range 5 86400
         default 300
         help
             Deep-sleep timer wake so the pump sees a periodic alive status.

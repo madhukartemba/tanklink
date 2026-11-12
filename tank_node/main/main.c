@@ -202,9 +202,7 @@ static void handle_button_gesture(void)
     esp_err_t err = tank_link_send_status(&in, bat, true);
     ESP_LOGI(TAG, "status result: %s", esp_err_to_name(err));
     save_last_flags(now_flags);
-    if (err != ESP_OK) {
-        tank_led_show_error(TANK_ERR_NO_ACK);
-    }
+    /* Success / no-ACK LED handled inside tank_link_send_status. */
 
     /* Awake window: hold-to-pair still works after a short press. */
     if (CONFIG_TANK_BUTTON_AWAKE_MS <= 0) {

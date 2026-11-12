@@ -9,6 +9,7 @@
 #include "nvs.h"
 #include "sdkconfig.h"
 #include "sx1278.h"
+#include "tank_errors.h"
 #include "tank_led.h"
 #include "tank_version.h"
 #include "tanklink_lora_proto.h"
@@ -164,9 +165,7 @@ static esp_err_t send_with_ack(tanklink_lora_status_t *pkt, bool pairing_leds,
         }
         ESP_LOGI(TAG, "TX attempt %d/%d type=%u seq=%u flags=0x%02x", i + 1, attempts,
                  pkt->type, pkt->seq, pkt->flags);
-        if (!pairing_leds) {
-            tank_led_tx_pulse();
-        }
+        (void)pairing_leds; /* LED feedback is after full TX result, not per attempt. */
         esp_err_t err = sx1278_send((const uint8_t *)pkt, sizeof(*pkt), 2000);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "radio TX failed: %s", esp_err_to_name(err));
@@ -191,7 +190,11 @@ esp_err_t tank_link_send_status(const tank_inputs_t *in, uint8_t battery_pct,
     fill_status(&pkt, in, battery_pct, button_event, false);
     esp_err_t err = send_with_ack(&pkt, false, NULL, NULL);
     if (err == ESP_OK) {
+        /* One soft pulse after the full TX+ACK succeeds (not per retry). */
         tank_led_success();
+    } else {
+        /* Unsuccessful wake TX — numbered hard blinks (code 3). */
+        tank_led_show_error(TANK_ERR_NO_ACK);
     }
     return err;
 }

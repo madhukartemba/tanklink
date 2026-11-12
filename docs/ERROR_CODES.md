@@ -4,7 +4,7 @@ Human-readable codes used by the tank sensor LED, pump NeoPixel, and the phone a
 
 ## Tank sensor LED codes
 
-The status LED shows the **error number** as **long hard blinks** (on/off, not soft pulses), twice, with a longer pause between the two groups. Soft fade pulses are used for boot, TX, success, and pairing — not for error codes.
+The status LED shows the **error number** as **long hard blinks** (on/off, not soft pulses), twice, with a longer pause between the two groups. Soft fade pulses are used for boot, **one** success pulse after a full TX+ACK, and pairing — not for error codes. Per-retry TX pulses are not used.
 
 | Code | Name | When |
 | --- | --- | --- |
@@ -21,7 +21,7 @@ The status LED shows the **error number** as **long hard blinks** (on/off, not s
 | Boot | Soft fade pulses |
 | Hold to pair | Brightness ramps 0→100 over ~3 s, then soft breathing pulses |
 | Pairing success | Two calm fade pulses |
-| Short press (paired) | Soft TX pulse, then success pulses or code **3** blinks |
+| Short press / heartbeat / float wake (paired) | After full TX+ACK: **one** soft success pulse; on failure code **3** long blinks (no per-retry pulses) |
 | Short press (unpaired) | Code **1** long blinks |
 | Cancel pairing | Code **4** long blinks |
 | Pairing timeout | Code **5** long blinks |
