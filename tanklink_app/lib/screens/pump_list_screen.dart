@@ -41,7 +41,7 @@ class PumpListScreen extends StatelessWidget {
                     const Text('No pumps yet'),
                     const SizedBox(height: 8),
                     Text(
-                      'Put the C3 in pairing mode (hold button 5s), then add it.',
+                      'Put the C3 in pairing mode (hold Start+Stop 5s), then add it.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
@@ -132,7 +132,7 @@ class PumpListScreen extends StatelessWidget {
         title: Text('Remove ${pump.name}?'),
         content: Text(
           'Removes #${pump.serial} from this phone only. '
-          'Hold the pump button 5 seconds to open pairing if you want to add it again.',
+          'Hold Start and Stop together 5 seconds to open pairing if you want to add it again.',
         ),
         actions: [
           TextButton(

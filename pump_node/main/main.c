@@ -1,7 +1,7 @@
 /*
  * TankLink pump controller (ESP32-C3).
- * BLE GATT claim/pair + OnOff. NeoPixel + 5s hold → pairing window.
- * Short press toggles pump when paired. Adv name TankLink-XXXX from MAC.
+ * BLE GATT claim/pair + OnOff. Hold Start+Stop ~5s → BLE pairing window.
+ * Short Start = ON, short Stop = OFF. Adv name TankLink-XXXX from MAC.
  */
 
 #include <string.h>
@@ -37,28 +37,52 @@ static const ble_uuid128_t s_svc_uuid = TANKLINK_SVC_UUID_INIT;
 static void advertise(void);
 static int gap_event(struct ble_gap_event *event, void *arg);
 
-static void on_long_press(void)
+static void on_ble_pair_hold(void)
 {
     pump_pair_enter_pairing_mode();
 }
 
-static void on_short_press(void)
+static void maybe_exit_ble_pairing(void)
 {
-    if (pump_ota_is_active()) {
-        return;
-    }
-    /* Short press exits pairing mode without toggling the pump. */
-    if (pump_pair_pairing_active()) {
-        if (pump_config_buzzer_on_button()) {
-            buzzer_play_user(false);
-        }
-        pump_pair_exit_pairing_mode();
+    if (!pump_pair_pairing_active()) {
         return;
     }
     if (pump_config_buzzer_on_button()) {
         buzzer_play_user(false);
     }
-    gatt_svr_toggle_pump();
+    pump_pair_exit_pairing_mode();
+}
+
+static void on_start(void)
+{
+    if (pump_ota_is_active()) {
+        return;
+    }
+    if (pump_pair_pairing_active()) {
+        maybe_exit_ble_pairing();
+        return;
+    }
+    if (pump_config_buzzer_on_button()) {
+        buzzer_play_user(false);
+    }
+    gatt_svr_set_pump_state_silent(1);
+}
+
+static void on_stop(void)
+{
+    if (pump_ota_is_active()) {
+        /* Still allow stop for safety during OTA. */
+        gatt_svr_set_pump_state_silent(0);
+        return;
+    }
+    if (pump_pair_pairing_active()) {
+        maybe_exit_ble_pairing();
+        return;
+    }
+    if (pump_config_buzzer_on_button()) {
+        buzzer_play_user(false);
+    }
+    gatt_svr_set_pump_state_silent(0);
 }
 
 static void pair_poll_task(void *arg)
@@ -244,8 +268,9 @@ void app_main(void)
     }
     pump_config_apply_led();
     ESP_ERROR_CHECK(pump_pair_init());
-    board_set_long_press_callback(on_long_press);
-    board_set_button_callback(on_short_press);
+    board_set_long_press_callback(on_ble_pair_hold);
+    board_set_start_callback(on_start);
+    board_set_stop_callback(on_stop);
     if (lora_link_init() != ESP_OK) {
         ESP_LOGW(TAG, "LoRa init failed — tank link offline");
     }

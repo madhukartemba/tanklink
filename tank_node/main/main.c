@@ -2,6 +2,7 @@
 
 #include "esp_log.h"
 #include "esp_sleep.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs.h"
@@ -10,20 +11,26 @@
 
 #include "tank_battery.h"
 #include "tank_board.h"
+#include "tank_errors.h"
+#include "tank_led.h"
 #include "tank_link.h"
 #include "tank_version.h"
 
 #define TAG "TANK"
 #define NVS_NS "tank"
 #define NVS_KEY_FLAGS "flags"
+#define NVS_KEY_PAIRED "paired"
 
 #ifndef CONFIG_TANK_BUTTON_AWAKE_MS
 #define CONFIG_TANK_BUTTON_AWAKE_MS 10000
 #endif
+#ifndef CONFIG_TANK_PAIR_WINDOW_MS
+#define CONFIG_TANK_PAIR_WINDOW_MS 60000
+#endif
 
 static uint8_t load_last_flags(void)
 {
-    uint8_t f = 0xFF; /* force first TX after erase */
+    uint8_t f = 0xFF;
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
         nvs_get_u8(h, NVS_KEY_FLAGS, &f);
@@ -42,6 +49,27 @@ static void save_last_flags(uint8_t flags)
     }
 }
 
+static bool load_paired(void)
+{
+    uint8_t p = 0;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+        nvs_get_u8(h, NVS_KEY_PAIRED, &p);
+        nvs_close(h);
+    }
+    return p != 0;
+}
+
+static void save_paired(bool paired)
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_KEY_PAIRED, paired ? 1 : 0);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
 static uint8_t flags_from_inputs(const tank_inputs_t *in)
 {
     uint8_t f = 0;
@@ -54,25 +82,153 @@ static uint8_t flags_from_inputs(const tank_inputs_t *in)
     return f;
 }
 
-static void clear_pairing_state(void)
+static void hold_progress(uint8_t pct, void *ctx)
 {
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_erase_key(h, "pair_id");
-        nvs_erase_key(h, "pair_key");
-        nvs_commit(h);
-        nvs_close(h);
+    (void)ctx;
+    tank_led_set_brightness(pct);
+}
+
+typedef struct {
+    bool saw_down;
+    bool clicked;
+} cancel_ctx_t;
+
+static bool pair_should_cancel(void *ctx)
+{
+    cancel_ctx_t *c = (cancel_ctx_t *)ctx;
+    const bool down = tank_board_button_down();
+    if (down) {
+        c->saw_down = true;
+    } else if (c->saw_down) {
+        c->clicked = true;
+        c->saw_down = false;
+        return true;
     }
-    ESP_LOGI(TAG, "pairing state cleared");
+    tank_led_pairing_flash_tick();
+    return false;
 }
 
 static void enter_deep_sleep(void)
 {
     tank_link_deinit_radio();
-    tank_led_set(false);
+    tank_led_off();
     tank_board_prepare_deep_sleep(CONFIG_TANK_HEARTBEAT_SEC);
     ESP_LOGI(TAG, "entering deep sleep (%ds heartbeat)", CONFIG_TANK_HEARTBEAT_SEC);
     esp_deep_sleep_start();
+}
+
+static esp_err_t run_pairing_mode(uint8_t bat)
+{
+    ESP_LOGI(TAG, "pairing mode (%d ms window, click to cancel)", CONFIG_TANK_PAIR_WINDOW_MS);
+    save_paired(false);
+    tank_led_pairing_flash_start();
+    cancel_ctx_t cancel = {0};
+    /* Ignore the release that ended the hold. */
+    while (tank_board_button_down()) {
+        tank_led_pairing_flash_tick();
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    vTaskDelay(pdMS_TO_TICKS(40));
+
+    const int64_t deadline =
+        esp_timer_get_time() + (int64_t)CONFIG_TANK_PAIR_WINDOW_MS * 1000;
+    esp_err_t err = ESP_ERR_TIMEOUT;
+    while (esp_timer_get_time() < deadline) {
+        if (pair_should_cancel(&cancel)) {
+            tank_led_pairing_flash_stop();
+            tank_led_show_error(TANK_ERR_PAIR_CANCELLED);
+            return ESP_ERR_INVALID_STATE;
+        }
+        err = tank_link_send_pair_request(bat, pair_should_cancel, &cancel);
+        if (err == ESP_OK) {
+            save_paired(true);
+            tank_led_pairing_flash_stop();
+            tank_led_success();
+            ESP_LOGI(TAG, "paired OK");
+            return ESP_OK;
+        }
+        if (err == ESP_ERR_INVALID_STATE || cancel.clicked) {
+            tank_led_pairing_flash_stop();
+            tank_led_show_error(TANK_ERR_PAIR_CANCELLED);
+            return ESP_ERR_INVALID_STATE;
+        }
+        /* Keep flashing between retry rounds until window ends. */
+        for (int i = 0; i < 25; i++) {
+            if (pair_should_cancel(&cancel)) {
+                tank_led_pairing_flash_stop();
+                tank_led_show_error(TANK_ERR_PAIR_CANCELLED);
+                return ESP_ERR_INVALID_STATE;
+            }
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+    }
+    tank_led_pairing_flash_stop();
+    tank_led_show_error(TANK_ERR_PAIR_TIMEOUT);
+    ESP_LOGW(TAG, "pairing timed out");
+    return ESP_ERR_TIMEOUT;
+}
+
+static void handle_button_gesture(void)
+{
+    bool is_hold = false;
+    uint32_t held = 0;
+    tank_board_classify_button(CONFIG_TANK_BUTTON_HOLD_MS, &is_hold, &held, hold_progress,
+                               NULL);
+    ESP_LOGI(TAG, "button held %u ms hold=%d", (unsigned)held, (int)is_hold);
+
+    tank_inputs_t in;
+    tank_board_read(&in);
+    uint8_t bat = tank_battery_percent();
+    uint8_t now_flags = flags_from_inputs(&in);
+
+    if (is_hold) {
+        tank_led_set_brightness(100);
+        (void)run_pairing_mode(bat);
+        save_last_flags(now_flags);
+        return;
+    }
+
+    tank_led_fade_to(0, 100);
+
+    if (!tank_link_radio_ok()) {
+        tank_led_show_error(TANK_ERR_LORA_MISSING);
+        return;
+    }
+    if (!load_paired()) {
+        tank_led_show_error(TANK_ERR_NOT_PAIRED);
+        return;
+    }
+
+    esp_err_t err = tank_link_send_status(&in, bat, true);
+    ESP_LOGI(TAG, "status result: %s", esp_err_to_name(err));
+    save_last_flags(now_flags);
+    if (err != ESP_OK) {
+        tank_led_show_error(TANK_ERR_NO_ACK);
+    }
+
+    /* Awake window: hold-to-pair still works after a short press. */
+    if (CONFIG_TANK_BUTTON_AWAKE_MS <= 0) {
+        return;
+    }
+    ESP_LOGI(TAG, "awake window %d ms", CONFIG_TANK_BUTTON_AWAKE_MS);
+    const int64_t until =
+        esp_timer_get_time() + (int64_t)CONFIG_TANK_BUTTON_AWAKE_MS * 1000;
+    while (esp_timer_get_time() < until) {
+        if (tank_board_button_down()) {
+            is_hold = false;
+            held = 0;
+            tank_board_classify_button(CONFIG_TANK_BUTTON_HOLD_MS, &is_hold, &held,
+                                       hold_progress, NULL);
+            if (is_hold) {
+                bat = tank_battery_percent();
+                (void)run_pairing_mode(bat);
+                return;
+            }
+            /* Another short click: soft pulse, stay in window. */
+            tank_led_fade_in_out(60, 80, 120);
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
 }
 
 void app_main(void)
@@ -89,6 +245,9 @@ void app_main(void)
     if (tank_board_init() != ESP_OK) {
         ESP_LOGW(TAG, "board init failed — continuing");
     }
+    if (tank_led_init(tank_board_led_gpio()) != ESP_OK) {
+        ESP_LOGW(TAG, "LED PWM unavailable");
+    }
     if (tank_battery_init() != ESP_OK) {
         ESP_LOGW(TAG, "battery ADC unavailable — pct=0");
     }
@@ -97,7 +256,7 @@ void app_main(void)
     }
 
     esp_sleep_wakeup_cause_t cause = tank_board_wakeup_cause();
-    ESP_LOGI(TAG, "wakeup cause=%d", (int)cause);
+    ESP_LOGI(TAG, "wakeup cause=%d paired=%d", (int)cause, (int)load_paired());
 
     tank_inputs_t in;
     tank_board_read(&in);
@@ -105,83 +264,52 @@ void app_main(void)
     uint8_t now_flags = flags_from_inputs(&in);
     uint8_t last_flags = load_last_flags();
 
-    bool do_tx = false;
-    bool button_event = false;
-    bool pairing = false;
-    const char *reason = "boot";
-
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
-        do_tx = true;
-        reason = "boot";
-        tank_led_blink(3, 200, 150);
+        tank_led_boot();
+        if (load_paired() && tank_link_radio_ok()) {
+            err = tank_link_send_status(&in, bat, false);
+            ESP_LOGI(TAG, "boot status: %s", esp_err_to_name(err));
+            save_last_flags(now_flags);
+        }
     } else if (tank_board_woke_from_timer()) {
-        do_tx = true;
-        reason = "heartbeat";
+        if (load_paired() && tank_link_radio_ok()) {
+            err = tank_link_send_status(&in, bat, false);
+            ESP_LOGI(TAG, "heartbeat: %s", esp_err_to_name(err));
+            save_last_flags(now_flags);
+        }
     } else if (cause == ESP_SLEEP_WAKEUP_GPIO) {
         if (in.button_down || tank_board_woke_from_button()) {
-            bool is_hold = false;
-            uint32_t held = 0;
-            tank_board_classify_button(CONFIG_TANK_BUTTON_HOLD_MS, &is_hold, &held);
-            ESP_LOGI(TAG, "button held %u ms hold=%d", (unsigned)held, (int)is_hold);
-            if (is_hold) {
-                pairing = true;
-                do_tx = true;
-                reason = "pair_hold";
-            } else {
-                button_event = true;
-                do_tx = true;
-                reason = "button_click";
-            }
-            tank_board_read(&in);
-            now_flags = flags_from_inputs(&in);
+            handle_button_gesture();
         } else {
-            do_tx = true;
-            reason = "float";
+            /* Float change */
+            if (now_flags != last_flags) {
+                ESP_LOGI(TAG, "flags 0x%02x -> 0x%02x", last_flags, now_flags);
+            }
+            if (load_paired() && tank_link_radio_ok()) {
+                err = tank_link_send_status(&in, bat, false);
+                ESP_LOGI(TAG, "float status: %s", esp_err_to_name(err));
+                save_last_flags(now_flags);
+            } else {
+                save_last_flags(now_flags);
+            }
         }
     } else {
-        do_tx = true;
-        reason = "other";
-    }
-
-    if (now_flags != last_flags) {
-        do_tx = true;
-        if (!pairing && !button_event && strcmp(reason, "heartbeat") != 0 &&
-            strcmp(reason, "boot") != 0) {
-            reason = "state_change";
+        if (load_paired() && tank_link_radio_ok()) {
+            err = tank_link_send_status(&in, bat, false);
+            save_last_flags(now_flags);
+            (void)err;
         }
-        ESP_LOGI(TAG, "flags 0x%02x -> 0x%02x", last_flags, now_flags);
-    }
-
-    ESP_LOGI(TAG, "full=%d empty=%d bat=%u%% reason=%s tx=%d", (int)in.full,
-             (int)in.empty, bat, reason, (int)do_tx);
-
-    if (pairing) {
-        clear_pairing_state();
-        err = tank_link_send_pair_request(bat);
-        ESP_LOGI(TAG, "pair result: %s", esp_err_to_name(err));
-        save_last_flags(now_flags);
-    } else if (do_tx) {
-        err = tank_link_send_status(&in, bat, button_event);
-        ESP_LOGI(TAG, "status result: %s", esp_err_to_name(err));
-        save_last_flags(now_flags);
     }
 
 #if CONFIG_TANK_DEMO_NO_SLEEP
-    ESP_LOGW(TAG, "demo mode: no deep sleep — not used in production");
+    ESP_LOGW(TAG, "demo mode: no deep sleep");
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(CONFIG_TANK_HEARTBEAT_SEC * 1000));
-        tank_board_read(&in);
-        bat = tank_battery_percent();
-        now_flags = flags_from_inputs(&in);
-        err = tank_link_send_status(&in, bat, false);
-        ESP_LOGI(TAG, "demo tick result: %s", esp_err_to_name(err));
-        save_last_flags(now_flags);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        if (tank_board_button_down()) {
+            handle_button_gesture();
+        }
     }
 #else
-    if (button_event && CONFIG_TANK_BUTTON_AWAKE_MS > 0) {
-        ESP_LOGI(TAG, "button awake window %d ms (future BLE)", CONFIG_TANK_BUTTON_AWAKE_MS);
-        vTaskDelay(pdMS_TO_TICKS(CONFIG_TANK_BUTTON_AWAKE_MS));
-    }
     enter_deep_sleep();
 #endif
 }

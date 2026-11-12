@@ -1,0 +1,195 @@
+#include "tank_led.h"
+
+#include "driver/ledc.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+#define TAG "TANK_LED"
+#define LEDC_MODE LEDC_LOW_SPEED_MODE
+#define LEDC_TIMER LEDC_TIMER_0
+#define LEDC_CHANNEL LEDC_CHANNEL_0
+#define LEDC_DUTY_RES LEDC_TIMER_13_BIT
+#define LEDC_FREQ_HZ 5000
+#define LEDC_MAX_DUTY ((1 << 13) - 1)
+
+static bool s_ok;
+static uint8_t s_pct;
+static int64_t s_pair_phase_ms;
+
+static uint32_t duty_from_pct(uint8_t pct)
+{
+    if (pct > 100) {
+        pct = 100;
+    }
+    /* Gamma-ish curve so mid ramps feel smoother on a plain LED. */
+    const uint32_t x = pct;
+    return (uint32_t)((x * x * LEDC_MAX_DUTY) / 10000u);
+}
+
+esp_err_t tank_led_init(int gpio)
+{
+    ledc_timer_config_t timer = {
+        .speed_mode = LEDC_MODE,
+        .duty_resolution = LEDC_DUTY_RES,
+        .timer_num = LEDC_TIMER,
+        .freq_hz = LEDC_FREQ_HZ,
+        .clk_cfg = LEDC_AUTO_CLK,
+    };
+    esp_err_t err = ledc_timer_config(&timer);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "timer: %s", esp_err_to_name(err));
+        return err;
+    }
+    ledc_channel_config_t ch = {
+        .gpio_num = gpio,
+        .speed_mode = LEDC_MODE,
+        .channel = LEDC_CHANNEL,
+        .timer_sel = LEDC_TIMER,
+        .duty = 0,
+        .hpoint = 0,
+    };
+    err = ledc_channel_config(&ch);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "channel: %s", esp_err_to_name(err));
+        return err;
+    }
+    s_ok = true;
+    s_pct = 0;
+    ESP_LOGI(TAG, "LEDC GPIO%d", gpio);
+    return ESP_OK;
+}
+
+void tank_led_set_brightness(uint8_t pct)
+{
+    if (!s_ok) {
+        return;
+    }
+    s_pct = pct > 100 ? 100 : pct;
+    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, duty_from_pct(s_pct));
+    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
+}
+
+void tank_led_set(bool on)
+{
+    tank_led_set_brightness(on ? 100 : 0);
+}
+
+void tank_led_off(void)
+{
+    tank_led_set_brightness(0);
+}
+
+void tank_led_fade_to(uint8_t pct, uint32_t ms)
+{
+    if (!s_ok) {
+        return;
+    }
+    if (ms < 20) {
+        tank_led_set_brightness(pct);
+        return;
+    }
+    const uint8_t from = s_pct;
+    const uint8_t to = pct > 100 ? 100 : pct;
+    const int steps = (int)(ms / 20);
+    for (int i = 1; i <= steps; i++) {
+        const int v = from + ((int)to - (int)from) * i / steps;
+        tank_led_set_brightness((uint8_t)v);
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    tank_led_set_brightness(to);
+}
+
+void tank_led_fade_in_out(uint8_t peak_pct, uint32_t up_ms, uint32_t down_ms)
+{
+    tank_led_fade_to(peak_pct, up_ms);
+    tank_led_fade_to(0, down_ms);
+}
+
+void tank_led_blink(int times, int on_ms, int off_ms)
+{
+    for (int i = 0; i < times; i++) {
+        tank_led_set_brightness(100);
+        vTaskDelay(pdMS_TO_TICKS(on_ms));
+        tank_led_off();
+        if (i + 1 < times) {
+            vTaskDelay(pdMS_TO_TICKS(off_ms));
+        }
+    }
+}
+
+void tank_led_tx_pulse(void)
+{
+    tank_led_fade_to(80, 40);
+    tank_led_fade_to(0, 60);
+}
+
+void tank_led_boot(void)
+{
+    tank_led_fade_in_out(100, 350, 350);
+    tank_led_fade_in_out(70, 250, 250);
+}
+
+void tank_led_success(void)
+{
+    tank_led_fade_in_out(100, 180, 180);
+    tank_led_fade_in_out(100, 180, 220);
+}
+
+void tank_led_failure(void)
+{
+    for (int i = 0; i < 5; i++) {
+        tank_led_set_brightness(100);
+        vTaskDelay(pdMS_TO_TICKS(50));
+        tank_led_off();
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
+void tank_led_pairing_flash_start(void)
+{
+    s_pair_phase_ms = 0;
+}
+
+void tank_led_pairing_flash_tick(void)
+{
+    /* ~1.2s soft triangle wave while pairing. */
+    s_pair_phase_ms += 20;
+    const int period = 1200;
+    int t = (int)(s_pair_phase_ms % period);
+    uint8_t pct;
+    if (t < period / 2) {
+        pct = (uint8_t)(t * 100 / (period / 2));
+    } else {
+        pct = (uint8_t)(100 - (t - period / 2) * 100 / (period / 2));
+    }
+    tank_led_set_brightness(pct);
+}
+
+void tank_led_pairing_flash_stop(void)
+{
+    tank_led_fade_to(0, 150);
+}
+
+void tank_led_show_error(uint8_t code)
+{
+    if (code == 0) {
+        code = 1;
+    }
+    if (code > 9) {
+        code = 9;
+    }
+    tank_led_off();
+    vTaskDelay(pdMS_TO_TICKS(400));
+    for (int rep = 0; rep < 2; rep++) {
+        for (uint8_t i = 0; i < code; i++) {
+            tank_led_fade_to(100, 80);
+            vTaskDelay(pdMS_TO_TICKS(120));
+            tank_led_fade_to(0, 80);
+            vTaskDelay(pdMS_TO_TICKS(180));
+        }
+        if (rep + 1 < 2) {
+            vTaskDelay(pdMS_TO_TICKS(700));
+        }
+    }
+}

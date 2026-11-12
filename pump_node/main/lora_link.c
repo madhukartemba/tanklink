@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 #include "gatt_svr.h"
 #include "nvs.h"
+#include "pump_pair.h"
 #include "relay_control.h"
 #include "sdkconfig.h"
 #include "status_led.h"
@@ -173,6 +174,22 @@ static void apply_tank_packet(const tanklink_lora_status_t *pkt)
     gatt_svr_notify_tank_if_subscribed();
 }
 
+static void restore_led_after_tank_pair(void)
+{
+    if (status_led_get_mode() != STATUS_LED_TANK_PAIRING) {
+        return;
+    }
+    if (pump_pair_pairing_active()) {
+        status_led_set_mode(STATUS_LED_PAIRING);
+    } else if (!pump_pair_is_paired()) {
+        status_led_set_mode(STATUS_LED_UNPAIRED);
+    } else if (gatt_svr_pump_state()) {
+        status_led_set_mode(STATUS_LED_PUMP_ON);
+    } else {
+        status_led_set_mode(STATUS_LED_IDLE);
+    }
+}
+
 static bool pairing_window_open(void)
 {
     if (!s_pairing) {
@@ -181,6 +198,7 @@ static bool pairing_window_open(void)
     if (esp_timer_get_time() >= s_pair_deadline_us) {
         s_pairing = false;
         ESP_LOGI(TAG, "tank pair window closed");
+        restore_led_after_tank_pair();
         gatt_svr_notify_tank_if_subscribed();
         return false;
     }
@@ -210,6 +228,7 @@ static void lora_task(void *arg)
                     memcpy(s_tank_id, pkt->tank_id, TANKLINK_LORA_TANK_ID_LEN);
                     s_bound = true;
                     s_pairing = false;
+                    restore_led_after_tank_pair();
                     save_bind();
                     send_ack(pkt);
                     if (pkt->seq != s_last_seq) {
@@ -291,6 +310,7 @@ esp_err_t lora_link_start_tank_pair(uint32_t timeout_ms)
     }
     s_pairing = true;
     s_pair_deadline_us = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
+    status_led_set_mode(STATUS_LED_TANK_PAIRING);
     ESP_LOGI(TAG, "tank pair window open (%u ms)", (unsigned)timeout_ms);
     gatt_svr_notify_tank_if_subscribed();
     return ESP_OK;
@@ -301,6 +321,7 @@ void lora_link_stop_tank_pair(void)
     if (s_pairing) {
         s_pairing = false;
         ESP_LOGI(TAG, "tank pair window stopped");
+        restore_led_after_tank_pair();
         gatt_svr_notify_tank_if_subscribed();
     }
 }

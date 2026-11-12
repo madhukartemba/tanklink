@@ -23,8 +23,8 @@ Firmware: `pump_node/` · defaults: `pump_node/sdkconfig.defaults`
 
 | Function | GPIO |
 | --- | --- |
-| Button (pair hold / short = pump) | 0 |
-| Optional 2nd pump button | 1 |
+| Start (short = pump ON; hold both = BLE pair) | 0 |
+| Stop (short = pump OFF / exit BLE pair) | 1 |
 | I2C SDA (DS3231) | 6 |
 | I2C SCL (DS3231) | 7 |
 | Relay START | 18 |

@@ -112,7 +112,7 @@ esp_err_t pump_pair_init(void)
         s_pairing_deadline_us = esp_timer_get_time() + (int64_t)CONFIG_PUMP_PAIRING_TIMEOUT_MS * 1000;
         ESP_LOGI(TAG, "UNPAIRED serial=%s", s_serial);
     } else {
-        ESP_LOGI(TAG, "PAIRED serial=%s — hold button 5s to re-pair", s_serial);
+        ESP_LOGI(TAG, "PAIRED serial=%s — hold Start+Stop 5s to re-pair", s_serial);
     }
     refresh_led_for_pair_state();
     return ESP_OK;

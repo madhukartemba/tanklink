@@ -12,7 +12,8 @@ Local rooftop **tank ↔ pump** control — no cloud required.
 | [`tank_node/`](tank_node/) | XIAO ESP32-C3 tank sensor (floats, LoRa TX, deep sleep) |
 | [`tanklink_app/`](tanklink_app/) | Flutter app — multi-pump, slide-to-start, settings |
 
-**Pin maps (both boards):** [`docs/PINMAPS.md`](docs/PINMAPS.md)
+**Pin maps (both boards):** [`docs/PINMAPS.md`](docs/PINMAPS.md)  
+**Tank LED error codes:** [`docs/ERROR_CODES.md`](docs/ERROR_CODES.md)
 
 ## Quick start
 
@@ -26,7 +27,7 @@ idf.py build
 idf.py -p /dev/cu.usbmodemXXXX flash monitor
 ```
 
-Hold the board button ~5 s to enter pairing. Advertise name is `TankLink-XXXX` (MAC suffix).
+Hold **Start and Stop** together ~5 s to enter BLE pairing. Advertise name is `TankLink-XXXX` (MAC suffix).
 
 `idf.py erase-flash` clears NVS pairing.
 

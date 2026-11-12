@@ -25,8 +25,8 @@ Match tank frequency **433 MHz**. Tank wiring: see [`../tank_node/WIRING.md`](
 | --- | --- |
 | I2C SDA (DS3231) | 6 |
 | I2C SCL (DS3231) | 7 |
-| Button (pair hold / short = pump) | 0 |
-| Optional 2nd pump button | 1 |
+| Start (short = ON; hold both = BLE pair) | 0 |
+| Stop (short = OFF / exit BLE pair) | 1 |
 | Relay START | 18 |
 | Relay STOP | 19 |
 | NeoPixel | 20 |

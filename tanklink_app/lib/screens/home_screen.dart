@@ -294,7 +294,7 @@ class _EmptyState extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Hold the pump button for 5 seconds to enter pairing, then add it here.',
+          'Hold Start and Stop together for 5 seconds to enter pairing, then add it here.',
           textAlign: TextAlign.center,
           style: TextStyle(color: scheme.onSurfaceVariant),
         ),

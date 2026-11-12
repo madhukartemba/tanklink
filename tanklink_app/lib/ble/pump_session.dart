@@ -748,6 +748,12 @@ class PumpSession extends ChangeNotifier {
     firmware = info.fw;
     autoOffMin = info.autoOffMin;
     await _state!.setNotifyValue(true);
+    // Refresh tank bind status after claim (char may already be subscribed).
+    try {
+      if (_tank != null) {
+        _applyTankStatus(await _tank!.read());
+      }
+    } catch (_) {}
     status = 'Connected';
     notifyListeners();
   }

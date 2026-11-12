@@ -11,11 +11,12 @@ extern "C" {
 typedef enum {
     STATUS_LED_BOOT = 0,
     STATUS_LED_UNPAIRED,
-    STATUS_LED_PAIRING,
+    STATUS_LED_PAIRING,       /* BLE phone pair — blue ping-pong */
+    STATUS_LED_TANK_PAIRING,  /* LoRa tank search — teal ping-pong */
     STATUS_LED_IDLE,          /* standby — color reflects tank full */
     STATUS_LED_CONNECTED,     /* deprecated: same as IDLE (kept for callers) */
     STATUS_LED_PUMP_ON,
-    STATUS_LED_HOLD_PROGRESS, /* button hold feedback 0..100% via set_hold_progress */
+    STATUS_LED_HOLD_PROGRESS, /* both-button hold feedback 0..100% */
     STATUS_LED_UPDATING,      /* BLE OTA in progress */
     STATUS_LED_UPDATE_OK,     /* OTA verified — solid green */
     STATUS_LED_UPDATE_ERR,    /* OTA failed — solid red */

@@ -112,15 +112,16 @@ static uint32_t scale_bri(uint32_t c, float t)
     return Color::scale(c, clamp01(t) * s_bri);
 }
 
-/** Left→right progress bar with a bright leading tip (hold + OTA). */
+/** Progress fill — from_center expands outward; else left→right (OTA). */
 class ProgressFill final : public pixelengine::Animation {
    public:
-    ProgressFill(size_t led_count, const float *pct, uint32_t color)
-        : pct_(pct), color_(color)
+    ProgressFill(size_t led_count, const float *pct, uint32_t color, bool from_center = false)
+        : pct_(pct), color_(color), from_center_(from_center)
     {
         led_count_ = led_count;
         layout_ = Layout::Linear;
         buffer_.assign(led_count_, 0);
+        center_ = (led_count_ > 0) ? (static_cast<float>(led_count_ - 1) * 0.5f) : 0.0f;
     }
 
     void update() override
@@ -129,6 +130,28 @@ class ProgressFill final : public pixelengine::Animation {
             return;
         }
         const float p = clamp01(*pct_ / 100.0f);
+        if (from_center_) {
+            /* Radius grows from center to cover half-span at 100%. */
+            const float max_r =
+                (led_count_ > 1) ? (static_cast<float>(led_count_ - 1) * 0.5f) : 0.5f;
+            const float radius = p * (max_r + 0.55f);
+            for (size_t i = 0; i < led_count_; ++i) {
+                const float d = std::fabs(static_cast<float>(i) - center_);
+                float edge = radius - d;
+                if (edge <= 0.001f) {
+                    buffer_[i] = 0;
+                    continue;
+                }
+                edge = clamp01(edge);
+                float bri = 0.40f + 0.60f * edge;
+                if (d < 0.35f) {
+                    bri = std::min(1.0f, bri + 0.25f); /* brighter core */
+                }
+                buffer_[i] = scale_bri(color_, bri);
+            }
+            return;
+        }
+
         const float lit = p * static_cast<float>(led_count_);
         for (size_t i = 0; i < led_count_; ++i) {
             float fill = lit - static_cast<float>(i);
@@ -137,7 +160,6 @@ class ProgressFill final : public pixelengine::Animation {
                 continue;
             }
             fill = clamp01(fill);
-            /* Body + brighter tip on the advancing edge. */
             float bri = 0.55f + 0.45f * fill;
             if (fill < 1.0f) {
                 bri = 0.35f + 0.65f * fill;
@@ -149,6 +171,8 @@ class ProgressFill final : public pixelengine::Animation {
    private:
     const float *pct_;
     uint32_t color_;
+    bool from_center_ = false;
+    float center_ = 0.0f;
 };
 
 /**
@@ -291,17 +315,18 @@ class SoftWave final : public pixelengine::Animation {
     float t0_ = 0.0f;
 };
 
-/** Blue ping-pong comet for pairing — no dim floor. */
+/** Soft comet bouncing left↔right — BLE pair (blue) / tank search (teal). */
 class PingPong final : public pixelengine::Animation {
    public:
-    PingPong(size_t led_count, uint32_t color = Color::rgb(40, 120, 255), float period_s = 1.45f)
+    PingPong(size_t led_count, uint32_t color = Color::rgb(40, 120, 255),
+             float period_s = 1.6f)
         : color_(color), period_s_(period_s)
     {
         led_count_ = led_count;
         layout_ = Layout::Linear;
         buffer_.assign(led_count_, 0);
         t0_ = now_sec();
-        trail_ = std::max<size_t>(2, led_count_ / 4);
+        trail_ = std::max<size_t>(3, led_count_ / 3);
     }
 
     void update() override
@@ -317,11 +342,13 @@ class PingPong final : public pixelengine::Animation {
 
         for (size_t i = 0; i < led_count_; ++i) {
             const float dist = std::fabs(static_cast<float>(i) - pos);
-            if (dist >= static_cast<float>(trail_)) {
-                continue;
+            float bri = 0.0f;
+            if (dist < static_cast<float>(trail_)) {
+                const float t = 1.0f - dist / static_cast<float>(trail_);
+                bri = t * t;
             }
-            const float t = 1.0f - dist / static_cast<float>(trail_);
-            buffer_[i] = scale_bri(color_, t * t);
+            bri = std::max(bri, 0.03f);
+            buffer_[i] = scale_bri(color_, bri);
         }
     }
 
@@ -493,7 +520,10 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<SoftBreathe>(kN, Color::Amber, 2.4f, 0.25f));
         break;
     case STATUS_LED_PAIRING:
-        s_px.addAnimation(std::make_unique<PingPong>(kN));
+        s_px.addAnimation(std::make_unique<PingPong>(kN, Color::rgb(40, 120, 255)));
+        break;
+    case STATUS_LED_TANK_PAIRING:
+        s_px.addAnimation(std::make_unique<PingPong>(kN, Color::rgb(0, 200, 170)));
         break;
     case STATUS_LED_IDLE:
     case STATUS_LED_CONNECTED: /* legacy: no separate connected anim */
@@ -503,12 +533,12 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::Blue, 9.5f, 0.42f, 0.05f, 2.2f));
         break;
     case STATUS_LED_HOLD_PROGRESS:
-        s_px.addAnimation(
-            std::make_unique<ProgressFill>(kN, &s_hold_pct, Color::rgb(40, 120, 255)));
+        s_px.addAnimation(std::make_unique<ProgressFill>(
+            kN, &s_hold_pct, Color::rgb(40, 120, 255), /*from_center=*/true));
         break;
     case STATUS_LED_UPDATING:
-        s_px.addAnimation(
-            std::make_unique<ProgressFill>(kN, &s_ota_pct, Color::rgb(0, 200, 220)));
+        s_px.addAnimation(std::make_unique<ProgressFill>(
+            kN, &s_ota_pct, Color::rgb(0, 200, 220), /*from_center=*/false));
         break;
     case STATUS_LED_UPDATE_OK:
         s_px.setAnimationImmediate(std::make_unique<pixelengine::SolidColor>(

@@ -9,7 +9,7 @@
 #include "nvs.h"
 #include "sdkconfig.h"
 #include "sx1278.h"
-#include "tank_board.h"
+#include "tank_led.h"
 #include "tank_version.h"
 #include "tanklink_lora_proto.h"
 
@@ -73,26 +73,9 @@ void tank_link_deinit_radio(void)
     }
 }
 
-static void led_tx_attempt(void)
+bool tank_link_radio_ok(void)
 {
-    tank_led_set(true);
-    vTaskDelay(pdMS_TO_TICKS(35));
-    tank_led_set(false);
-}
-
-static void led_success(void)
-{
-    tank_led_blink(2, 160, 120);
-}
-
-static void led_failure(void)
-{
-    tank_led_blink(5, 50, 50);
-}
-
-static void led_pairing_start(void)
-{
-    tank_led_blink(8, 60, 60);
+    return s_radio_ok;
 }
 
 static bool packet_is_ack_for(const uint8_t *buf, size_t len, uint16_t seq)
@@ -110,7 +93,8 @@ static bool packet_is_ack_for(const uint8_t *buf, size_t len, uint16_t seq)
     return ack->seq == seq;
 }
 
-static bool wait_ack(uint16_t seq, uint32_t timeout_ms)
+static bool wait_ack(uint16_t seq, uint32_t timeout_ms,
+                     tank_link_should_cancel_fn should_cancel, void *ctx)
 {
     if (sx1278_start_rx() != ESP_OK) {
         return false;
@@ -118,47 +102,20 @@ static bool wait_ack(uint16_t seq, uint32_t timeout_ms)
     const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
     uint8_t buf[64];
     while (xTaskGetTickCount() < deadline) {
+        if (should_cancel && should_cancel(ctx)) {
+            return false;
+        }
         size_t n = 0;
         esp_err_t err = sx1278_poll_recv(buf, sizeof(buf), &n);
         if (err == ESP_OK && packet_is_ack_for(buf, n, seq)) {
             ESP_LOGI(TAG, "ACK seq=%u", seq);
             return true;
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        tank_led_pairing_flash_tick();
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
     ESP_LOGW(TAG, "ACK timeout seq=%u", seq);
     return false;
-}
-
-static esp_err_t send_with_ack(tanklink_lora_status_t *pkt)
-{
-    if (!s_radio_ok) {
-        led_failure();
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    const int attempts = CONFIG_TANK_TX_RETRIES;
-    const uint32_t ack_ms = CONFIG_TANK_ACK_TIMEOUT_MS;
-
-    for (int i = 0; i < attempts; i++) {
-        ESP_LOGI(TAG, "TX attempt %d/%d type=%u seq=%u flags=0x%02x", i + 1, attempts,
-                 pkt->type, pkt->seq, pkt->flags);
-        led_tx_attempt();
-        esp_err_t err = sx1278_send((const uint8_t *)pkt, sizeof(*pkt), 2000);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "radio TX failed: %s", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(50));
-            continue;
-        }
-        if (wait_ack(pkt->seq, ack_ms)) {
-            led_success();
-            return ESP_OK;
-        }
-        vTaskDelay(pdMS_TO_TICKS(40));
-    }
-
-    led_failure();
-    return ESP_ERR_TIMEOUT;
 }
 
 static void fill_status(tanklink_lora_status_t *pkt, const tank_inputs_t *in,
@@ -191,20 +148,61 @@ static void fill_status(tanklink_lora_status_t *pkt, const tank_inputs_t *in,
     }
 }
 
+static esp_err_t send_with_ack(tanklink_lora_status_t *pkt, bool pairing_leds,
+                               tank_link_should_cancel_fn should_cancel, void *ctx)
+{
+    if (!s_radio_ok) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    const int attempts = CONFIG_TANK_TX_RETRIES;
+    const uint32_t ack_ms = CONFIG_TANK_ACK_TIMEOUT_MS;
+
+    for (int i = 0; i < attempts; i++) {
+        if (should_cancel && should_cancel(ctx)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+        ESP_LOGI(TAG, "TX attempt %d/%d type=%u seq=%u flags=0x%02x", i + 1, attempts,
+                 pkt->type, pkt->seq, pkt->flags);
+        if (!pairing_leds) {
+            tank_led_tx_pulse();
+        }
+        esp_err_t err = sx1278_send((const uint8_t *)pkt, sizeof(*pkt), 2000);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "radio TX failed: %s", esp_err_to_name(err));
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+        if (wait_ack(pkt->seq, ack_ms, should_cancel, ctx)) {
+            return ESP_OK;
+        }
+        if (should_cancel && should_cancel(ctx)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+        vTaskDelay(pdMS_TO_TICKS(40));
+    }
+    return ESP_ERR_TIMEOUT;
+}
+
 esp_err_t tank_link_send_status(const tank_inputs_t *in, uint8_t battery_pct,
                                 bool button_event)
 {
     tanklink_lora_status_t pkt;
     fill_status(&pkt, in, battery_pct, button_event, false);
-    return send_with_ack(&pkt);
+    esp_err_t err = send_with_ack(&pkt, false, NULL, NULL);
+    if (err == ESP_OK) {
+        tank_led_success();
+    }
+    return err;
 }
 
-esp_err_t tank_link_send_pair_request(uint8_t battery_pct)
+esp_err_t tank_link_send_pair_request(uint8_t battery_pct,
+                                      tank_link_should_cancel_fn should_cancel,
+                                      void *ctx)
 {
     tank_inputs_t in;
     tank_board_read(&in);
-    led_pairing_start();
     tanklink_lora_status_t pkt;
     fill_status(&pkt, &in, battery_pct, true, true);
-    return send_with_ack(&pkt);
+    return send_with_ack(&pkt, true, should_cancel, ctx);
 }

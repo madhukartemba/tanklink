@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
+import 'pair_tank_prompt_screen.dart';
 
 class AddPumpScreen extends StatefulWidget {
   const AddPumpScreen({super.key});
@@ -37,6 +38,15 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Added ${session.selected?.name ?? 'pump'}')),
       );
+      // Tank status is read during connect; prompt if this pump has no tank yet.
+      if (!session.tankBound) {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => const PairTankPromptScreen(),
+          ),
+        );
+        if (!mounted) return;
+      }
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
@@ -77,7 +87,7 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
               session.scanning
                   ? 'Looking for TankLink pumps nearby…'
                   : session.scanResults.isEmpty
-                      ? 'Nothing found. Hold the pump button 5s for pairing, then scan again.'
+                      ? 'Nothing found. Hold Start and Stop together 5s for pairing, then scan again.'
                       : 'Tap a pump to claim it.',
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),

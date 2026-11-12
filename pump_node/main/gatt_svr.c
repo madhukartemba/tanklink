@@ -301,9 +301,9 @@ static void refresh_connected_led(void)
 {
     status_led_mode_t mode = status_led_get_mode();
     if (mode == STATUS_LED_HOLD_PROGRESS || mode == STATUS_LED_PAIRING ||
-        mode == STATUS_LED_UNPAIRED || mode == STATUS_LED_PUMP_ON ||
-        mode == STATUS_LED_UPDATING || mode == STATUS_LED_UPDATE_OK ||
-        mode == STATUS_LED_UPDATE_ERR) {
+        mode == STATUS_LED_TANK_PAIRING || mode == STATUS_LED_UNPAIRED ||
+        mode == STATUS_LED_PUMP_ON || mode == STATUS_LED_UPDATING ||
+        mode == STATUS_LED_UPDATE_OK || mode == STATUS_LED_UPDATE_ERR) {
         return;
     }
     /* Standby always — tank-full color lives in the idle glow; no connected anim. */
@@ -333,7 +333,7 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
             return BLE_ATT_ERR_UNLIKELY;
         }
         if (!pump_pair_is_claimable()) {
-            ESP_LOGW(TAG, "Claim rejected — hold button 5s to enter pairing");
+            ESP_LOGW(TAG, "Claim rejected — hold Start+Stop 5s to enter pairing");
             return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
         }
         uint8_t token[TANKLINK_TOKEN_LEN];

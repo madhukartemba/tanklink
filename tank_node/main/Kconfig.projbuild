@@ -77,7 +77,14 @@ menu "TankLink Tank Node"
         range 0 60000
         default 10000
         help
-            After a short-press status TX, remain awake this long (future tank BLE).
+            After a short-press status TX, remain awake this long (hold-to-pair still works).
+
+    config TANK_PAIR_WINDOW_MS
+        int "Pairing mode timeout (ms)"
+        range 10000 300000
+        default 60000
+        help
+            After hold-to-pair, flash and retry PAIR until ACK, cancel, or this timeout.
 
     config TANK_TX_RETRIES
         int "LoRa TX attempts (until ACK)"

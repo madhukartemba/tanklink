@@ -6,6 +6,8 @@ import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
 import '../update/firmware_update_flow.dart';
 import '../update/pump_firmware_update.dart';
+import '../widgets/ping_pong_indicator.dart';
+import 'error_codes_screen.dart';
 import 'starter_settings_screen.dart';
 
 Future<void> showPumpSettingsSheet(BuildContext context) {
@@ -329,6 +331,21 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
               ),
             ],
             const Divider(height: 28),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.numbers_rounded),
+              title: const Text('Error codes'),
+              subtitle: const Text('Tank LED blink meanings'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ErrorCodesScreen(),
+                  ),
+                );
+              },
+            ),
+            const Divider(height: 28),
             Text('Tank sensor', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             if (ready) ...[
@@ -520,9 +537,9 @@ class _TankPairDialog extends StatelessWidget {
               const Text(
                 'On the tank sensor, press and hold the button for about 3 seconds.',
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               if (session.tankPairing)
-                const LinearProgressIndicator()
+                const PingPongIndicator()
               else if (session.tankBound)
                 Text(
                   'Connected · #${session.tankIdHex.length >= 4 ? session.tankIdHex.substring(session.tankIdHex.length - 4).toUpperCase() : "----"}',

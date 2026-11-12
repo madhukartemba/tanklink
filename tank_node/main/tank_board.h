@@ -17,10 +17,8 @@ typedef struct {
 
 esp_err_t tank_board_init(void);
 void tank_board_read(tank_inputs_t *out);
-void tank_led_set(bool on);
-void tank_led_blink(int times, int on_ms, int off_ms);
-/** Pulse LED once briefly (TX activity). */
-void tank_led_tx_pulse(void);
+int tank_board_led_gpio(void);
+bool tank_board_button_down(void);
 
 /** Configure deep-sleep wake: floats HIGH, button LOW, plus timer. */
 void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec);
@@ -31,12 +29,17 @@ bool tank_board_woke_from_float(void);
 bool tank_board_woke_from_timer(void);
 
 /**
- * After a button wake: wait briefly and classify.
- * Returns hold_ms actually observed; *is_hold set if >= hold_threshold_ms.
- * Leaves when button released or hold confirmed.
+ * Track hold with optional progress callback (pct 0–100).
+ * *is_hold if held >= hold_threshold_ms (waits for release after).
+ * Short press: returns after release with *is_hold=false.
  */
 void tank_board_classify_button(uint32_t hold_threshold_ms, bool *is_hold,
-                               uint32_t *held_ms);
+                               uint32_t *held_ms,
+                               void (*on_progress)(uint8_t pct, void *ctx),
+                               void *ctx);
+
+/** Wait for a short click (press+release). Returns false on timeout. */
+bool tank_board_wait_click(uint32_t timeout_ms);
 
 #ifdef __cplusplus
 }

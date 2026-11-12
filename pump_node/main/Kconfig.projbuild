@@ -23,28 +23,36 @@ menu "Pump Board"
             Number of LEDs on the status strip (linear bar).
 
     config PUMP_ENABLE_BUTTON
-        bool "Enable local button"
+        bool "Enable local Start/Stop buttons"
         default y
         help
-            Momentary button for pairing hold.
+            Momentary Start and Stop. Hold both for BLE phone pairing.
 
-    config PUMP_BUTTON_GPIO
-        int "Button GPIO (pair hold / short = pump)"
+    config PUMP_BUTTON_START_GPIO
+        int "Start button GPIO"
         depends on PUMP_ENABLE_BUTTON
         range 0 21
         default 0
         help
-            Active-low to GND. Hold = pairing; short = pump toggle.
+            Active-low to GND. Short press = pump ON.
+
+    config PUMP_BUTTON_STOP_GPIO
+        int "Stop button GPIO"
+        depends on PUMP_ENABLE_BUTTON
+        range 0 21
+        default 1
+        help
+            Active-low to GND. Short press = pump OFF / exit BLE pairing.
 
     config PUMP_BUTTON_ACTIVE_LOW
-        bool "Button is active low"
+        bool "Buttons are active low"
         depends on PUMP_ENABLE_BUTTON
         default y
         help
-            Button to GND with internal pull-up (inverted).
+            Buttons to GND with internal pull-up (inverted).
 
     config PUMP_PAIRING_HOLD_MS
-        int "Hold time to enter pairing (ms)"
+        int "Hold both buttons to enter BLE pairing (ms)"
         depends on PUMP_ENABLE_BUTTON
         range 1000 15000
         default 5000

@@ -36,19 +36,19 @@ esp_err_t tank_board_init(void)
     };
     ESP_ERROR_CHECK(gpio_config(&in));
 
-    gpio_config_t led = {
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-        .pin_bit_mask = 1ULL << pin_led(),
-    };
-    ESP_ERROR_CHECK(gpio_config(&led));
-    gpio_set_level(pin_led(), 0);
-
     ESP_LOGI(TAG, "full=GPIO%d empty=GPIO%d btn=GPIO%d led=GPIO%d", pin_full(),
              pin_empty(), pin_btn(), pin_led());
     return ESP_OK;
+}
+
+int tank_board_led_gpio(void)
+{
+    return pin_led();
+}
+
+bool tank_board_button_down(void)
+{
+    return gpio_get_level(pin_btn()) == 0;
 }
 
 void tank_board_read(tank_inputs_t *out)
@@ -58,40 +58,11 @@ void tank_board_read(tank_inputs_t *out)
     }
     out->full = gpio_get_level(pin_full()) != 0;
     out->empty = gpio_get_level(pin_empty()) != 0;
-    out->button_down = gpio_get_level(pin_btn()) == 0;
-}
-
-void tank_led_set(bool on)
-{
-    gpio_set_level(pin_led(), on ? 1 : 0);
-}
-
-void tank_led_blink(int times, int on_ms, int off_ms)
-{
-    for (int i = 0; i < times; i++) {
-        tank_led_set(true);
-        vTaskDelay(pdMS_TO_TICKS(on_ms));
-        tank_led_set(false);
-        if (i + 1 < times) {
-            vTaskDelay(pdMS_TO_TICKS(off_ms));
-        }
-    }
-}
-
-void tank_led_tx_pulse(void)
-{
-    tank_led_set(true);
-    vTaskDelay(pdMS_TO_TICKS(40));
-    tank_led_set(false);
+    out->button_down = tank_board_button_down();
 }
 
 void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
 {
-    /*
-     * Level wake only if the pin is currently inactive — otherwise a floating
-     * pull-up (unwired float = HIGH) would prevent sleep / instant-wake.
-     * Unwired floats stuck HIGH → heartbeat-only until real floats are fitted.
-     */
     uint64_t wake_high = 0;
     if (gpio_get_level(pin_full()) == 0) {
         wake_high |= 1ULL << pin_full();
@@ -143,7 +114,6 @@ bool tank_board_woke_from_button(void)
     if (!(esp_sleep_get_wakeup_causes() & BIT(ESP_SLEEP_WAKEUP_GPIO))) {
         return false;
     }
-    /* After wake, button still held → likely button; floats are level-high. */
     return gpio_get_level(pin_btn()) == 0;
 }
 
@@ -162,7 +132,9 @@ bool tank_board_woke_from_timer(void)
 }
 
 void tank_board_classify_button(uint32_t hold_threshold_ms, bool *is_hold,
-                               uint32_t *held_ms)
+                               uint32_t *held_ms,
+                               void (*on_progress)(uint8_t pct, void *ctx),
+                               void *ctx)
 {
     if (is_hold) {
         *is_hold = false;
@@ -170,17 +142,25 @@ void tank_board_classify_button(uint32_t hold_threshold_ms, bool *is_hold,
     if (held_ms) {
         *held_ms = 0;
     }
+    if (hold_threshold_ms < 1) {
+        hold_threshold_ms = 1;
+    }
     uint32_t t0 = xTaskGetTickCount();
     while (gpio_get_level(pin_btn()) == 0) {
         uint32_t ms = (xTaskGetTickCount() - t0) * portTICK_PERIOD_MS;
         if (held_ms) {
             *held_ms = ms;
         }
+        if (on_progress) {
+            uint8_t pct = (uint8_t)((ms >= hold_threshold_ms)
+                                        ? 100
+                                        : (ms * 100u / hold_threshold_ms));
+            on_progress(pct, ctx);
+        }
         if (ms >= hold_threshold_ms) {
             if (is_hold) {
                 *is_hold = true;
             }
-            /* Wait for release so we don't re-wake immediately. */
             while (gpio_get_level(pin_btn()) == 0) {
                 vTaskDelay(pdMS_TO_TICKS(20));
             }
@@ -192,5 +172,27 @@ void tank_board_classify_button(uint32_t hold_threshold_ms, bool *is_hold,
     if (held_ms) {
         *held_ms = (xTaskGetTickCount() - t0) * portTICK_PERIOD_MS;
     }
-    vTaskDelay(pdMS_TO_TICKS(30)); /* debounce release */
+    vTaskDelay(pdMS_TO_TICKS(30));
+}
+
+bool tank_board_wait_click(uint32_t timeout_ms)
+{
+    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+    /* Wait for press */
+    while (xTaskGetTickCount() < deadline) {
+        if (gpio_get_level(pin_btn()) == 0) {
+            /* Debounce + wait release */
+            vTaskDelay(pdMS_TO_TICKS(30));
+            while (gpio_get_level(pin_btn()) == 0) {
+                if (xTaskGetTickCount() >= deadline) {
+                    return false;
+                }
+                vTaskDelay(pdMS_TO_TICKS(20));
+            }
+            vTaskDelay(pdMS_TO_TICKS(30));
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    return false;
 }

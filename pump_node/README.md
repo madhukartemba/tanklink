@@ -3,7 +3,7 @@
 TankLink pump controller — BLE GATT claim/pair, OnOff, settings, **BLE OTA**.
 
 - Advertise as `TankLink-XXXX` (MAC serial)
-- Unpaired: Claim while pairing window open (5s button hold)
+- Unpaired: Claim while BLE pairing window open (hold Start+Stop ~5 s)
 - Paired: Auth with token, then Cmd / Settings / OTA
 - Dual OTA partitions (`partitions_ota.csv`) — first install via USB
 - LoRa / relays: stub
