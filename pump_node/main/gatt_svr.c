@@ -269,7 +269,7 @@ static int append_tank_status(struct os_mbuf *om)
 
 static int append_settings(struct os_mbuf *om)
 {
-    /* auto_off(1)+run(4)+serial(5)+buzz(1)+tone(1)+led(1)+starter(1)+pulse_ms(2 LE) */
+    /* auto_off(1)+run(4)+serial(5)+buzz(1)+tone(1)+led(1)+starter(1)+pulse_ms(2 LE)+empty_float(1) */
     uint8_t auto_off = pump_config_auto_off_min();
     int rc = os_mbuf_append(om, &auto_off, 1);
     if (rc != 0) {
@@ -315,7 +315,12 @@ static int append_settings(struct os_mbuf *om)
     if (rc != 0) {
         return rc;
     }
-    return os_mbuf_append(om, pulse_le, 2);
+    rc = os_mbuf_append(om, pulse_le, 2);
+    if (rc != 0) {
+        return rc;
+    }
+    uint8_t empty_float = pump_config_empty_float();
+    return os_mbuf_append(om, &empty_float, 1);
 }
 
 static void refresh_connected_led(void)
@@ -483,7 +488,7 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         if (len < 1) {
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
         }
-        uint8_t buf[7] = {0};
+        uint8_t buf[8] = {0};
         uint16_t copy = len > sizeof(buf) ? sizeof(buf) : len;
         int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, copy, NULL);
         if (rc != 0) {
@@ -516,6 +521,13 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
                 return BLE_ATT_ERR_UNLIKELY;
             }
             ESP_LOGI(TAG, "relay pulse=%ums", (unsigned)pulse);
+        }
+        if (len >= 8) {
+            if (pump_config_set_empty_float(buf[7]) != ESP_OK) {
+                return BLE_ATT_ERR_UNLIKELY;
+            }
+            ESP_LOGI(TAG, "empty float %s", buf[7] ? "connected" : "ignored");
+            gatt_svr_notify_tank_if_subscribed();
         }
         ESP_LOGI(TAG, "auto-off set to %u min", buf[0]);
         return 0;

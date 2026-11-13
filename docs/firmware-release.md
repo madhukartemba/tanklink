@@ -47,6 +47,7 @@ idf.py build
 - From **0.2.5**: TX retries=5; unpaired = button-only sleep (no 10 min wake); **10 kΩ** on NSS+SCK+MOSI; battery divider **120 k/120 k**.
 - From **0.2.6**: LED **D5** + DIO0 **D4** (swapped off MTCK); soft breathe during BLE OTA.
 - From **0.2.7**: success/fail LED on every status TX again; short press during the BLE window sends LoRa again; hold still pairs.
+- From **0.2.8**: wake on any float change (both edges); tank sends raw FULL/EMPTY pin levels; interpretation and empty-float on/off are decided by the pump (Settings → Empty float, pump 0.8.2+).
 
 ## First flash after OTA partition change
 

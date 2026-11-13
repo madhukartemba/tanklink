@@ -32,6 +32,7 @@ static void load_defaults(pump_config_t *cfg)
     cfg->buzzer_tone = BUZZER_TONE_CLICK;
     cfg->led_brightness = PUMP_LED_BRIGHTNESS_DEFAULT;
     cfg->starter_type = PUMP_STARTER_NONE;
+    cfg->empty_float = 0;
     cfg->relay_pulse_ms = PUMP_RELAY_PULSE_MS_DEFAULT;
 }
 
@@ -263,11 +264,23 @@ esp_err_t pump_config_set_relay_pulse_ms(uint16_t ms)
     return err;
 }
 
+uint8_t pump_config_empty_float(void)
+{
+    return s_cfg.empty_float ? 1 : 0;
+}
+
+esp_err_t pump_config_set_empty_float(uint8_t connected)
+{
+    s_cfg.empty_float = connected ? 1 : 0;
+    return pump_config_set(&s_cfg);
+}
+
 void pump_config_log(void)
 {
     ESP_LOGI(TAG,
-             "empty=%ucm full=%ucm auto_off=%umin buzz_flags=0x%02x tone=%u led=%u starter=%u pulse=%ums",
+             "empty=%ucm full=%ucm auto_off=%umin buzz_flags=0x%02x tone=%u led=%u starter=%u pulse=%ums empty_float=%u",
              s_cfg.dist_empty_cm, s_cfg.dist_full_cm, s_cfg.auto_off_min,
              s_cfg.buzzer_flags, s_cfg.buzzer_tone, s_cfg.led_brightness,
-             s_cfg.starter_type, (unsigned)pump_config_relay_pulse_ms());
+             s_cfg.starter_type, (unsigned)pump_config_relay_pulse_ms(),
+             s_cfg.empty_float);
 }

@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 #include "gatt_svr.h"
 #include "nvs.h"
+#include "pump_config.h"
 #include "pump_errors.h"
 #include "pump_pair.h"
 #include "relay_control.h"
@@ -517,7 +518,18 @@ const uint8_t *lora_link_tank_ble_token(void)
 }
 uint8_t lora_link_tank_flags(void)
 {
-    return s_flags;
+    /* Tank sends raw pin levels (bit set = pin HIGH). This is the level the
+     * app should show, using the empty-float setting stored on the pump. */
+    const uint8_t raw = s_flags;
+    uint8_t out = raw & (uint8_t)(TANKLINK_LORA_FLAG_BTN | TANKLINK_LORA_FLAG_PAIRING);
+    const bool pin_full_high = (raw & TANKLINK_LORA_FLAG_FULL) != 0;
+    const bool pin_empty_high = (raw & TANKLINK_LORA_FLAG_EMPTY) != 0;
+    if (pin_full_high) {
+        out |= TANKLINK_LORA_FLAG_FULL;
+    } else if (pump_config_empty_float() && !pin_empty_high) {
+        out |= TANKLINK_LORA_FLAG_EMPTY;
+    }
+    return out;
 }
 uint8_t lora_link_tank_battery_pct(void)
 {

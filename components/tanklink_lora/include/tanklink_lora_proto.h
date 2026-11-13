@@ -16,6 +16,7 @@ extern "C" {
 #define TANKLINK_LORA_TYPE_PAIR 0x02
 #define TANKLINK_LORA_TYPE_ACK 0x03
 
+/** Raw float pin levels: bit set when that pin is HIGH (internal pull-up). */
 #define TANKLINK_LORA_FLAG_FULL (1u << 0)
 #define TANKLINK_LORA_FLAG_EMPTY (1u << 1)
 #define TANKLINK_LORA_FLAG_BTN (1u << 2)

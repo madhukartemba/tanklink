@@ -117,8 +117,8 @@ class ErrorCodesScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Optional. Tank firmware leaves it disabled by default so an unwired pin does not always show Empty. '
-            'Enable CONFIG_TANK_ENABLE_EMPTY_FLOAT only if you wire the empty float.',
+            'Optional. Settings → Empty float is stored on the pump. '
+            'Off ignores that pin. On: both pins high is full, empty pin low is almost empty.',
             style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
           ),
           const SizedBox(height: 16),

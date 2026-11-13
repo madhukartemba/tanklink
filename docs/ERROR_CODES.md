@@ -47,7 +47,7 @@ Hold **Start + Stop** for BLE pairing (~5 s, blue progress), then **keep holdi
 
 ## Almost-empty float (optional)
 
-The almost-empty float is **optional**. Tank firmware defaults to **disabled** (`CONFIG_TANK_ENABLE_EMPTY_FLOAT=n`). Enable it only if you wire the empty float; an unwired pin with pull-up would otherwise always look Empty. Full float remains required for auto-stop.
+The almost-empty float is **optional**. The tank always sends both pin levels. Settings → Empty float is stored on the pump: off ignores the empty pin; on treats both pins high as full and the empty pin low as almost empty. Full still stops the pump.
 
 ## Pump / app (BLE)
 

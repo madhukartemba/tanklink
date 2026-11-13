@@ -40,21 +40,12 @@ static inline bool tank_boot_pins_ok(void)
 
 static inline void tank_boot_pins_log(const char *tag)
 {
-#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
     ESP_LOGI(tag,
              "pins bat=%d btn=%d full=%d empty=%d led=%d | lora sck=%d miso=%d mosi=%d cs=%d rst=%d dio0=%d",
              CONFIG_TANK_BAT_ADC_GPIO, CONFIG_TANK_BUTTON_GPIO, CONFIG_TANK_FLOAT_FULL_GPIO,
              CONFIG_TANK_FLOAT_EMPTY_GPIO, CONFIG_TANK_LED_GPIO, CONFIG_TANK_LORA_SCK_GPIO,
              CONFIG_TANK_LORA_MISO_GPIO, CONFIG_TANK_LORA_MOSI_GPIO, CONFIG_TANK_LORA_CS_GPIO,
              CONFIG_TANK_LORA_RST_GPIO, CONFIG_TANK_LORA_DIO0_GPIO);
-#else
-    ESP_LOGI(tag,
-             "pins bat=%d btn=%d full=%d empty=off led=%d | lora sck=%d miso=%d mosi=%d cs=%d rst=%d dio0=%d",
-             CONFIG_TANK_BAT_ADC_GPIO, CONFIG_TANK_BUTTON_GPIO, CONFIG_TANK_FLOAT_FULL_GPIO,
-             CONFIG_TANK_LED_GPIO, CONFIG_TANK_LORA_SCK_GPIO, CONFIG_TANK_LORA_MISO_GPIO,
-             CONFIG_TANK_LORA_MOSI_GPIO, CONFIG_TANK_LORA_CS_GPIO, CONFIG_TANK_LORA_RST_GPIO,
-             CONFIG_TANK_LORA_DIO0_GPIO);
-#endif
     ESP_LOGI(tag, "HW: 10k NSS+SCK+MOSI→3V3; LED D5, DIO0 D4 (LED off MTCK)");
     if (!tank_boot_pins_ok()) {
         ESP_LOGE(tag, "INVALID: LoRa MISO/MOSI/CS on GPIO9 (BOOT) — move MISO to D6/GPIO21");

@@ -1,21 +1,27 @@
 menu "TankLink Tank Node"
 
     config TANK_FLOAT_FULL_GPIO
-        int "Float FULL GPIO (HIGH = full / disconnect)"
+        int "Float FULL GPIO (pulled up, raw level)"
         range 0 21
         default 4
+        help
+            Internal pull-up. Firmware sends the raw level. The pump setting
+            decides what HIGH and LOW mean.
 
     config TANK_ENABLE_EMPTY_FLOAT
-        bool "Enable almost-empty float switch"
+        bool "Read the empty float pin"
         default y
         help
-            HIGH = almost empty or disconnect (fail-safe). Default D3/GPIO5.
+            Both float pins are pulled up and their raw levels are always sent.
+            Whether the empty pin counts is a pump setting from the app.
 
     config TANK_FLOAT_EMPTY_GPIO
-        int "Float ALMOST EMPTY GPIO (HIGH = empty / disconnect)"
-        depends on TANK_ENABLE_EMPTY_FLOAT
+        int "Float EMPTY GPIO (pulled up, raw level)"
         range 0 21
         default 5
+        help
+            Internal pull-up. Default D3/GPIO5. The app can tell the pump to
+            ignore this pin when the sensor is not wired.
 
     config TANK_BUTTON_GPIO
         int "Button GPIO (to GND, active low)"

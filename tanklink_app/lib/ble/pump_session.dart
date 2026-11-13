@@ -105,6 +105,8 @@ class PumpSession extends ChangeNotifier {
   int ledBrightness = 70; // 1-100
   int starterType = TankLinkUuids.starterNone;
   int relayPulseMs = TankLinkUuids.relayPulseMsDefault;
+  /// Pump NVS: empty float is wired. The pump applies this; the app only writes it.
+  bool emptyFloatConnected = false;
   bool connecting = false;
   bool connectFailed = false;
   bool scanning = false;
@@ -168,7 +170,8 @@ class PumpSession extends ChangeNotifier {
 
   String get tankLevelLabel {
     if (tankFull) return 'Full';
-    if (tankEmpty) return 'Empty';
+    if (tankEmpty) return 'Almost empty';
+    if (emptyFloatConnected) return 'Half full';
     return 'Ok';
   }
 
@@ -576,6 +579,9 @@ class PumpSession extends ChangeNotifier {
               )
               .toInt();
         }
+        if (bytes.length >= 17) {
+          emptyFloatConnected = bytes[16] != 0;
+        }
       } catch (_) {}
     }
   }
@@ -640,6 +646,7 @@ class PumpSession extends ChangeNotifier {
     int? brightness,
     int? starter,
     int? pulseMs,
+    bool? emptyFloat,
   }) async {
     if (_settings == null || !authed) {
       status = 'Not connected';
@@ -655,8 +662,9 @@ class PumpSession extends ChangeNotifier {
       TankLinkUuids.relayPulseMsMin,
       TankLinkUuids.relayPulseMsMax,
     );
+    final empty = emptyFloat ?? emptyFloatConnected;
     await _settings!.write(
-      [m, f, t, b, s, p & 0xff, (p >> 8) & 0xff],
+      [m, f, t, b, s, p & 0xff, (p >> 8) & 0xff, empty ? 1 : 0],
       withoutResponse: false,
     );
     autoOffMin = m;
@@ -665,6 +673,7 @@ class PumpSession extends ChangeNotifier {
     ledBrightness = b;
     starterType = s;
     relayPulseMs = p;
+    emptyFloatConnected = empty;
     notifyListeners();
   }
 
@@ -675,6 +684,12 @@ class PumpSession extends ChangeNotifier {
 
   Future<void> setLedBrightness(int percent) async {
     await _writeSettings(brightness: percent.clamp(1, 100));
+  }
+
+  Future<void> setEmptyFloatConnected(bool connected) async {
+    await _writeSettings(emptyFloat: connected);
+    status = connected ? 'Empty float connected' : 'Empty float ignored';
+    notifyListeners();
   }
 
   Future<void> setStarterType(int type) async {

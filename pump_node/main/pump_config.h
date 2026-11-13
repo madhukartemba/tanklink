@@ -33,7 +33,8 @@ typedef struct {
     uint8_t buzzer_tone;  /* buzzer_tone_t */
     uint8_t led_brightness; /* 1-100; 0 treated as default on load */
     uint8_t starter_type;   /* pump_starter_type_t */
-    uint8_t reserved_u8[3];
+    uint8_t empty_float;    /* 1 = empty float is wired; 0 = ignore that pin */
+    uint8_t reserved_u8[2];
     uint32_t relay_pulse_ms; /* 50-2000; 0 = default on load */
     uint32_t reserved;
 } pump_config_t;
@@ -66,6 +67,10 @@ esp_err_t pump_config_set_starter_type(uint8_t type);
 
 uint16_t pump_config_relay_pulse_ms(void);
 esp_err_t pump_config_set_relay_pulse_ms(uint16_t ms);
+
+/** 1 when the empty float is wired. When 0, callers must ignore that pin. */
+uint8_t pump_config_empty_float(void);
+esp_err_t pump_config_set_empty_float(uint8_t connected);
 
 void pump_config_log(void);
 

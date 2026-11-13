@@ -10,8 +10,8 @@ extern "C" {
 #endif
 
 typedef struct {
-    bool full;  /* HIGH = full / disconnect */
-    bool empty; /* HIGH = empty / disconnect; always false if empty float disabled */
+    bool full;  /* raw FULL pin; true when HIGH (pull-up, switch open) */
+    bool empty; /* raw EMPTY pin; true when HIGH. Meaning is decided on the pump. */
     bool button_down; /* true while held (active low) */
 } tank_inputs_t;
 
@@ -22,7 +22,7 @@ bool tank_board_button_down(void);
 
 /**
  * Configure deep-sleep wake sources.
- * heartbeat_sec > 0: timer + float edges + button (paired).
+ * heartbeat_sec > 0: timer + float state-change (opposite level) + button (paired).
  * heartbeat_sec == 0: button only (unpaired — no 10 min wakes).
  */
 void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec);

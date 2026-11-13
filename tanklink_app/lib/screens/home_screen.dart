@@ -406,7 +406,9 @@ class _TankHero extends StatelessWidget {
     } else if (session.tankFull) {
       title = 'Full';
     } else if (session.tankEmpty) {
-      title = 'Empty';
+      title = 'Almost empty';
+    } else if (session.emptyFloatConnected) {
+      title = 'Half full';
     } else {
       title = 'Ready';
     }
@@ -417,7 +419,9 @@ class _TankHero extends StatelessWidget {
     } else if (session.tankFull) {
       subtitle = 'Pump stays off while full';
     } else if (session.tankEmpty) {
-      subtitle = 'Almost empty (optional float)';
+      subtitle = 'Almost empty';
+    } else if (session.emptyFloatConnected) {
+      subtitle = 'Not empty';
     } else {
       subtitle = 'Level looks good';
     }

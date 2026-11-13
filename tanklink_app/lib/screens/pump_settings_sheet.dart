@@ -232,6 +232,44 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                     },
             ),
             const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.water_drop_outlined, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Empty float',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        !ready
+                            ? 'Connect to change'
+                            : session.emptyFloatConnected
+                                ? 'Connected'
+                                : 'Not connected — pump ignores it',
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: session.emptyFloatConnected,
+                  onChanged: !ready
+                      ? null
+                      : (v) => session.setEmptyFloatConnected(v),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             _LedBrightnessTile(ready: ready),
             const SizedBox(height: 8),
             Row(

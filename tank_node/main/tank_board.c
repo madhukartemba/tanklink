@@ -12,12 +12,10 @@ static int pin_full(void)
 {
     return CONFIG_TANK_FLOAT_FULL_GPIO;
 }
-#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
 static int pin_empty(void)
 {
     return CONFIG_TANK_FLOAT_EMPTY_GPIO;
 }
-#endif
 static int pin_btn(void)
 {
     return CONFIG_TANK_BUTTON_GPIO;
@@ -29,10 +27,7 @@ static int pin_led(void)
 
 esp_err_t tank_board_init(void)
 {
-    uint64_t mask = (1ULL << pin_full()) | (1ULL << pin_btn());
-#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
-    mask |= (1ULL << pin_empty());
-#endif
+    uint64_t mask = (1ULL << pin_full()) | (1ULL << pin_empty()) | (1ULL << pin_btn());
     gpio_config_t in = {
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
@@ -42,13 +37,8 @@ esp_err_t tank_board_init(void)
     };
     ESP_ERROR_CHECK(gpio_config(&in));
 
-#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
-    ESP_LOGI(TAG, "full=GPIO%d empty=GPIO%d btn=GPIO%d led=GPIO%d", pin_full(),
-             pin_empty(), pin_btn(), pin_led());
-#else
-    ESP_LOGI(TAG, "full=GPIO%d empty=disabled btn=GPIO%d led=GPIO%d", pin_full(),
-             pin_btn(), pin_led());
-#endif
+    ESP_LOGI(TAG, "full=GPIO%d empty=GPIO%d (both pull-up) btn=GPIO%d led=GPIO%d",
+             pin_full(), pin_empty(), pin_btn(), pin_led());
     return ESP_OK;
 }
 
@@ -68,23 +58,26 @@ void tank_board_read(tank_inputs_t *out)
         return;
     }
     out->full = gpio_get_level(pin_full()) != 0;
-#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
     out->empty = gpio_get_level(pin_empty()) != 0;
-#else
-    out->empty = false;
-#endif
     out->button_down = tank_board_button_down();
+}
+
+static void arm_level(uint64_t mask, esp_sleep_gpio_wake_up_mode_t mode, const char *what)
+{
+    if (mask == 0) {
+        return;
+    }
+    esp_err_t err = esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(mask, mode);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "%s wake enable failed: %s", what, esp_err_to_name(err));
+    }
 }
 
 void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
 {
     /* Button wake always (pair / OTA / manual TX). */
     if (gpio_get_level(pin_btn()) != 0) {
-        esp_err_t err = esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(
-            1ULL << pin_btn(), ESP_GPIO_WAKEUP_GPIO_LOW);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "button wake enable failed: %s", esp_err_to_name(err));
-        }
+        arm_level(1ULL << pin_btn(), ESP_GPIO_WAKEUP_GPIO_LOW, "button");
     } else {
         ESP_LOGW(TAG, "button wake skipped (held or stuck LOW)");
     }
@@ -95,24 +88,24 @@ void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
         return;
     }
 
+    /* C3 deep-sleep GPIO wake is level-only. Arm the opposite of the level
+     * sampled now so the next change (either way) wakes the chip. */
     uint64_t wake_high = 0;
+    uint64_t wake_low = 0;
     if (gpio_get_level(pin_full()) == 0) {
         wake_high |= 1ULL << pin_full();
+    } else {
+        wake_low |= 1ULL << pin_full();
     }
-#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
     if (gpio_get_level(pin_empty()) == 0) {
         wake_high |= 1ULL << pin_empty();
-    }
-#endif
-    if (wake_high) {
-        esp_err_t err = esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(
-            wake_high, ESP_GPIO_WAKEUP_GPIO_HIGH);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "float wake enable failed: %s", esp_err_to_name(err));
-        }
     } else {
-        ESP_LOGI(TAG, "float wake skipped (pins already HIGH / unwired)");
+        wake_low |= 1ULL << pin_empty();
     }
+    arm_level(wake_high, ESP_GPIO_WAKEUP_GPIO_HIGH, "float-high");
+    arm_level(wake_low, ESP_GPIO_WAKEUP_GPIO_LOW, "float-low");
+    ESP_LOGI(TAG, "float wake opposite: high_mask=0x%llx low_mask=0x%llx",
+             (unsigned long long)wake_high, (unsigned long long)wake_low);
 
     if (heartbeat_sec < 5) {
         heartbeat_sec = 5;
@@ -149,14 +142,8 @@ bool tank_board_woke_from_float(void)
     if (gpio_get_level(pin_btn()) == 0) {
         return false;
     }
-    if (gpio_get_level(pin_full()) != 0) {
-        return true;
-    }
-#if CONFIG_TANK_ENABLE_EMPTY_FLOAT
-    return gpio_get_level(pin_empty()) != 0;
-#else
-    return false;
-#endif
+    /* Either edge is a float wake. The button path owns a held button. */
+    return true;
 }
 
 bool tank_board_woke_from_timer(void)
