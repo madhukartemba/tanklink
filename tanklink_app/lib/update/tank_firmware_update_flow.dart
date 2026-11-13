@@ -131,7 +131,7 @@ Future<void> showTankFirmwareConfirmSheet(BuildContext context) async {
             if (!session.tankOtaReady) ...[
               const SizedBox(height: 8),
               Text(
-                'Re-pair the tank sensor first so the phone can authenticate OTA.',
+                'Set up the tank again first, so your phone is allowed to update it.',
                 style: TextStyle(color: scheme.error, height: 1.35),
               ),
             ],
@@ -145,7 +145,7 @@ Future<void> showTankFirmwareConfirmSheet(BuildContext context) async {
                 ),
               ),
               child: Text(
-                !session.tankOtaReady ? 'Re-pair tank first' : 'Update now',
+                !session.tankOtaReady ? 'Set up tank again first' : 'Update now',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
@@ -182,7 +182,7 @@ Future<void> runTankFirmwareUpdate(BuildContext context) async {
   }
   if (!session.tankOtaReady) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Re-pair the tank sensor to enable updates')),
+      const SnackBar(content: Text('Set up the tank sensor again to allow updates')),
     );
     return;
   }
@@ -339,7 +339,7 @@ class _TankOtaProgressDialogState extends State<_TankOtaProgressDialog> {
                 style: TextStyle(color: scheme.error),
               ),
             if (done)
-              const Text('Tank will wake on the next heartbeat or button press.'),
+              const Text('The tank wakes up when you press its button.'),
           ],
         ),
         actions: [

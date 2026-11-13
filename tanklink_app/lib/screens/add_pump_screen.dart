@@ -182,7 +182,7 @@ class _SignalBars extends StatelessWidget {
     const heights = [6.0, 10.0, 14.0, 18.0];
 
     return Tooltip(
-      message: '$rssi dBm',
+      message: 'Signal strength',
       child: SizedBox(
         width: 22,
         height: 18,

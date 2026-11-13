@@ -48,7 +48,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
         SnackBar(
           content: Text(
             _draftType == TankLinkUuids.starterTwoButton
-                ? 'Saved · two-button · $_draftPulseMs ms'
+                ? 'Saved · Start and Stop · $_draftPulseMs ms'
                 : 'Saved · starter not configured',
           ),
         ),
@@ -81,7 +81,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
           Text(
-            'How TankLink drives the pump motor starter. Pick the profile that '
+            'How the app turns the pump motor on and off. Pick the option that '
             'matches your panel, then confirm.',
             style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14),
           ),
@@ -89,7 +89,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
           _StarterOption(
             selected: _draftType == TankLinkUuids.starterNone,
             title: 'Not configured',
-            subtitle: 'App on/off only — no relay pulses',
+            subtitle: 'App on/off only',
             onTap: _saving
                 ? null
                 : () => setState(() => _draftType = TankLinkUuids.starterNone),
@@ -97,7 +97,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
           _StarterOption(
             selected: twoButton,
             title: 'Two-button starter',
-            subtitle: 'Momentary Start + Stop via two relays',
+            subtitle: 'Presses the Start and Stop buttons',
             onTap: _saving
                 ? null
                 : () => setState(
@@ -107,15 +107,15 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
           if (twoButton) ...[
             const SizedBox(height: 12),
             Text(
-              'Pulse length',
+              'Press length',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
             ),
             const SizedBox(height: 4),
             Text(
-              'How long Start/Stop relays stay closed. Increase if the '
-              'contactor doesn’t pick up; decrease if a short press is enough.',
+              'How long each button press lasts. Increase it if the motor does '
+              'not switch on; decrease it if a short press is enough.',
               style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
             ),
             const SizedBox(height: 4),
@@ -166,60 +166,50 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Wiring',
+              'Wiring help',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
             ),
             const SizedBox(height: 6),
             Text(
-              'On a typical direct-on-line panel, Start is normally open '
-              '(open until pressed) and Stop is normally closed (closed until '
-              'pressed), with a holding contact across Start. TankLink only '
-              'mimics those two buttons.',
+              'On a common motor panel, Start is open until pressed and Stop is '
+              'closed until pressed. A holding contact keeps the motor running '
+              'after Start is let go. The app only presses those two buttons for you.',
               style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
             ),
             const SizedBox(height: 12),
             _WiringCard(
-              title: 'Relay A — START',
-              body: 'Use a dry-contact pair that is normally open '
-                  '(open when the relay is off).\n\n'
-                  'Wire those contacts in parallel with the panel’s Start '
-                  'pushbutton (across the same two Start terminals).\n\n'
-                  'Closing Relay A is the same as pressing Start. The '
-                  'existing holding contact still seals the contactor in '
-                  'after the pulse ends.',
+              title: 'Start connection',
+              body: 'Use a switch that is open when the app is not pressing it.\n\n'
+                  'Wire it across the same two terminals as the panel’s Start button.\n\n'
+                  'When the app presses Start, the switch closes, just like pushing '
+                  'the button. The panel’s holding contact keeps the motor running '
+                  'after the press ends.',
             ),
             const SizedBox(height: 10),
             _WiringCard(
-              title: 'Relay B — STOP',
-              body: 'Use a dry-contact pair that is normally closed '
-                  '(closed when the relay is off). Many changeover relays '
-                  'provide this; a module with only normally-open contacts '
-                  'will not work for Stop.\n\n'
-                  'Wire those normally-closed contacts in series with the '
-                  'panel’s Stop pushbutton (same control loop that feeds '
-                  'the coil).\n\n'
-                  'At rest the relay is off, the contacts stay closed, and '
-                  'the circuit can run. Turning Relay B on opens those '
-                  'contacts — same as pressing Stop.\n\n'
-                  'Do not put normally-open contacts of Relay B in series: '
-                  'at rest they would be open and the starter could never '
-                  'seal in. Do not wire Relay B across / parallel to the '
-                  'Stop button — that cannot open a normally-closed Stop '
-                  'path.',
+              title: 'Stop connection',
+              body: 'Use a switch that is closed when the app is not pressing it. '
+                  'Some two-way switches work this way; a switch that is only open '
+                  'when idle will not work for Stop.\n\n'
+                  'Wire it in series with the panel’s Stop button, so it can open '
+                  'the same circuit.\n\n'
+                  'When the app is not pressing Stop, the switch stays closed and the '
+                  'motor can run. When the app presses Stop, the switch opens, just '
+                  'like pushing the button.\n\n'
+                  'Do not wire it in a way that is open when idle, or the motor could '
+                  'never keep running. Do not wire it in parallel with the Stop button.',
             ),
             const SizedBox(height: 10),
             _WiringCard(
-              title: 'Control behaviour',
-              body: 'On → short pulse on Relay A (Start).\n'
-                  'Off → short pulse on Relay B (Stop).\n'
-                  'Boot / reboot → Stop is pulsed first for safety.\n'
-                  'Firmware update, pairing, and unpair also force Stop and '
-                  'block Start.\n\n'
-                  'Relay pins are not assigned on this firmware build yet '
-                  '(placeholders). Choosing this profile stores the type in '
-                  'the pump so it matches when the board pins are wired.',
+              title: 'How it works',
+              body: 'Turn on → the app presses Start.\n'
+                  'Turn off → the app presses Stop.\n'
+                  'When the pump restarts → it presses Stop first, for safety.\n'
+                  'During an update or setup → the pump stops and will not start.\n\n'
+                  'The pump pins for these connections are not set up in this version yet. '
+                  'Choosing this option saves it on the pump for later.',
             ),
             const SizedBox(height: 10),
             Container(
@@ -229,10 +219,9 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
-                'Mains / motor control is hazardous. Isolate power before '
-                'wiring. Keep TankLink on the low-voltage control side with '
-                'dry contacts only — never switch the motor mains through '
-                'the TankLink board.',
+                'Working with motor power is dangerous. Turn off the power before '
+                'wiring. Only connect the low-voltage control side, and never run '
+                'the motor’s power through the TankLink board.',
                 style: TextStyle(
                   color: scheme.onErrorContainer,
                   fontSize: 13,

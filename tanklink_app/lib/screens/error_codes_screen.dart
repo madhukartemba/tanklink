@@ -1,38 +1,39 @@
 import 'package:flutter/material.dart';
 
-/// Mirrors docs/ERROR_CODES.md — keep in sync when adding LED codes.
+/// Keep in sync with docs/ERROR_CODES.md when adding light codes.
 class ErrorCodesScreen extends StatelessWidget {
   const ErrorCodesScreen({super.key});
 
   static const _tankCodes = <({int code, String name, String detail})>[
     (
       code: 1,
-      name: 'Not paired',
+      name: 'Not set up',
       detail:
-          'Short press while the tank is not paired. Open Pair tank sensor on the pump, then hold the tank button ~3 seconds.',
+          'The tank was pressed but is not connected to a pump yet. '
+          'Start setup on the pump, then hold the tank button for about 3 seconds.',
     ),
     (
       code: 2,
-      name: 'LoRa missing',
-      detail: 'The radio did not start. Check RA-02 wiring and 3V3 power.',
+      name: 'Radio problem',
+      detail: 'The tank’s radio did not start. Check its wiring and power.',
     ),
     (
       code: 3,
-      name: 'No ACK',
+      name: 'Pump not answering',
       detail:
-          'After wake (heartbeat, float, or button), the tank sent status but got no pump ACK within retries. '
-          'LED shows this code as long hard blinks. Check range, power, and that this tank is still bound.',
+          'The tank sent a message but the pump did not reply. '
+          'Check the distance and power, and make sure this tank is still set up with this pump.',
     ),
     (
       code: 4,
-      name: 'Pairing cancelled',
-      detail: 'You pressed the button once during pairing mode to cancel.',
+      name: 'Setup cancelled',
+      detail: 'You pressed the button once during setup to cancel.',
     ),
     (
       code: 5,
-      name: 'Pairing timed out',
+      name: 'Setup timed out',
       detail:
-          'No successful pair ACK within the pairing window (~30s). Start Pair tank sensor again and retry the hold.',
+          'The pump did not confirm setup in time. Start setup again and hold the button.',
     ),
   ];
 
@@ -41,29 +42,32 @@ class ErrorCodesScreen extends StatelessWidget {
       code: 1,
       name: 'Tank full',
       detail:
-          'Start denied because the tank reports full. The pump also stops if a full packet arrives while running.',
+          'The pump will not start because the tank is full. '
+          'It also stops if the tank becomes full while it is running.',
     ),
     (
       code: 2,
-      name: 'LoRa missing',
-      detail: 'RA-02 did not initialize at boot. Check radio wiring and power.',
+      name: 'Radio problem',
+      detail: 'The pump’s radio did not start. Check its wiring and power.',
     ),
     (
       code: 3,
-      name: 'Tank offline',
+      name: 'Tank out of range',
       detail:
-          'Bound tank missed its heartbeat. Check tank power, antenna, and range. Clears when a packet returns.',
+          'The pump has not heard from the tank for a while. '
+          'Check the tank’s power and distance. This clears when the tank is heard again.',
     ),
     (
       code: 4,
-      name: 'Blocked',
-      detail: 'Start denied during firmware update or BLE pairing lockout.',
+      name: 'Busy',
+      detail: 'The pump cannot start during an update or setup. Try again in a moment.',
     ),
     (
       code: 5,
-      name: 'Not paired',
+      name: 'Not set up',
       detail:
-          'Local Start was held while this pump has no phone owner. Claim it from the app first.',
+          'The start button was pressed, but this pump is not connected to a phone yet. '
+          'Set it up in the app first.',
     ),
   ];
 
@@ -71,66 +75,72 @@ class ErrorCodesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Error codes')),
+      appBar: AppBar(title: const Text('Warnings and lights')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
         children: [
           Text(
-            'Tank sensor LED',
+            'Tank light',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 6),
           Text(
-            'Long hard blinks (not soft pulses), twice, with a pause between groups. '
-            'Short press: one blink (BLE update window). Pairing: soft breathing. TX success: one soft pulse; failure uses the numbered blink code.',
+            'The light blinks slowly in groups of long blinks, with a pause between groups. '
+            'One short press gives a single blink. Setup shows a slow glow. '
+            'A successful send gives one soft flash.',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
           for (final e in _tankCodes) _CodeCard(entry: e, scheme: scheme),
           const SizedBox(height: 20),
           Text(
-            'Pump NeoPixel',
+            'Pump light',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 6),
           Text(
-            'Same pattern: N long hard red blinks, pause, repeat. The app also shows the last pump code on the home screen.',
+            'Red blinks, with the number of blinks showing the warning. '
+            'The app also shows the latest warning on the home screen.',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
           for (final e in _pumpCodes) _CodeCard(entry: e, scheme: scheme),
           const SizedBox(height: 20),
           Text(
-            'Factory reset',
+            'Reset the pump',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 6),
           Text(
-            'Hold Start+Stop ~5 s for BLE pairing (blue), then keep holding ~10 s more (red progress). '
-            'Or use Settings → Factory reset and type RESET. Clears pairing, tank bind, and settings, then reboots.',
+            'Hold the Start and Stop buttons on the pump for about 5 seconds to start setup (blue light). '
+            'Keep holding for about 10 more seconds to reset it (red light fills up). '
+            'Or go to Settings, then Factory reset, and type RESET.',
             style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
           ),
           const SizedBox(height: 16),
           Text(
-            'Almost-empty float',
+            'Almost-empty sensor',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 6),
           Text(
-            'Optional. Settings → Empty float is stored on the pump. '
-            'Off ignores that pin. On: both pins high is full, empty pin low is almost empty.',
+            'This is optional. Turn it on or off in Settings, under Tank sensor. '
+            'When it is off, the pump only uses the full sensor. '
+            'When it is on, both sensors connected and high means full. '
+            'Full sensor low with the almost-empty sensor high means half full. '
+            'Both low means almost empty.',
             style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
           ),
           const SizedBox(height: 16),
           Text(
-            'Pairing tip',
+            'Setup tip',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 6),
           Text(
-            'Hold the tank button to ramp the LED, then keep holding until breathing flash starts. '
-            'Press once to cancel. Short press or heartbeat TX: one soft pulse on success, code 3 blinks on failure. '
-            'Hold still works during the short awake window after a press.',
+            'Hold the tank button until the light glows steadily, then keep holding until it starts to glow and fade. '
+            'Press once to cancel. A short press gives one soft flash if it works, '
+            'or code 3 blinks if the pump does not answer.',
             style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
           ),
         ],

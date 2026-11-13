@@ -66,14 +66,14 @@ class _PairTankPromptScreenState extends State<PairTankPromptScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              '$pumpName has no tank sensor yet. Pair one now so the pump can '
-              'see tank full / empty and stop safely when the tank is full.',
+              '$pumpName has no tank sensor yet. Set one up now so the pump can '
+              'know when the tank is full and stop before it overflows.',
               style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
             ),
             const SizedBox(height: 16),
             Text(
-              'You will hold the tank button for about 3 seconds while the LED '
-              'ramps up, then wait for a breathing flash until pairing finishes.',
+              'You will hold the tank button for about 3 seconds while its light '
+              'gets brighter, then wait for it to glow and fade until setup finishes.',
               style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
             ),
             if (_error != null) ...[
@@ -121,8 +121,8 @@ class _ListeningDialog extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'On the tank sensor, press and hold until the LED is fully bright '
-                'and starts breathing. Press once to cancel on the tank.',
+                'On the tank, press and hold the button until its light is fully '
+                'bright and starts to glow and fade. Press once to cancel on the tank.',
               ),
               const SizedBox(height: 16),
               if (session.tankPairing) const LinearProgressIndicator(),

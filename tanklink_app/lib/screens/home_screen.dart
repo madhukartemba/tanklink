@@ -415,7 +415,7 @@ class _TankHero extends StatelessWidget {
 
     final String subtitle;
     if (offline) {
-      subtitle = 'No recent heartbeat';
+      subtitle = 'No recent news from the tank';
     } else if (session.tankFull) {
       subtitle = 'Pump stays off while full';
     } else if (session.tankEmpty) {
@@ -492,9 +492,7 @@ class _TankHero extends StatelessWidget {
                       icon: Icons.signal_cellular_alt_rounded,
                       label: 'Signal',
                       value: offline ? 'Offline' : session.tankSignalLabel,
-                      detail: (!offline && session.tankRssiDbm != null)
-                          ? '${session.tankRssiDbm} dBm'
-                          : '—',
+                      detail: offline ? '—' : session.tankAgeLabel,
                       progress: offline ? 0 : session.tankSignalQuality,
                       accent: offline ? scheme.error : accent,
                       compact: tight,

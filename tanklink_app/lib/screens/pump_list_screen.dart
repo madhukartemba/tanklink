@@ -41,7 +41,7 @@ class PumpListScreen extends StatelessWidget {
                     const Text('No pumps yet'),
                     const SizedBox(height: 8),
                     Text(
-                      'Put the C3 in pairing mode (hold Start+Stop 5s), then add it.',
+                      'Put the pump in setup mode (hold Start and Stop for about 5 seconds), then add it.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: scheme.onSurfaceVariant),
                     ),

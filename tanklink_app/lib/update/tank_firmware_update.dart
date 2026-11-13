@@ -225,7 +225,7 @@ class TankFirmwareUpdate extends ChangeNotifier {
       final bytes = Uint8List.fromList(chunks);
       final digest = sha256.convert(bytes).toString();
       if (digest != latestSha256) {
-        throw StateError('Downloaded tank firmware failed integrity check');
+        throw StateError('The tank update download was damaged. Try again.');
       }
       final dir = await getApplicationSupportDirectory();
       final outDir = Directory(p.join(dir.path, 'firmware'));

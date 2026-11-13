@@ -221,13 +221,13 @@ class PumpSession extends ChangeNotifier {
       case TankLinkUuids.pumpErrTankFull:
         return 'Tank is full';
       case TankLinkUuids.pumpErrLoraMissing:
-        return 'LoRa radio missing';
+        return 'Tank link not working';
       case TankLinkUuids.pumpErrTankOffline:
         return 'Tank out of range';
       case TankLinkUuids.pumpErrBlocked:
         return 'Pump start blocked';
       case TankLinkUuids.pumpErrNotPaired:
-        return 'Pump not paired';
+        return 'Pump not set up';
       default:
         return null;
     }
@@ -236,15 +236,15 @@ class PumpSession extends ChangeNotifier {
   String? get pumpErrorDetail {
     switch (pumpLastError) {
       case TankLinkUuids.pumpErrTankFull:
-        return 'Cannot start while the tank reports full (pump code 1).';
+        return 'The tank is full, so the pump will not start.';
       case TankLinkUuids.pumpErrLoraMissing:
-        return 'RA-02 did not start — check wiring (pump code 2).';
+        return 'The pump cannot talk to the tank sensor. Check its wiring.';
       case TankLinkUuids.pumpErrTankOffline:
-        return 'No recent heartbeat from the tank sensor (pump code 3).';
+        return 'The pump has not heard from the tank sensor recently. Check its power and distance.';
       case TankLinkUuids.pumpErrBlocked:
-        return 'OTA or pairing lockout is active (pump code 4).';
+        return 'The pump is busy with an update or setup. Wait a moment and try again.';
       case TankLinkUuids.pumpErrNotPaired:
-        return 'Claim this pump from the app first (pump code 5).';
+        return 'Set up this pump in the app first.';
       default:
         return null;
     }
@@ -688,7 +688,7 @@ class PumpSession extends ChangeNotifier {
 
   Future<void> setEmptyFloatConnected(bool connected) async {
     await _writeSettings(emptyFloat: connected);
-    status = connected ? 'Empty float connected' : 'Empty float ignored';
+    status = connected ? 'Almost-empty sensor on' : 'Almost-empty sensor off';
     notifyListeners();
   }
 
@@ -709,7 +709,7 @@ class PumpSession extends ChangeNotifier {
       ),
     );
     status = type == TankLinkUuids.starterTwoButton
-        ? 'Two-button · ${relayPulseMs} ms'
+        ? 'Start and Stop · ${relayPulseMs} ms'
         : 'Starter: none';
     notifyListeners();
   }
@@ -1030,7 +1030,7 @@ class PumpSession extends ChangeNotifier {
     void Function()? onRebooting,
   }) async {
     if (!tankOtaReady || tankIdHex.isEmpty) {
-      throw StateError('Re-pair the tank sensor to enable updates');
+      throw StateError('Set up the tank sensor again to allow updates');
     }
     final wantId = tankIdHex.toLowerCase().replaceAll(':', '');
     final token = Uint8List.fromList(tankBleToken!);
@@ -1116,7 +1116,7 @@ class PumpSession extends ChangeNotifier {
           otaCtrlChr == null ||
           otaDataChr == null ||
           otaStatusChr == null) {
-        throw StateError('Tank firmware does not support BLE OTA yet');
+        throw StateError('Tank firmware cannot be updated from the app yet');
       }
       final auth = authChr;
       final otaCtrl = otaCtrlChr;
@@ -1224,7 +1224,7 @@ class PumpSession extends ChangeNotifier {
       throw StateError('Stop the pump before updating');
     }
     if (_otaCtrl == null || _otaData == null || _otaStatus == null) {
-      throw StateError('This pump firmware does not support BLE OTA yet');
+      throw StateError('This pump firmware cannot be updated from the app yet');
     }
 
     final digest = sha256.convert(image);

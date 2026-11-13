@@ -77,7 +77,7 @@ String _buzzerSummary(PumpSession session) {
 String _starterSummary(PumpSession session) {
   switch (session.starterType) {
     case TankLinkUuids.starterTwoButton:
-      return 'Two-button · ${session.relayPulseMs} ms';
+      return 'Start and Stop · ${session.relayPulseMs} ms';
     default:
       return 'Not configured';
   }
@@ -232,44 +232,6 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                     },
             ),
             const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.water_drop_outlined, color: scheme.onSurfaceVariant),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Empty float',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        !ready
-                            ? 'Connect to change'
-                            : session.emptyFloatConnected
-                                ? 'Connected'
-                                : 'Not connected — pump ignores it',
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: session.emptyFloatConnected,
-                  onChanged: !ready
-                      ? null
-                      : (v) => session.setEmptyFloatConnected(v),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
             _LedBrightnessTile(ready: ready),
             const SizedBox(height: 8),
             Row(
@@ -375,8 +337,8 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.numbers_rounded),
-              title: const Text('Error codes'),
-              subtitle: const Text('Tank LED & pump NeoPixel meanings'),
+              title: const Text('Warnings and lights'),
+              subtitle: const Text('What the blinks and colors mean'),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () {
                 Navigator.of(context).push(
@@ -391,9 +353,7 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(Icons.clear_all_rounded, color: scheme.error),
                 title: const Text('Clear pump error'),
-                subtitle: Text(
-                  'Dismiss code ${session.pumpLastError} on the home screen',
-                ),
+                subtitle: const Text('Remove the warning from the home screen'),
                 onTap: () async {
                   await session.clearPumpError();
                   if (context.mounted) {
@@ -431,13 +391,11 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                         'Last heard ${session.tankAgeLabel}',
                       if (session.tankOnline) session.tankAgeLabel,
                       if (session.tankOnline)
-                        'Signal ${session.tankSignalLabel}'
-                            '${session.tankRssiDbm != null ? " (${session.tankRssiDbm} dBm)" : ""}',
+                        'Signal ${session.tankSignalLabel}',
                       'Battery ${session.tankBatteryPct}%'
                           '${session.tankBatteryLow ? " (low)" : ""}',
-                      if (session.tankFw.isNotEmpty) 'FW ${session.tankFw}',
                       if (!session.tankOtaReady && session.tankBound)
-                        'Re-pair for OTA',
+                        'Pair again to allow updates',
                     ].join(' · '),
                   ),
                 ),
@@ -446,7 +404,7 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Text(
-                      'No LoRa heartbeat recently. Check tank power, antenna, and distance.',
+                      'Can’t reach the tank. Check its power and how far away it is.',
                       style: TextStyle(color: scheme.error, height: 1.35),
                     ),
                   ),
@@ -495,6 +453,25 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                       ? 'Listening…'
                       : 'Pair tank sensor'),
                 ),
+              if (session.tankBound) ...[
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: Icon(
+                    Icons.water_drop_outlined,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  title: const Text('Almost-empty sensor'),
+                  subtitle: Text(
+                    session.emptyFloatConnected
+                        ? 'Connected'
+                        : 'Not connected — the pump ignores it',
+                  ),
+                  value: session.emptyFloatConnected,
+                  onChanged: !ready
+                      ? null
+                      : (v) => session.setEmptyFloatConnected(v),
+                ),
+              ],
               if (session.tankBound)
                 TextButton(
                   style: TextButton.styleFrom(foregroundColor: scheme.error),
@@ -546,14 +523,19 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
               ),
             const SizedBox(height: 8),
             TextButton(
+              style: TextButton.styleFrom(foregroundColor: scheme.error),
               onPressed: () async {
                 final ok = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: Text('Remove ${pump.name}?'),
-                    content: const Text(
-                      'Removes it from this phone. '
-                      'Use “Unpair on pump” if you also want the device open for a new claim.',
+                    title: Text(ready
+                        ? 'Unpair and remove ${pump.name}?'
+                        : 'Remove ${pump.name}?'),
+                    content: Text(
+                      ready
+                          ? 'This frees the pump so anyone nearby can pair it, '
+                              'and removes it from this phone.'
+                          : 'This removes it from this phone only.',
                     ),
                     actions: [
                       TextButton(
@@ -567,52 +549,26 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                     ],
                   ),
                 );
-                if (ok == true && context.mounted) {
-                  await session.forgetPump(pump);
-                  if (context.mounted) Navigator.pop(context);
-                }
-              },
-              child: const Text('Remove from phone'),
-            ),
-            if (ready)
-              TextButton(
-                style: TextButton.styleFrom(foregroundColor: scheme.error),
-                onPressed: () async {
-                  final ok = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Unpair on pump?'),
-                      content: const Text(
-                        'Clears the owner on the device and removes it here. '
-                        'Anyone nearby can claim it while pairing is open.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Cancel'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Unpair'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (ok == true && context.mounted) {
-                    try {
-                      await session.unpairOnDevice();
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Unpair failed: $e')),
-                        );
-                      }
+                if (ok != true || !context.mounted) return;
+                if (ready) {
+                  try {
+                    await session.unpairOnDevice();
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Could not unpair: $e')),
+                      );
                     }
-                    if (context.mounted) Navigator.pop(context);
+                    return;
                   }
-                },
-                child: const Text('Unpair on pump'),
-              ),
+                }
+                await session.forgetPump(pump);
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: Text(ready
+                  ? 'Unpair and remove from phone'
+                  : 'Remove from phone'),
+            ),
             if (ready) ...[
               const Divider(height: 28),
               TextButton(
@@ -647,7 +603,7 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 child: const Text('Factory reset pump…'),
               ),
               Text(
-                'Or hold Start+Stop ~5 s (BLE pair), then keep holding ~10 s more until the red fill completes.',
+                'Or hold Start and Stop on the pump for about 5 seconds, then keep holding about 10 seconds more.',
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
                   fontSize: 12,
@@ -689,8 +645,8 @@ class _FactoryResetDialogState extends State<_FactoryResetDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'Erases phone pairing, tank sensor bind, and settings on this pump, '
-            'then reboots. Type RESET to confirm.',
+            'Erases this pump’s settings, its link to your phone, and its tank '
+            'sensor link. The pump then restarts. Type RESET to confirm.',
           ),
           const SizedBox(height: 16),
           TextField(
@@ -806,7 +762,7 @@ class _LedBrightnessTileState extends State<_LedBrightnessTile> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'LED brightness',
+                    'Light brightness',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                   ),
                   Text(
@@ -1030,7 +986,7 @@ class _TankFirmwareTile extends StatelessWidget {
         title: const Text('Tank firmware'),
         subtitle: Text(
           !session.tankOtaReady
-              ? '$device · re-pair to enable OTA'
+              ? '$device · pair again to allow updates'
               : available
                   ? '$device → ${fw.latestVersion}'
                   : device,
