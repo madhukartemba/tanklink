@@ -32,7 +32,7 @@ Firmware: `pump_node/` · defaults: `pump_node/sdkconfig.defaults`
 | NeoPixel | 20 |
 | Buzzer | 21 |
 
-Relays configured on GPIO 18 (START) & GPIO 19 (STOP), active-low for standard optocoupled relay modules.
+Relays default to unassigned (`-1`) until wired.
 
 ---
 
