@@ -31,4 +31,4 @@ Match tank frequency **433 MHz**. Tank wiring: see [`../tank_node/WIRING.md`](
 | Relay STOP | 19 |
 | NeoPixel | 20 |
 | Buzzer | 21 |
-| Relays unassigned in defaults (`-1`) until wired | |
+| Relays: GPIO 18 (START) & GPIO 19 (STOP), active-low | |
