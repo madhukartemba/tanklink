@@ -2,33 +2,41 @@
 
 Canonical copy (pump + tank): [`../docs/PINMAPS.md`](../docs/PINMAPS.md).
 
-## LoRa-only bring-up
+## LoRa (RA-02) — same GPIO plan as tank node
 
-Wire **only** the RA-02 for the first link test. Everything else can stay unconnected; firmware soft-fails missing peripherals.
+Add **10 kΩ from NSS, SCK, and MOSI to 3V3** on the pump board (SuperMini GPIO8 is also the onboard LED).
 
 | RA-02 | ESP32-C3 GPIO |
 | --- | --- |
-| SCK | 10 |
-| MOSI | 3 |
-| MISO | 2 |
-| NSS | 5 |
-| RESET | 4 |
-| DIO0 | 8 |
+| SCK | 8 |
+| MOSI | 10 |
+| MISO | 21 |
+| NSS | 20 |
+| RESET | 9 |
+| DIO0 | 6 |
 | VCC | 3V3 |
 | GND | GND |
 
-Match tank frequency **433 MHz**. Tank wiring: see [`../tank_node/WIRING.md`](../tank_node/WIRING.md).
+Match tank frequency **433 MHz**. Tank silkscreen names: [`../tank_node/WIRING.md`](../tank_node/WIRING.md).
 
-## Full board (when ready)
+## Full SuperMini header
 
 | Function | GPIO |
 | --- | --- |
-| I2C SDA (DS3231) | 6 |
-| I2C SCL (DS3231) | 7 |
-| Start (hold ~1 s = ON; hold both ~5 s = BLE pair) | 0 |
-| Stop (hold ~1 s = OFF / exit BLE pair) | 1 |
-| Relay START | 18 |
-| Relay STOP | 19 |
-| NeoPixel | 20 |
-| Buzzer | 21 |
-| Relays unassigned in defaults (`-1`) until wired | |
+| Button (one wire to GND) | 0 |
+| Buzzer (+) — active HIGH | 1 |
+| DS3231 SDA | 2 |
+| DS3231 SCL | 3 |
+| Relay START coil driver | 4 |
+| Relay STOP coil driver | 5 |
+| NeoPixel DIN | 7 |
+
+### Button (GPIO 0 only)
+
+- **~1 s hold** → pump ON if off, OFF if on (plus starter relay pulse when wired).
+- **~5 s hold** → BLE phone pairing (keep holding).
+- **~15 s total** → factory reset (keep holding after pairing cue).
+
+There is no separate STOP button; use a long hold while running or the app.
+
+Everything except LoRa soft-fails when unwired (bring up the radio first if you like).

@@ -10,9 +10,9 @@ menu "Pump Board"
         int "NeoPixel (WS2812) GPIO"
         depends on PUMP_ENABLE_NEOPIXEL
         range 0 21
-        default 20
+        default 7
         help
-            Data pin (fresh C3 board default GPIO 20).
+            Data pin (SuperMini default GPIO 7 — LoRa uses 20/21).
 
     config PUMP_NEOPIXEL_COUNT
         int "NeoPixel count"
@@ -23,26 +23,27 @@ menu "Pump Board"
             Number of LEDs on the status strip (linear bar).
 
     config PUMP_ENABLE_BUTTON
-        bool "Enable local Start/Stop buttons"
+        bool "Enable local button"
         default y
         help
-            Momentary Start and Stop. Hold both for BLE phone pairing.
+            One button on GPIO 0 (default). Set Stop GPIO to −1 for single-button
+            wiring; hold ~5s on that button replaces “both buttons” for BLE pair.
 
     config PUMP_BUTTON_START_GPIO
-        int "Start button GPIO"
+        int "Button GPIO"
         depends on PUMP_ENABLE_BUTTON
         range 0 21
         default 0
         help
-            Active-low to GND. Short press = pump ON.
+            Active-low to GND. ~1s hold toggles pump; longer hold = pair/factory.
 
     config PUMP_BUTTON_STOP_GPIO
-        int "Stop button GPIO"
+        int "Stop button GPIO (−1 = not wired)"
         depends on PUMP_ENABLE_BUTTON
-        range 0 21
-        default 1
+        range -1 21
+        default -1
         help
-            Active-low to GND. Short press = pump OFF / exit BLE pairing.
+            Optional second button. −1 = one button only (buzzer on GPIO 1).
 
     config PUMP_BUTTON_ACTIVE_LOW
         bool "Buttons are active low"
@@ -90,21 +91,21 @@ menu "Pump Board"
         int "Buzzer GPIO"
         depends on PUMP_ENABLE_BUZZER
         range 0 21
-        default 21
+        default 1
 
     config PUMP_RELAY_START_GPIO
         int "Starter relay A / START GPIO (−1 = unassigned)"
         range -1 21
-        default -1
+        default 4
         help
-            Two-button starter START. Leave −1 until wired (LoRa-only tests OK).
+            Momentary START output. −1 = logical pump only (no coil).
 
     config PUMP_RELAY_STOP_GPIO
         int "Starter relay B / STOP GPIO (−1 = unassigned)"
         range -1 21
-        default -1
+        default 5
         help
-            Two-button starter STOP (normally-closed path). −1 = unassigned.
+            Momentary STOP output. −1 = unassigned.
 
     config PUMP_ENABLE_LORA
         bool "Enable RA-02 LoRa (tank link)"
@@ -113,32 +114,32 @@ menu "Pump Board"
     config PUMP_LORA_SCK_GPIO
         int "LoRa SCK GPIO"
         depends on PUMP_ENABLE_LORA
-        default 10
+        default 8
 
     config PUMP_LORA_MOSI_GPIO
         int "LoRa MOSI GPIO"
         depends on PUMP_ENABLE_LORA
-        default 3
+        default 10
 
     config PUMP_LORA_MISO_GPIO
         int "LoRa MISO GPIO"
         depends on PUMP_ENABLE_LORA
-        default 2
+        default 21
 
     config PUMP_LORA_CS_GPIO
         int "LoRa NSS/CS GPIO"
         depends on PUMP_ENABLE_LORA
-        default 5
+        default 20
 
     config PUMP_LORA_RST_GPIO
         int "LoRa RESET GPIO"
         depends on PUMP_ENABLE_LORA
-        default 4
+        default 9
 
     config PUMP_LORA_DIO0_GPIO
         int "LoRa DIO0 GPIO"
         depends on PUMP_ENABLE_LORA
-        default 8
+        default 6
 
     config PUMP_LORA_FREQ_HZ
         int "LoRa frequency (Hz)"

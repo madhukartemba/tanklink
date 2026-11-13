@@ -21,6 +21,11 @@
 #ifndef CONFIG_PUMP_ACTION_HOLD_MS
 #define CONFIG_PUMP_ACTION_HOLD_MS 1000
 #endif
+#ifndef CONFIG_PUMP_BUTTON_STOP_GPIO
+#define CONFIG_PUMP_BUTTON_STOP_GPIO 1
+#endif
+
+#define PUMP_BTN_SINGLE (CONFIG_PUMP_BUTTON_STOP_GPIO < 0)
 
 static board_button_cb_t s_start_cb;
 static board_button_cb_t s_stop_cb;
@@ -41,6 +46,9 @@ typedef enum {
 
 static bool gpio_is_pressed(int gpio)
 {
+    if (gpio < 0) {
+        return false;
+    }
     int level = gpio_get_level(gpio);
 #if CONFIG_PUMP_BUTTON_ACTIVE_LOW
     return level == 0;
@@ -139,13 +147,56 @@ static void button_task(void *arg)
                 update_hold_pct(held_ms, CONFIG_PUMP_ACTION_HOLD_MS);
                 if (held_ms >= CONFIG_PUMP_ACTION_HOLD_MS) {
                     action_fired = true;
+#if PUMP_BTN_SINGLE
+                    if (s_pump_on && s_stop_cb) {
+                        ESP_LOGI(TAG, "Button held %u ms → OFF", (unsigned)held_ms);
+                        s_stop_cb();
+                    } else if (s_start_cb) {
+                        ESP_LOGI(TAG, "Button held %u ms → ON", (unsigned)held_ms);
+                        s_start_cb();
+                    }
+#else
                     leave_hold_progress_if_needed();
                     ESP_LOGI(TAG, "Start held %u ms → ON", (unsigned)held_ms);
                     if (s_start_cb) {
                         s_start_cb();
                     }
+#endif
                 }
             }
+#if PUMP_BTN_SINGLE
+            else if (start && action_fired) {
+                uint32_t held_ms = (now - hold_start) * portTICK_PERIOD_MS;
+                if (!pair_fired) {
+                    update_hold_pct(held_ms, CONFIG_PUMP_PAIRING_HOLD_MS);
+                    if (held_ms >= (uint32_t)CONFIG_PUMP_PAIRING_HOLD_MS) {
+                        pair_fired = true;
+                        ESP_LOGI(TAG, "Button held %u ms → BLE pairing", (unsigned)held_ms);
+                        if (s_long_cb) {
+                            s_long_cb();
+                        }
+                        status_led_set_hold_danger(true);
+                        enter_hold_progress();
+                        update_hold_pct(0, CONFIG_PUMP_FACTORY_RESET_EXTRA_MS);
+                    }
+                } else if (!factory_fired) {
+                    uint32_t extra = 0;
+                    if (held_ms > (uint32_t)CONFIG_PUMP_PAIRING_HOLD_MS) {
+                        extra = held_ms - (uint32_t)CONFIG_PUMP_PAIRING_HOLD_MS;
+                    }
+                    update_hold_pct(extra, CONFIG_PUMP_FACTORY_RESET_EXTRA_MS);
+                    if (extra >= (uint32_t)CONFIG_PUMP_FACTORY_RESET_EXTRA_MS) {
+                        factory_fired = true;
+                        leave_hold_progress_if_needed();
+                        status_led_set_hold_danger(false);
+                        ESP_LOGW(TAG, "Button held %u ms → factory reset", (unsigned)held_ms);
+                        if (s_factory_cb) {
+                            s_factory_cb();
+                        }
+                    }
+                }
+            }
+#endif
             break;
 
         case BTN_STOP_HOLD:
@@ -233,9 +284,12 @@ esp_err_t board_init(void)
     }
 
 #if CONFIG_PUMP_ENABLE_BUTTON
+    uint64_t btn_mask = (1ULL << CONFIG_PUMP_BUTTON_START_GPIO);
+    if (CONFIG_PUMP_BUTTON_STOP_GPIO >= 0) {
+        btn_mask |= (1ULL << CONFIG_PUMP_BUTTON_STOP_GPIO);
+    }
     gpio_config_t io = {
-        .pin_bit_mask = (1ULL << CONFIG_PUMP_BUTTON_START_GPIO) |
-                        (1ULL << CONFIG_PUMP_BUTTON_STOP_GPIO),
+        .pin_bit_mask = btn_mask,
         .mode = GPIO_MODE_INPUT,
 #if CONFIG_PUMP_BUTTON_ACTIVE_LOW
         .pull_up_en = GPIO_PULLUP_ENABLE,
@@ -254,12 +308,19 @@ esp_err_t board_init(void)
     if (xTaskCreate(button_task, "pump_btn", 3072, NULL, 5, NULL) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG,
-             "Start GPIO %d / Stop GPIO %d (hold %d ms → action, both %d ms → BLE, "
-             "+%d ms → factory reset)",
-             CONFIG_PUMP_BUTTON_START_GPIO, CONFIG_PUMP_BUTTON_STOP_GPIO,
-             CONFIG_PUMP_ACTION_HOLD_MS, CONFIG_PUMP_PAIRING_HOLD_MS,
-             CONFIG_PUMP_FACTORY_RESET_EXTRA_MS);
+    if (PUMP_BTN_SINGLE) {
+        ESP_LOGI(TAG,
+                 "Button GPIO %d only (hold %d ms → toggle, %d ms → BLE, +%d ms → factory)",
+                 CONFIG_PUMP_BUTTON_START_GPIO, CONFIG_PUMP_ACTION_HOLD_MS,
+                 CONFIG_PUMP_PAIRING_HOLD_MS, CONFIG_PUMP_FACTORY_RESET_EXTRA_MS);
+    } else {
+        ESP_LOGI(TAG,
+                 "Start GPIO %d / Stop GPIO %d (hold %d ms → action, both %d ms → BLE, "
+                 "+%d ms → factory reset)",
+                 CONFIG_PUMP_BUTTON_START_GPIO, CONFIG_PUMP_BUTTON_STOP_GPIO,
+                 CONFIG_PUMP_ACTION_HOLD_MS, CONFIG_PUMP_PAIRING_HOLD_MS,
+                 CONFIG_PUMP_FACTORY_RESET_EXTRA_MS);
+    }
 #else
     ESP_LOGI(TAG, "Buttons disabled");
 #endif

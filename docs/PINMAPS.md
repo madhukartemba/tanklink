@@ -6,33 +6,37 @@ Canonical GPIO maps for the two boards. Firmware defaults live in each node’s 
 
 Firmware: `pump_node/` · defaults: `pump_node/sdkconfig.defaults`
 
+LoRa SPI matches the **tank** layout (same ESP32-C3 + RA-02 rules).
+
 ### LoRa (RA-02 @ 433 MHz)
 
-| RA-02 | GPIO |
-| --- | --- |
-| SCK | 10 |
-| MOSI | 3 |
-| MISO | 2 |
-| NSS | 5 |
-| RESET | 4 |
-| DIO0 | 8 |
-| VCC | 3V3 |
-| GND | GND |
+| RA-02 | GPIO | Notes |
+| --- | --- | --- |
+| SCK | 8 | **10 kΩ → 3V3** (onboard LED pin — pull-up required) |
+| MOSI | 10 | **10 kΩ → 3V3** |
+| MISO | 21 | **Never** GPIO 9 (download-mode trap) |
+| NSS | 20 | **10 kΩ → 3V3** |
+| RESET | 9 | idle high |
+| DIO0 | 6 | not GPIO 8 (LED) |
+| VCC | 3V3 | |
+| GND | GND | |
 
-### Other (optional; soft-fail if unwired)
+### SuperMini (header GPIO)
 
-| Function | GPIO |
-| --- | --- |
-| Start (hold ~1 s = ON; both ~5 s = BLE pair; keep both ~10 s more = factory reset) | 0 |
-| Stop (hold ~1 s = OFF / exit BLE pair; dual-hold as above) | 1 |
-| I2C SDA (DS3231) | 6 |
-| I2C SCL (DS3231) | 7 |
-| Relay START | 18 |
-| Relay STOP | 19 |
-| NeoPixel | 20 |
-| Buzzer | 21 |
+| Function | GPIO | Notes |
+| --- | --- | --- |
+| Button (→ GND, active low) | **0** | Hold ~1 s: ON if idle / OFF if running; hold ~5 s: BLE pair; ~15 s total: factory reset |
+| Buzzer (active high) | **1** | |
+| DS3231 SDA | **2** | I²C |
+| DS3231 SCL | **3** | I²C |
+| Relay START | **4** | momentary pulse |
+| Relay STOP | **5** | momentary pulse |
+| NeoPixel (WS2812) | **7** | data |
+| *(LoRa)* | 6, 8, 9, 10, 20, 21 | see above |
 
-Relays default to unassigned (`-1`) until wired.
+No second front-panel button. STOP is via hold on **GPIO 0** while the pump is on, or via app/LoRa auto rules.
+
+GPIO **18 / 19** are USB D−/D+ — not on the SuperMini header.
 
 ---
 
