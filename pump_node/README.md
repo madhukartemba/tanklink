@@ -10,6 +10,8 @@ TankLink pump controller — BLE GATT claim/pair, OnOff, settings, **BLE OTA**.
 
 ## Build / flash
 
+Requires **ESP-IDF v6.1.0** (tag `v6.1`). See [`docs/firmware-build-setup.md`](../docs/firmware-build-setup.md).
+
 ```bash
 . "$HOME/esp/esp-idf/export.sh"
 cd pump_node

@@ -3,7 +3,7 @@
 ## Pump (`pump-v*`)
 
 1. Edit `TANKLINK_FW_VERSION` in [`pump_node/main/tanklink_uuid.h`](../pump_node/main/tanklink_uuid.h) (semver `X.Y.Z`).
-2. Build:
+2. Build with **ESP-IDF v6.1.0** (tag `v6.1`; see [`firmware-build-setup.md`](firmware-build-setup.md)):
 
 ```bash
 . "$HOME/esp/esp-idf/export.sh"

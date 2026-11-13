@@ -19,7 +19,7 @@ Local rooftop **tank ↔ pump** control — no cloud required.
 
 ### Firmware (ESP-IDF)
 
-New computer? Follow [`docs/firmware-build-setup.md`](docs/firmware-build-setup.md) first.
+Built with **ESP-IDF v6.1.0** (tag [`v6.1`](https://github.com/espressif/esp-idf/releases/tag/v6.1), commit `fff9895c`). New computer? Follow [`docs/firmware-build-setup.md`](docs/firmware-build-setup.md).
 
 ```bash
 . "$HOME/esp/esp-idf/export.sh"

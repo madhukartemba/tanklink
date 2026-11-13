@@ -12,6 +12,8 @@ See `main/tank_version.h`. Paired: deep sleep **10 min** heartbeat. Unpaired: 
 
 ## Build / flash
 
+Requires **ESP-IDF v6.1.0** (tag `v6.1`). See [`docs/firmware-build-setup.md`](../docs/firmware-build-setup.md).
+
 ```bash
 . "$HOME/esp/esp-idf/export.sh"
 cd tank_node

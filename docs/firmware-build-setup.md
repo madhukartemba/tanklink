@@ -2,7 +2,7 @@
 
 This guide sets up a new computer to build and flash `pump_node` and `tank_node`.
 
-Everything below was checked with **ESP-IDF v6.1** on macOS. Linux steps are the same except for the install packages.
+Everything below was checked with **ESP-IDF v6.1.0** (git tag `v6.1`, commit `fff9895c`) on macOS. Linux steps are the same except for the install packages.
 
 ## 1. Install the tools
 
