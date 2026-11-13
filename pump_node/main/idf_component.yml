@@ -1,5 +1,6 @@
 dependencies:
   espressif/led_strip: "^3.0.0"
-  # Local sibling checkout (Desktop/PixelEngine). For CI, switch to git URL.
+  # PixelEngine from GitHub (pinned commit). Fetched by the ESP-IDF component manager.
   PixelEngine:
-    path: ../../../PixelEngine
+    git: https://github.com/madhukartemba/PixelEngine.git
+    version: af64aa13e76d7eaa4627a1c92012931d9add0675

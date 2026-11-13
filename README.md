@@ -19,6 +19,8 @@ Local rooftop **tank ↔ pump** control — no cloud required.
 
 ### Firmware (ESP-IDF)
 
+New computer? Follow [`docs/firmware-build-setup.md`](docs/firmware-build-setup.md) first.
+
 ```bash
 . "$HOME/esp/esp-idf/export.sh"
 cd pump_node
