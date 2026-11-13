@@ -44,7 +44,8 @@ idf.py build
 - Re-pair the tank once so the BLE OTA token reaches the pump/app.
 - Short-press the tank button to open a ~10 s BLE advertise window; the app scans for `TL-Tank-XXXX` / `tank_id` and pushes the image.
 - From **0.2.4+**: deep sleep ~50 µA on BAT± (USB out); NimBLE only during OTA.
-- From **0.2.5**: TX retries=5; unpaired = button-only sleep (no 10 min wake); **10 kΩ** on NSS+SCK+MOSI; **10 kΩ** LED D4→GND; battery divider **120 k/120 k**.
+- From **0.2.5**: TX retries=5; unpaired = button-only sleep (no 10 min wake); **10 kΩ** on NSS+SCK+MOSI; battery divider **120 k/120 k**.
+- From **0.2.6**: LED **D5** + DIO0 **D4** (swapped off MTCK); no LED pulse on boot/heartbeat TX; soft breathe during BLE OTA.
 
 ## First flash after OTA partition change
 

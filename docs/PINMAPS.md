@@ -57,8 +57,8 @@ Firmware: `tank_node/` · `sdkconfig.defaults` · `tank_boot_pins.h`
 | Button | D1 | 3 | To GND, active low |
 | Float FULL | D2 | 4 | To GND; opens when full |
 | Float ALMOST EMPTY | D3 | 5 | To GND; opens when almost empty |
-| Status LED | D4 | 6 | → 1–2.2 kΩ → LED → GND + **10 kΩ D4→GND** |
-| LoRa DIO0 | D5 | 7 | RA-02 DIO0 (optional; IRQ also polled over SPI) |
+| LoRa DIO0 | **D4** | **6** | RA-02 DIO0 (OK on MTCK; don’t put LED here) |
+| Status LED | **D5** | **7** | → 1–2.2 kΩ → LED → GND |
 | LoRa MISO | D6 | 21 | RA-02 MISO (**not** D9) |
 | LoRa NSS/CS | D7 | 20 | RA-02 NSS + **10 kΩ → 3V3** |
 | LoRa SCK | D8 | 8 | RA-02 SCK + **10 kΩ → 3V3** |
@@ -70,6 +70,6 @@ RA-02: VCC→3V3, GND→GND, U.FL antenna, **433 MHz**.
 ### Deep sleep (~50 µA on BAT±, USB unplugged)
 
 - **10 kΩ → 3V3** on NSS, SCK, and MOSI (no digital `gpio_deep_sleep_hold` — that leaked ~mA on C3).
-- **10 kΩ D4→GND** kills GPIO6/MTCK boot glimmer (ROM JTAG pull-up).
+- Status LED on **D5**; DIO0 on **D4** (swapped) — GPIO6/MTCK ROM pull-up must not drive an LED.
 - NimBLE only for BLE OTA; unpaired nodes use **button wake only** (no 10 min timer).
 - Measure on **BAT±** with USB disconnected.

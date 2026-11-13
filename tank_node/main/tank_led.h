@@ -35,6 +35,11 @@ void tank_led_pairing_flash_start(void);
 void tank_led_pairing_flash_tick(void);
 void tank_led_pairing_flash_stop(void);
 
+/** Soft breathe while BLE OTA image is transferring (same cadence as pair). */
+void tank_led_ota_pulse_start(void);
+void tank_led_ota_pulse_tick(void);
+void tank_led_ota_pulse_stop(void);
+
 /**
  * LED error code: N long hard blinks, pause, repeat twice.
  * Soft pulses are reserved for boot / TX / success / pairing (see docs/ERROR_CODES.md).

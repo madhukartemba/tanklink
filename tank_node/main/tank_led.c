@@ -224,6 +224,21 @@ void tank_led_pairing_flash_stop(void)
     tank_led_off();
 }
 
+void tank_led_ota_pulse_start(void)
+{
+    tank_led_pairing_flash_start();
+}
+
+void tank_led_ota_pulse_tick(void)
+{
+    tank_led_pairing_flash_tick();
+}
+
+void tank_led_ota_pulse_stop(void)
+{
+    tank_led_pairing_flash_stop();
+}
+
 void tank_led_show_error(uint8_t code)
 {
     if (code < 1) {

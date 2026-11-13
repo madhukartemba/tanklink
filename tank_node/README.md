@@ -6,7 +6,7 @@ See `main/tank_version.h`. Paired: deep sleep **10 min** heartbeat. Unpaired: 
 
 **Wiring:** [WIRING.md](WIRING.md) · [docs/PINMAPS.md](../docs/PINMAPS.md)
 
-**Must-have:** 10 kΩ **NSS + SCK + MOSI → 3V3**; 10 kΩ **LED D4 → GND**; **MISO on D6** (never D9); battery **120 k/120 k**.
+**Must-have:** 10 kΩ **NSS + SCK + MOSI → 3V3**; LED **D5** + DIO0 **D4** (swapped); **MISO on D6** (never D9); battery **120 k/120 k**.
 
 **Sleep:** ~50 µA on BAT± (USB unplugged). BLE only for OTA; no digital-pin `gpio_deep_sleep_hold`.
 

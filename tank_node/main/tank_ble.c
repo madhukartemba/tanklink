@@ -289,6 +289,9 @@ esp_err_t tank_ble_wait_ota_window(void)
             vTaskDelay(pdMS_TO_TICKS(200));
             continue;
         }
+        if (tank_ota_is_active()) {
+            tank_led_ota_pulse_tick();
+        }
         if (!tank_ota_is_active() && esp_timer_get_time() >= s_window_deadline_us) {
             ESP_LOGI(TAG, "OTA window timed out");
             break;

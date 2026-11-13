@@ -11,7 +11,7 @@
  *
  * Canonical map:
  *   D0/2  BAT ADC     D1/3  Button      D2/4  Float FULL
- *   D3/5  Float EMPTY D4/6  LED         D5/7  LoRa DIO0
+ *   D3/5  Float EMPTY D4/6  LoRa DIO0   D5/7  LED (swapped vs old)
  *   D6/21 LoRa MISO   D7/20 LoRa NSS    D8/8  LoRa SCK
  *   D9/9  LoRa RESET  D10/10 LoRa MOSI
  */
@@ -55,7 +55,7 @@ static inline void tank_boot_pins_log(const char *tag)
              CONFIG_TANK_LORA_MOSI_GPIO, CONFIG_TANK_LORA_CS_GPIO, CONFIG_TANK_LORA_RST_GPIO,
              CONFIG_TANK_LORA_DIO0_GPIO);
 #endif
-    ESP_LOGI(tag, "HW: 10k NSS+SCK+MOSI→3V3; 10k LED D4→GND (boot glimmer)");
+    ESP_LOGI(tag, "HW: 10k NSS+SCK+MOSI→3V3; LED D5, DIO0 D4 (LED off MTCK)");
     if (!tank_boot_pins_ok()) {
         ESP_LOGE(tag, "INVALID: LoRa MISO/MOSI/CS on GPIO9 (BOOT) — move MISO to D6/GPIO21");
     }

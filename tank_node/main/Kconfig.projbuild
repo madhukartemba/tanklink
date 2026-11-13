@@ -25,7 +25,10 @@ menu "TankLink Tank Node"
     config TANK_LED_GPIO
         int "Status LED GPIO"
         range 0 21
-        default 6
+        default 7
+        help
+            Default D5/GPIO7. Do not use D4/GPIO6 (MTCK) — ROM JTAG pull-up
+            faintly lights the LED at every reset before app_main runs.
 
     config TANK_BAT_ADC_GPIO
         int "Battery ADC GPIO"
@@ -66,9 +69,10 @@ menu "TankLink Tank Node"
     config TANK_LORA_DIO0_GPIO
         int "LoRa DIO0 GPIO (-1 = unused)"
         range -1 21
-        default 7
+        default 6
         help
-            Default D5/GPIO7. Firmware can also poll IRQ over SPI.
+            Default D4/GPIO6 (swapped with LED). IRQ also polled over SPI.
+            Weak ROM pull-up on MTCK is fine for DIO0 input.
 
     config TANK_LORA_FREQ_HZ
         int "LoRa frequency (Hz)"

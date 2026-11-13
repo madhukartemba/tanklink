@@ -39,6 +39,7 @@ static void set_err(uint8_t err)
 {
     s_err = err;
     s_state = TANKLINK_OTA_ST_ERR;
+    tank_led_ota_pulse_stop();
     tank_led_show_error(3);
     notify_status();
 }
@@ -54,6 +55,7 @@ static void cleanup_session(bool keep_err)
     s_offset = 0;
     s_image_size = 0;
     s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
+    tank_led_ota_pulse_stop();
     if (!keep_err) {
         s_err = TANKLINK_OTA_ERR_OK;
         s_state = TANKLINK_OTA_ST_IDLE;
@@ -153,6 +155,7 @@ uint8_t tank_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
     s_owner_conn = conn_handle;
     s_err = TANKLINK_OTA_ERR_OK;
     s_state = TANKLINK_OTA_ST_READY;
+    tank_led_ota_pulse_start();
     ESP_LOGI(TAG, "OTA start size=%lu part=%s", (unsigned long)image_size, s_part->label);
     notify_status();
     return TANKLINK_OTA_ERR_OK;
@@ -204,7 +207,6 @@ uint8_t tank_ota_abort(void)
         return TANKLINK_OTA_ERR_OK;
     }
     cleanup_session(false);
-    tank_led_off();
     ESP_LOGW(TAG, "OTA aborted");
     notify_status();
     return TANKLINK_OTA_ERR_OK;
@@ -274,6 +276,7 @@ uint8_t tank_ota_finish(uint16_t conn_handle)
         return TANKLINK_OTA_ERR_FLASH;
     }
 
+    tank_led_ota_pulse_stop();
     tank_led_success();
     s_state = TANKLINK_OTA_ST_VERIFY_OK;
     s_err = TANKLINK_OTA_ERR_OK;
