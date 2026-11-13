@@ -3,5 +3,5 @@
 /** Tank node firmware version (LoRa packet + logs + BLE Info). */
 #define TANK_FW_MAJOR 0
 #define TANK_FW_MINOR 2
-#define TANK_FW_PATCH 6
-#define TANK_FW_VERSION_STR "0.2.6"
+#define TANK_FW_PATCH 7
+#define TANK_FW_VERSION_STR "0.2.7"

@@ -206,15 +206,9 @@ esp_err_t tank_link_send_status(const tank_inputs_t *in, uint8_t battery_pct,
     fill_status(&pkt, in, battery_pct, button_event, false);
     esp_err_t err = send_with_ack((const uint8_t *)&pkt, sizeof(pkt), pkt.seq, NULL, NULL);
     if (err == ESP_OK) {
-        /* Success pulse only for button-triggered TX — not boot/heartbeat. */
-        if (button_event) {
-            tank_led_success();
-        }
-    } else if (button_event) {
-        /* Unsuccessful manual TX — numbered hard blinks (code 3). */
-        tank_led_show_error(TANK_ERR_NO_ACK);
+        tank_led_success();
     } else {
-        ESP_LOGW(TAG, "silent TX failed (boot/heartbeat): %s", esp_err_to_name(err));
+        tank_led_show_error(TANK_ERR_NO_ACK);
     }
     return err;
 }

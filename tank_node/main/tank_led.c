@@ -172,9 +172,8 @@ void tank_led_tx_pulse(void)
 
 void tank_led_boot(void)
 {
-    /* Intentionally empty: GPIO6 ROM pull-up already flashes the LED at reset.
-     * Avoid a second decorative pulse on every cold boot / USB reset. */
-    tank_led_force_off_pin(s_gpio >= 0 ? s_gpio : CONFIG_TANK_LED_GPIO);
+    tank_led_fade_in_out(100, 350, 350);
+    tank_led_fade_in_out(70, 250, 250);
 }
 
 void tank_led_success(void)

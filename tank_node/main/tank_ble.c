@@ -35,6 +35,7 @@ static bool s_stack_up;
 static bool s_window_active;
 static bool s_connected;
 static int64_t s_window_deadline_us;
+static uint32_t s_window_ms;
 static char s_adv_name[TANKLINK_ADV_NAME_MAX];
 static const ble_uuid128_t s_svc_uuid = TANKLINK_SVC_UUID_INIT;
 
@@ -267,6 +268,7 @@ esp_err_t tank_ble_start_ota_window(uint32_t timeout_ms)
     }
 
     s_window_active = true;
+    s_window_ms = timeout_ms;
     s_window_deadline_us = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
     /* Distinct from LoRa pairing breathe: one short blink, then dark. */
     tank_led_blink(1, 120, 0);
@@ -276,13 +278,13 @@ esp_err_t tank_ble_start_ota_window(uint32_t timeout_ms)
     return ESP_OK;
 }
 
-esp_err_t tank_ble_wait_ota_window(void)
+tank_ble_window_result_t tank_ble_wait_ota_window(void)
 {
     if (!s_window_active) {
-        return ESP_OK;
+        return TANK_BLE_WINDOW_DONE;
     }
 
-    bool want_pair = false;
+    bool saw_down = false;
     int64_t hold_start_us = 0;
     while (s_window_active) {
         if (tank_ota_state() == TANKLINK_OTA_ST_REBOOTING) {
@@ -291,22 +293,38 @@ esp_err_t tank_ble_wait_ota_window(void)
         }
         if (tank_ota_is_active()) {
             tank_led_ota_pulse_tick();
+            saw_down = false;
+            hold_start_us = 0;
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
         }
-        if (!tank_ota_is_active() && esp_timer_get_time() >= s_window_deadline_us) {
+        if (esp_timer_get_time() >= s_window_deadline_us) {
             ESP_LOGI(TAG, "OTA window timed out");
             break;
         }
-        /* Hold during OTA window → exit so main can LoRa-pair. */
-        if (!tank_ota_is_active() && tank_board_button_down()) {
-            if (hold_start_us == 0) {
-                hold_start_us = esp_timer_get_time();
-            } else if ((esp_timer_get_time() - hold_start_us) / 1000 >=
-                       CONFIG_TANK_BUTTON_HOLD_MS) {
-                want_pair = true;
-                break;
+
+        const bool down = tank_board_button_down();
+        const int64_t now = esp_timer_get_time();
+        if (down) {
+            if (!saw_down) {
+                saw_down = true;
+                hold_start_us = now;
+            } else if ((now - hold_start_us) / 1000 >= CONFIG_TANK_BUTTON_HOLD_MS) {
+                s_window_active = false;
+                ble_gap_adv_stop();
+                tank_led_off();
+                return TANK_BLE_WINDOW_PAIR;
             }
-        } else {
+        } else if (saw_down) {
+            const int64_t held_ms = (now - hold_start_us) / 1000;
+            saw_down = false;
             hold_start_us = 0;
+            if (held_ms >= 40) {
+                /* Another LoRa TX; keep advertising and refresh the listen window. */
+                s_window_deadline_us = now + (int64_t)s_window_ms * 1000;
+                ESP_LOGI(TAG, "short press during OTA window — LoRa TX");
+                return TANK_BLE_WINDOW_CLICK;
+            }
         }
         vTaskDelay(pdMS_TO_TICKS(20));
     }
@@ -316,14 +334,13 @@ esp_err_t tank_ble_wait_ota_window(void)
     if (!tank_ota_is_active()) {
         tank_led_off();
     }
-    return want_pair ? ESP_ERR_INVALID_STATE : ESP_OK;
+    return TANK_BLE_WINDOW_DONE;
 }
 
-esp_err_t tank_ble_run_ota_window(uint32_t timeout_ms)
+tank_ble_window_result_t tank_ble_run_ota_window(uint32_t timeout_ms)
 {
-    esp_err_t err = tank_ble_start_ota_window(timeout_ms);
-    if (err != ESP_OK) {
-        return err;
+    if (tank_ble_start_ota_window(timeout_ms) != ESP_OK) {
+        return TANK_BLE_WINDOW_DONE;
     }
     return tank_ble_wait_ota_window();
 }

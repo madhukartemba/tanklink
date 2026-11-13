@@ -226,14 +226,24 @@ static void handle_button_gesture(void)
     esp_err_t err = tank_link_send_status(&in, bat, true);
     ESP_LOGI(TAG, "status result: %s", esp_err_to_name(err));
     save_last_flags(now_flags);
-    /* Success / no-ACK LED handled inside tank_link_send_status. */
 
     if (ble_err == ESP_OK) {
-        err = tank_ble_wait_ota_window();
-        if (err == ESP_ERR_INVALID_STATE) {
-            tank_ble_stop();
-            bat = tank_battery_percent();
-            (void)run_pairing_mode(bat);
+        for (;;) {
+            const tank_ble_window_result_t w = tank_ble_wait_ota_window();
+            if (w == TANK_BLE_WINDOW_CLICK) {
+                tank_board_read(&in);
+                bat = tank_battery_percent();
+                err = tank_link_send_status(&in, bat, true);
+                ESP_LOGI(TAG, "repeat status: %s", esp_err_to_name(err));
+                save_last_flags(flags_from_inputs(&in));
+                continue;
+            }
+            if (w == TANK_BLE_WINDOW_PAIR) {
+                tank_ble_stop();
+                bat = tank_battery_percent();
+                (void)run_pairing_mode(bat);
+            }
+            break;
         }
     }
 }
