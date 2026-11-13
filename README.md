@@ -3,7 +3,7 @@
 Local rooftop **tank ↔ pump** control — no cloud required.
 
 - **Phone ↔ pump:** BLE (claim/pair, On/Off, settings)
-- **Tank ↔ pump:** LoRa (RA-02 / SX1278) — tank TX done; pump RX TBD
+- **Tank ↔ pump:** LoRa (RA-02 / SX1278) — tank TX + pump RX done
 - **Hardware:** ESP32-C3 (pump + tank), Flutter app
 
 | Folder | Role |
