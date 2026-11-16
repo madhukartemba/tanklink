@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -268,67 +267,33 @@ class AppSelfUpdate extends ChangeNotifier {
   }
 
   Future<AppReleaseInfo?> _fetchLatestAppRelease() async {
-    final uri = Uri.parse(
-      'https://api.github.com/repos/$repoOwner/$repoName/releases?per_page=30',
+    final list = await fetchGitHubReleases(
+      owner: repoOwner,
+      repo: repoName,
     );
-    final res = await http.get(
-      uri,
-      headers: {
-        'Accept': 'application/vnd.github+json',
-        'User-Agent': 'TankLink-App',
-      },
+    final candidates = listTaggedReleasesBySemver(
+      releases: list,
+      tagPrefix: 'app-v',
+      binAssetName: apkAssetName,
+      manifestAssetName: 'app-manifest.json',
     );
-    if (res.statusCode != 200) {
-      throw StateError('GitHub API ${res.statusCode}');
-    }
-    final list = jsonDecode(res.body) as List<dynamic>;
-    AppReleaseInfo? best;
-    for (final item in list) {
-      final map = item as Map<String, dynamic>;
-      if (map['draft'] == true || map['prerelease'] == true) continue;
-      final tag = map['tag_name'] as String? ?? '';
-      if (!tag.startsWith('app-v')) continue;
-      final version = tag.substring('app-v'.length);
-      if (SemVer.tryParse(version) == null) continue;
-      final assets = (map['assets'] as List<dynamic>? ?? [])
-          .cast<Map<String, dynamic>>();
-      String? apkUrl;
-      String? manifestUrl;
-      int size = 0;
-      for (final a in assets) {
-        final name = a['name'] as String? ?? '';
-        final url = a['browser_download_url'] as String?;
-        if (url == null) continue;
-        if (name == apkAssetName) {
-          apkUrl = url;
-          size = a['size'] as int? ?? 0;
-        } else if (name == 'app-manifest.json') {
-          manifestUrl = url;
-        }
-      }
-      if (apkUrl == null || manifestUrl == null) continue;
-
-      final manRes = await http.get(
-        Uri.parse(manifestUrl),
-        headers: {'User-Agent': 'TankLink-App'},
-      );
-      if (manRes.statusCode != 200) continue;
-      final man = jsonDecode(manRes.body) as Map<String, dynamic>;
+    for (final c in candidates) {
+      final man = await fetchReleaseManifest(c.manifestUrl);
+      if (man == null) continue;
       if (man['component'] != 'tanklink_app') continue;
       final sha = (man['sha256'] as String?)?.toLowerCase();
-      final manVer = man['version'] as String? ?? version;
+      final manVer = man['version'] as String? ?? c.tagVersion;
       if (sha == null || sha.length != 64) continue;
-      if (!isNewerReleaseVersion(manVer, best?.version)) continue;
-
-      best = AppReleaseInfo(
+      if (SemVer.tryParse(manVer) == null) continue;
+      return AppReleaseInfo(
         version: manVer,
-        tag: tag,
-        apkUrl: apkUrl,
-        manifestUrl: manifestUrl,
+        tag: c.tag,
+        apkUrl: c.binUrl,
+        manifestUrl: c.manifestUrl,
         sha256: sha,
-        sizeBytes: size,
+        sizeBytes: c.sizeBytes,
       );
     }
-    return best;
+    return null;
   }
 }
