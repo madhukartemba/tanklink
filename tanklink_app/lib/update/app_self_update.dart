@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'github_release_util.dart';
 import 'pump_firmware_update.dart' show FwUpdatePhase;
 import 'semver.dart';
 
@@ -281,6 +282,7 @@ class AppSelfUpdate extends ChangeNotifier {
       throw StateError('GitHub API ${res.statusCode}');
     }
     final list = jsonDecode(res.body) as List<dynamic>;
+    AppReleaseInfo? best;
     for (final item in list) {
       final map = item as Map<String, dynamic>;
       if (map['draft'] == true || map['prerelease'] == true) continue;
@@ -316,8 +318,9 @@ class AppSelfUpdate extends ChangeNotifier {
       final sha = (man['sha256'] as String?)?.toLowerCase();
       final manVer = man['version'] as String? ?? version;
       if (sha == null || sha.length != 64) continue;
+      if (!isNewerReleaseVersion(manVer, best?.version)) continue;
 
-      return AppReleaseInfo(
+      best = AppReleaseInfo(
         version: manVer,
         tag: tag,
         apkUrl: apkUrl,
@@ -326,6 +329,6 @@ class AppSelfUpdate extends ChangeNotifier {
         sizeBytes: size,
       );
     }
-    return null;
+    return best;
   }
 }
