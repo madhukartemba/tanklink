@@ -45,11 +45,32 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
         : TimeOfDay(hour: existing.hour, minute: existing.minute);
     final picked = await showTimePicker(context: context, initialTime: initial);
     if (picked == null || !mounted) return;
+    var slot = existing?.slot ?? session.activeSlot;
+    if (session.twoTankMode) {
+      final chosen = await showDialog<int>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('Which tank?'),
+          children: [
+            for (final tank in session.tanks)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, tank.index),
+                child: Text(
+                  tank.name.isEmpty ? session.tankNameFor(tank.index) : tank.name,
+                ),
+              ),
+          ],
+        ),
+      );
+      if (chosen == null || !mounted) return;
+      slot = chosen;
+    }
     final next = [...session.schedules];
     final entry = FillSchedule(
       enabled: existing?.enabled ?? true,
       hour: picked.hour,
       minute: picked.minute,
+      slot: slot,
     );
     if (index == null) {
       next.add(entry);
@@ -75,13 +96,18 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
 
   String _stopLine(PumpSession session) {
     if (session.autoOffMin <= 0) {
-      return 'Auto-off is off. A scheduled fill stops when the tank is full or you stop the pump.';
+      final base =
+          'Auto-off is off. A scheduled fill stops when the tank is full or you stop the pump.';
+      if (!session.twoTankMode) return base;
+      return '$base Set the lever to that tank before the time. A fill does not switch tanks if the pump is already running.';
     }
     final m = session.autoOffMin;
     final label = m < 60
         ? '$m min'
         : '${m ~/ 60}h${m % 60 == 0 ? '' : ' ${m % 60}m'}';
-    return 'Runs every day at these times. Stops when the tank is full or after $label.';
+    final base = 'Runs every day at these times. Stops when the tank is full or after $label.';
+    if (!session.twoTankMode) return base;
+    return '$base Set the lever to that tank before the time. A fill does not switch tanks if the pump is already running.';
   }
 
   @override
@@ -131,6 +157,9 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
             for (var i = 0; i < session.schedules.length; i++)
               _ScheduleTile(
                 schedule: session.schedules[i],
+                tankName: session.twoTankMode
+                    ? session.tankNameFor(session.schedules[i].slot)
+                    : null,
                 enabled: ready && !_busy,
                 onToggle: (on) {
                   final next = [...session.schedules];
@@ -167,9 +196,11 @@ class _ScheduleTile extends StatelessWidget {
     required this.onToggle,
     required this.onEdit,
     required this.onDelete,
+    this.tankName,
   });
 
   final FillSchedule schedule;
+  final String? tankName;
   final bool enabled;
   final ValueChanged<bool> onToggle;
   final VoidCallback onEdit;
@@ -191,7 +222,11 @@ class _ScheduleTile extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
       ),
-      subtitle: Text(schedule.enabled ? 'Every day' : 'Paused'),
+      subtitle: Text(
+        tankName == null
+            ? (schedule.enabled ? 'Every day' : 'Paused')
+            : '$tankName · ${schedule.enabled ? 'Every day' : 'Paused'}',
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

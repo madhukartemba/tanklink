@@ -123,6 +123,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onSettings: () => showPumpSettingsSheet(context),
                   onRename: () => showRenamePumpDialog(context, pump),
                 ),
+                if (ready && session.twoTankMode) ...[
+                  const SizedBox(height: 10),
+                  _TankChips(session: session),
+                ],
                 const HomeUpdateBannerSection(),
                 Expanded(
                   child: Padding(
@@ -196,6 +200,83 @@ class _TopBar extends StatelessWidget {
           icon: const Icon(Icons.add_rounded),
         ),
       ],
+    );
+  }
+}
+
+class _TankChips extends StatelessWidget {
+  const _TankChips({required this.session});
+
+  final PumpSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final slots = session.tanks;
+    if (slots.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final slot in slots)
+          _TankChip(session: session, slot: slot, scheme: scheme),
+      ],
+    );
+  }
+}
+
+class _TankChip extends StatelessWidget {
+  const _TankChip({
+    required this.session,
+    required this.slot,
+    required this.scheme,
+  });
+
+  final PumpSession session;
+  final TankSlot slot;
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = slot.index == session.activeSlot;
+    final locked = session.pumpOn && !selected;
+    final offline = !session.tankOnline;
+    final full = session.slotIsFull(slot);
+    final label = offline
+        ? 'Offline'
+        : full
+            ? 'Full'
+            : 'Not full';
+    return FilterChip(
+      selected: selected,
+      showCheckmark: false,
+      label: Text('${slot.name.isEmpty ? session.tankNameFor(slot.index) : slot.name} · $label'),
+      onSelected: locked
+          ? null
+          : (_) async {
+              if (selected) return;
+              try {
+                await session.selectTank(slot.index);
+              } catch (e) {
+                if (!context.mounted) return;
+                final msg = e.toString().replaceFirst('StateError: ', '');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(msg)),
+                );
+              }
+            },
+      selectedColor: full && !offline
+          ? const Color(0xFF1FA97A).withValues(alpha: 0.22)
+          : scheme.secondaryContainer,
+      side: BorderSide(
+        color: locked
+            ? scheme.outlineVariant
+            : selected
+                ? scheme.primary
+                : scheme.outlineVariant,
+      ),
     );
   }
 }
@@ -471,6 +552,19 @@ class _TankHero extends StatelessWidget {
                 ),
               ),
               SizedBox(height: gap),
+              if (session.twoTankMode)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    session.activeTankName,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               Text(title, style: titleStyle, textAlign: TextAlign.center),
               SizedBox(height: veryTight ? 2 : 6),
               Text(

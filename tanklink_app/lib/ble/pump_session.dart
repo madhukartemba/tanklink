@@ -95,21 +95,33 @@ class FillSchedule {
     required this.enabled,
     required this.hour,
     required this.minute,
+    this.slot = 0,
   });
 
   final bool enabled;
   final int hour;
   final int minute;
+  final int slot;
 
   int get minutesOfDay => hour * 60 + minute;
 
-  FillSchedule copyWith({bool? enabled, int? hour, int? minute}) {
+  FillSchedule copyWith({bool? enabled, int? hour, int? minute, int? slot}) {
     return FillSchedule(
       enabled: enabled ?? this.enabled,
       hour: hour ?? this.hour,
       minute: minute ?? this.minute,
+      slot: slot ?? this.slot,
     );
   }
+}
+
+/// One logical tank stored on the pump.
+class TankSlot {
+  TankSlot({required this.index, required this.sensor, required this.name});
+
+  final int index;
+  final int sensor;
+  final String name;
 }
 
 class PumpSession extends ChangeNotifier {
@@ -128,8 +140,12 @@ class PumpSession extends ChangeNotifier {
   int ledBrightness = 70; // 1-100
   int starterType = TankLinkUuids.starterNone;
   int relayPulseMs = TankLinkUuids.relayPulseMsDefault;
-  /// Pump NVS: empty float is wired. The pump applies this; the app only writes it.
-  bool emptyFloatConnected = false;
+  /// 0 off, 1 almost-empty, 2 two tanks. Stored on the pump.
+  int sensorMode = 0;
+  int activeSlot = 0;
+  int tankRawFlags = 0;
+  bool tanksSupported = false;
+  List<TankSlot> tanks = [];
   bool connecting = false;
   bool connectFailed = false;
   bool scanning = false;
@@ -171,12 +187,14 @@ class PumpSession extends ChangeNotifier {
   BluetoothCharacteristic? _otaStatus;
   BluetoothCharacteristic? _tank;
   BluetoothCharacteristic? _sched;
+  BluetoothCharacteristic? _tanks;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<List<int>>? _pairNotifySub;
   StreamSubscription<List<int>>? _stateNotifySub;
   StreamSubscription<List<int>>? _otaStatusSub;
   StreamSubscription<List<int>>? _tankNotifySub;
   StreamSubscription<List<int>>? _schedNotifySub;
+  StreamSubscription<List<int>>? _tanksNotifySub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
   Timer? _runTicker;
   Timer? _ageTicker;
@@ -188,8 +206,14 @@ class PumpSession extends ChangeNotifier {
       tankBleToken!.length == TankLinkUuids.tokenLen &&
       tankBleToken!.any((b) => b != 0);
 
+  bool get emptyFloatConnected =>
+      sensorMode == TankLinkUuids.sensorModeEmpty;
+  bool get twoTankMode => sensorMode == TankLinkUuids.sensorModeTwo;
+
   bool get tankFull => (tankFlags & TankLinkUuids.tankFlagFull) != 0;
-  bool get tankEmpty => (tankFlags & TankLinkUuids.tankFlagEmpty) != 0;
+  bool get tankEmpty =>
+      sensorMode == TankLinkUuids.sensorModeEmpty &&
+      (tankFlags & TankLinkUuids.tankFlagEmpty) != 0;
   bool get tankBatteryLow =>
       tankBound &&
       tankBatteryPct > 0 &&
@@ -205,6 +229,23 @@ class PumpSession extends ChangeNotifier {
     if (tankEmpty) return 'Almost empty';
     if (emptyFloatConnected) return 'Half full';
     return 'Ok';
+  }
+
+  String tankNameFor(int slot) {
+    for (final t in tanks) {
+      if (t.index == slot && t.name.isNotEmpty) return t.name;
+    }
+    return 'Tank ${slot + 1}';
+  }
+
+  String get activeTankName => tankNameFor(activeSlot);
+
+  bool slotIsFull(TankSlot slot) {
+    if (!tankBound || !tankOnline) return false;
+    final bit = slot.sensor == 0
+        ? TankLinkUuids.tankFlagFull
+        : TankLinkUuids.tankFlagEmpty;
+    return (tankRawFlags & bit) != 0;
   }
 
   /// Live seconds since last tank LoRa packet (ticks with UI timer).
@@ -454,6 +495,7 @@ class PumpSession extends ChangeNotifier {
       authed = true;
       await _state!.setNotifyValue(true);
       await _bindSchedules();
+      await _bindTanks();
       final stateVal = await _state!.read();
       if (stateVal.isNotEmpty) {
         _applyPumpOn(stateVal[0] != 0);
@@ -613,7 +655,7 @@ class PumpSession extends ChangeNotifier {
               .toInt();
         }
         if (bytes.length >= 17) {
-          emptyFloatConnected = bytes[16] != 0;
+          sensorMode = bytes[16].clamp(0, TankLinkUuids.sensorModeTwo);
         }
       } catch (_) {}
     }
@@ -679,7 +721,7 @@ class PumpSession extends ChangeNotifier {
     int? brightness,
     int? starter,
     int? pulseMs,
-    bool? emptyFloat,
+    int? mode,
   }) async {
     if (_settings == null || !authed) {
       status = 'Not connected';
@@ -695,9 +737,9 @@ class PumpSession extends ChangeNotifier {
       TankLinkUuids.relayPulseMsMin,
       TankLinkUuids.relayPulseMsMax,
     );
-    final empty = emptyFloat ?? emptyFloatConnected;
+    final modeByte = (mode ?? sensorMode).clamp(0, TankLinkUuids.sensorModeTwo);
     await _settings!.write(
-      [m, f, t, b, s, p & 0xff, (p >> 8) & 0xff, empty ? 1 : 0],
+      [m, f, t, b, s, p & 0xff, (p >> 8) & 0xff, modeByte],
       withoutResponse: false,
     );
     autoOffMin = m;
@@ -706,7 +748,7 @@ class PumpSession extends ChangeNotifier {
     ledBrightness = b;
     starterType = s;
     relayPulseMs = p;
-    emptyFloatConnected = empty;
+    sensorMode = modeByte;
     notifyListeners();
   }
 
@@ -719,9 +761,14 @@ class PumpSession extends ChangeNotifier {
     await _writeSettings(brightness: percent.clamp(1, 100));
   }
 
-  Future<void> setEmptyFloatConnected(bool connected) async {
-    await _writeSettings(emptyFloat: connected);
-    status = connected ? 'Almost-empty sensor on' : 'Almost-empty sensor off';
+  Future<void> setSensorMode(int mode) async {
+    final next = mode.clamp(0, TankLinkUuids.sensorModeTwo);
+    await _writeSettings(mode: next);
+    status = switch (next) {
+      TankLinkUuids.sensorModeEmpty => 'Almost-empty sensor on',
+      TankLinkUuids.sensorModeTwo => 'Two tanks',
+      _ => 'Second float off',
+    };
     notifyListeners();
   }
 
@@ -1000,6 +1047,7 @@ class PumpSession extends ChangeNotifier {
     autoOffMin = info.autoOffMin;
     await _state!.setNotifyValue(true);
     await _bindSchedules();
+    await _bindTanks();
     // Refresh tank bind status after claim (char may already be subscribed).
     try {
       if (_tank != null) {
@@ -1368,22 +1416,29 @@ class PumpSession extends ChangeNotifier {
     await _otaStatusSub?.cancel();
     await _tankNotifySub?.cancel();
     await _schedNotifySub?.cancel();
+    await _tanksNotifySub?.cancel();
     await _connSub?.cancel();
     _pairNotifySub = null;
     _stateNotifySub = null;
     _otaStatusSub = null;
     _tankNotifySub = null;
     _schedNotifySub = null;
+    _tanksNotifySub = null;
     _connSub = null;
     try {
       await _device?.disconnect();
     } catch (_) {}
     _device = null;
     _pair = _auth = _state = _cmd = _settings = null;
-    _otaCtrl = _otaData = _otaStatus = _tank = _sched = null;
+    _otaCtrl = _otaData = _otaStatus = _tank = _sched = _tanks = null;
     schedulesSupported = false;
     pumpClockValid = false;
     schedules = [];
+    tanksSupported = false;
+    sensorMode = 0;
+    activeSlot = 0;
+    tankRawFlags = 0;
+    tanks = [];
     connected = false;
     authed = false;
     connecting = false;
@@ -1476,6 +1531,12 @@ class PumpSession extends ChangeNotifier {
     } catch (_) {
       _sched = null;
     }
+    try {
+      _tanks = svc.characteristics
+          .firstWhere((c) => c.uuid == TankLinkUuids.tanks);
+    } catch (_) {
+      _tanks = null;
+    }
 
     try {
       await device.requestMtu(512);
@@ -1552,9 +1613,11 @@ class PumpSession extends ChangeNotifier {
     bytes.addByte(TankLinkUuids.schedOpSetList);
     bytes.addByte(sorted.length);
     for (final s in sorted) {
+      final slot = twoTankMode ? s.slot.clamp(0, 3) : 0;
       bytes.addByte(s.enabled ? 1 : 0);
       bytes.addByte(s.hour);
       bytes.addByte(s.minute);
+      bytes.addByte(slot);
     }
     await chr.write(bytes.toBytes(), withoutResponse: false);
     schedules = sorted;
@@ -1593,19 +1656,95 @@ class PumpSession extends ChangeNotifier {
     pumpClockHour = value[1];
     pumpClockMinute = value[2];
     final count = value[3];
-    if (count > TankLinkUuids.schedMax || value.length < 4 + count * 3) {
+    if (count > TankLinkUuids.schedMax || value.length < 4 + count * 4) {
       return;
     }
     final next = <FillSchedule>[];
     for (var i = 0; i < count; i++) {
-      final o = 4 + i * 3;
+      final o = 4 + i * 4;
       next.add(FillSchedule(
         enabled: value[o] != 0,
         hour: value[o + 1],
         minute: value[o + 2],
+        slot: value[o + 3],
       ));
     }
     schedules = next;
+  }
+
+  Future<void> selectTank(int slot) async {
+    final chr = _cmd;
+    if (chr == null || !authed) {
+      throw StateError('Connect to the pump first');
+    }
+    if (pumpOn && slot != activeSlot) {
+      throw StateError('Stop the pump before switching tanks');
+    }
+    await chr.write(
+      [TankLinkUuids.cmdTankSelect, slot],
+      withoutResponse: false,
+    );
+    activeSlot = slot;
+    notifyListeners();
+  }
+
+  Future<void> renameTank(int slot, String name) async {
+    final chr = _cmd;
+    if (chr == null || !authed) {
+      throw StateError('Connect to the pump first');
+    }
+    final trimmed = name.trim();
+    final bytes = <int>[];
+    for (final code in trimmed.codeUnits) {
+      if (code >= 0x20 && code <= 0x7e) bytes.add(code);
+    }
+    if (bytes.isEmpty) {
+      throw StateError('Use letters or numbers');
+    }
+    if (bytes.length >= TankLinkUuids.tankNameLen) {
+      throw StateError('Name is too long');
+    }
+    await chr.write(
+      [TankLinkUuids.cmdTankRename, slot, ...bytes],
+      withoutResponse: false,
+    );
+  }
+
+  Future<void> _bindTanks() async {
+    final chr = _tanks;
+    if (chr == null) {
+      tanksSupported = false;
+      return;
+    }
+    tanksSupported = true;
+    await _tanksNotifySub?.cancel();
+    await chr.setNotifyValue(true);
+    _tanksNotifySub = chr.onValueReceived.listen((value) {
+      _applyTanks(value);
+      notifyListeners();
+    });
+    try {
+      _applyTanks(await chr.read());
+    } catch (_) {}
+  }
+
+  void _applyTanks(List<int> value) {
+    if (value.length < 4) return;
+    sensorMode = value[0].clamp(0, TankLinkUuids.sensorModeTwo);
+    activeSlot = value[1];
+    tankRawFlags = value[2];
+    final count = value[3];
+    final next = <TankSlot>[];
+    var o = 4;
+    for (var i = 0; i < count; i++) {
+      if (o + 2 + TankLinkUuids.tankNameLen > value.length) break;
+      final raw = value.sublist(o + 2, o + 2 + TankLinkUuids.tankNameLen);
+      final end = raw.indexOf(0);
+      final name = String.fromCharCodes(raw.sublist(0, end < 0 ? raw.length : end));
+      next.add(TankSlot(index: value[o], sensor: value[o + 1], name: name));
+      o += 2 + TankLinkUuids.tankNameLen;
+    }
+    tanks = next;
   }
 
   @override

@@ -73,8 +73,8 @@ void tank_board_read(tank_inputs_t *out)
     if (!out) {
         return;
     }
-    out->full = gpio_get_level(pin_full()) != 0;
-    out->empty = gpio_get_level(pin_empty()) != 0;
+    out->sensor1 = gpio_get_level(pin_full()) != 0;
+    out->sensor2 = gpio_get_level(pin_empty()) != 0;
     out->button_down = tank_board_button_down();
 }
 

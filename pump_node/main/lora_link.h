@@ -35,6 +35,8 @@ bool lora_link_tank_has_ble_token(void);
 /** 16-byte BLE OTA token (zeros if absent). */
 const uint8_t *lora_link_tank_ble_token(void);
 uint8_t lora_link_tank_flags(void);
+/** Last raw pin flags from the tank. Bit 0 is sensor 1, bit 1 is sensor 2. */
+uint8_t lora_link_tank_raw_flags(void);
 uint8_t lora_link_tank_battery_pct(void);
 uint8_t lora_link_tank_fw_major(void);
 uint8_t lora_link_tank_fw_minor(void);

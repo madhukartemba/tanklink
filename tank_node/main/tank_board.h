@@ -10,8 +10,8 @@ extern "C" {
 #endif
 
 typedef struct {
-    bool full;  /* raw FULL pin; true when HIGH (pull-up, switch open) */
-    bool empty; /* raw EMPTY pin; true when HIGH. Meaning is decided on the pump. */
+    bool sensor1; /* first float; true when HIGH. Meaning is decided on the pump. */
+    bool sensor2; /* second float; true when HIGH. Meaning is decided on the pump. */
     bool button_down; /* true while held (active low) */
 } tank_inputs_t;
 

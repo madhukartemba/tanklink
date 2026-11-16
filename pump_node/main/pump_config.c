@@ -264,14 +264,17 @@ esp_err_t pump_config_set_relay_pulse_ms(uint16_t ms)
     return err;
 }
 
-uint8_t pump_config_empty_float(void)
+uint8_t pump_config_sensor_mode(void)
 {
-    return s_cfg.empty_float ? 1 : 0;
+    return s_cfg.empty_float > 2 ? 0 : s_cfg.empty_float;
 }
 
-esp_err_t pump_config_set_empty_float(uint8_t connected)
+esp_err_t pump_config_set_sensor_mode(uint8_t mode)
 {
-    s_cfg.empty_float = connected ? 1 : 0;
+    if (mode > 2) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    s_cfg.empty_float = mode;
     return pump_config_set(&s_cfg);
 }
 

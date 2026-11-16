@@ -17,6 +17,7 @@
 #include "tank_errors.h"
 #include "tank_led.h"
 #include "tank_link.h"
+#include "tanklink_lora_proto.h"
 #include "tank_version.h"
 
 #define TAG "TANK"
@@ -79,11 +80,11 @@ static void save_paired(bool paired)
 static uint8_t flags_from_inputs(const tank_inputs_t *in)
 {
     uint8_t f = 0;
-    if (in->full) {
-        f |= 0x01;
+    if (in->sensor1) {
+        f |= TANKLINK_LORA_FLAG_SENSOR1;
     }
-    if (in->empty) {
-        f |= 0x02;
+    if (in->sensor2) {
+        f |= TANKLINK_LORA_FLAG_SENSOR2;
     }
     return f;
 }

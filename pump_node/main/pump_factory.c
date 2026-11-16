@@ -9,6 +9,7 @@
 #include "pump_config.h"
 #include "pump_pair.h"
 #include "pump_sched.h"
+#include "pump_tanks.h"
 #include "relay_control.h"
 #include "status_led.h"
 
@@ -38,6 +39,10 @@ esp_err_t pump_factory_reset(void)
     err = pump_sched_clear();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "schedule clear failed: %s", esp_err_to_name(err));
+    }
+    err = pump_tanks_clear();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "tank slot clear failed: %s", esp_err_to_name(err));
     }
     err = pump_config_reset_defaults();
     if (err != ESP_OK) {

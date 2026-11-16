@@ -24,6 +24,7 @@
 #include "lora_link.h"
 #include "pump_config.h"
 #include "pump_sched.h"
+#include "pump_tanks.h"
 #include "pump_errors.h"
 #include "pump_factory.h"
 #include "pump_ota.h"
@@ -274,6 +275,7 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(pump_config_init());
     ESP_ERROR_CHECK(pump_sched_init());
+    ESP_ERROR_CHECK(pump_tanks_init());
     if (relay_control_init() != ESP_OK) {
         ESP_LOGW(TAG, "relay init failed — continuing");
     }

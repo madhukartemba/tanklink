@@ -150,11 +150,11 @@ static void fill_status(tanklink_lora_status_t *pkt, const tank_inputs_t *in,
     pkt->fw_minor = TANK_FW_MINOR;
     pkt->fw_patch = TANK_FW_PATCH;
     if (in) {
-        if (in->full) {
-            pkt->flags |= TANKLINK_LORA_FLAG_FULL;
+        if (in->sensor1) {
+            pkt->flags |= TANKLINK_LORA_FLAG_SENSOR1;
         }
-        if (in->empty) {
-            pkt->flags |= TANKLINK_LORA_FLAG_EMPTY;
+        if (in->sensor2) {
+            pkt->flags |= TANKLINK_LORA_FLAG_SENSOR2;
         }
     }
     if (button_event) {

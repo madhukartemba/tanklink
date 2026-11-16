@@ -9,6 +9,7 @@
 #include "gatt_svr.h"
 #include "nvs.h"
 #include "pump_config.h"
+#include "pump_tanks.h"
 #include "pump_errors.h"
 #include "pump_pair.h"
 #include "relay_control.h"
@@ -81,6 +82,10 @@ const uint8_t *lora_link_tank_id(void)
     return z;
 }
 uint8_t lora_link_tank_flags(void)
+{
+    return 0;
+}
+uint8_t lora_link_tank_raw_flags(void)
 {
     return 0;
 }
@@ -254,7 +259,7 @@ static void apply_tank_packet(const tanklink_lora_status_t *pkt, int16_t rssi_db
     s_fw_pat = pkt->fw_patch;
     s_rssi_dbm = rssi_dbm;
     s_snr_db = snr_db;
-    const bool full = (pkt->flags & TANKLINK_LORA_FLAG_FULL) != 0;
+    const bool full = pump_tanks_active_is_full(pkt->flags);
     status_led_set_tank_full(full);
     if (full && gatt_svr_pump_state()) {
         gatt_svr_set_pump_state_silent(0);
@@ -265,6 +270,7 @@ static void apply_tank_packet(const tanklink_lora_status_t *pkt, int16_t rssi_db
              pkt->type, pkt->flags, pkt->battery_pct, pkt->seq, pkt->fw_major,
              pkt->fw_minor, pkt->fw_patch, (int)full, (int)rssi_dbm, (int)snr_db);
     gatt_svr_notify_tank_if_subscribed();
+    gatt_svr_notify_tanks_if_subscribed();
 }
 
 static void restore_led_after_tank_pair(void)
@@ -346,6 +352,7 @@ static void lora_task(void *arg)
                     }
                     restore_led_after_tank_pair();
                     save_bind();
+                    pump_tanks_on_node_bound(s_tank_id);
                     send_ack(pkt);
                     if (pkt->seq != s_last_seq) {
                         s_last_seq = pkt->seq;
@@ -385,6 +392,9 @@ static void lora_task(void *arg)
 esp_err_t lora_link_init(void)
 {
     load_bind();
+    if (s_bound) {
+        pump_tanks_on_node_bound(s_tank_id);
+    }
     sx1278_config_t cfg = {
         .pin_sck = CONFIG_PUMP_LORA_SCK_GPIO,
         .pin_miso = CONFIG_PUMP_LORA_MISO_GPIO,
@@ -475,6 +485,7 @@ esp_err_t lora_link_unpair_tank(void)
         nvs_commit(h);
         nvs_close(h);
     }
+    pump_tanks_on_node_unpaired();
     ESP_LOGI(TAG, "tank unpaired");
     gatt_svr_notify_tank_if_subscribed();
     return err;
@@ -516,18 +527,29 @@ const uint8_t *lora_link_tank_ble_token(void)
 {
     return s_ble_token;
 }
+uint8_t lora_link_tank_raw_flags(void)
+{
+    return s_flags;
+}
 uint8_t lora_link_tank_flags(void)
 {
-    /* Tank sends raw pin levels (bit set = pin HIGH). This is the level the
-     * app should show, using the empty-float setting stored on the pump. */
+    /* Bit 0 is "selected tank is full" and bit 1 is "almost empty". */
     const uint8_t raw = s_flags;
     uint8_t out = raw & (uint8_t)(TANKLINK_LORA_FLAG_BTN | TANKLINK_LORA_FLAG_PAIRING);
-    const bool pin_full_high = (raw & TANKLINK_LORA_FLAG_FULL) != 0;
-    const bool pin_empty_high = (raw & TANKLINK_LORA_FLAG_EMPTY) != 0;
-    if (pin_full_high) {
-        out |= TANKLINK_LORA_FLAG_FULL;
-    } else if (pump_config_empty_float() && !pin_empty_high) {
-        out |= TANKLINK_LORA_FLAG_EMPTY;
+    const bool s1 = (raw & TANKLINK_LORA_FLAG_SENSOR1) != 0;
+    const bool s2 = (raw & TANKLINK_LORA_FLAG_SENSOR2) != 0;
+    const uint8_t mode = pump_config_sensor_mode();
+    if (mode == PUMP_SENSOR_MODE_TWO) {
+        if (pump_tanks_active_is_full(raw)) {
+            out |= TANKLINK_LORA_FLAG_SENSOR1;
+        }
+    } else if (s1) {
+        out |= TANKLINK_LORA_FLAG_SENSOR1;
+        if (mode == PUMP_SENSOR_MODE_EMPTY && !s2) {
+            out |= TANKLINK_LORA_FLAG_SENSOR2;
+        }
+    } else if (mode == PUMP_SENSOR_MODE_EMPTY && !s2) {
+        out |= TANKLINK_LORA_FLAG_SENSOR2;
     }
     return out;
 }
