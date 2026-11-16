@@ -1,5 +1,7 @@
 # Firmware releases
 
+Android app sideload updates: [`app-release.md`](app-release.md) (`app-v*`).
+
 ## Pump (`pump-v*`)
 
 1. Edit `TANKLINK_FW_VERSION` in [`pump_node/main/tanklink_uuid.h`](../pump_node/main/tanklink_uuid.h) (semver `X.Y.Z`).

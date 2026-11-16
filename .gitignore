@@ -28,6 +28,9 @@
 
 # Android / iOS local
 **/android/local.properties
+**/android/key.properties
+**/android/*.jks
+**/android/upload-keystore.jks
 **/android/.gradle/
 **/android/app/debug/
 **/android/app/profile/

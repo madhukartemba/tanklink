@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
+import '../update/app_self_update.dart';
+import '../update/app_update_flow.dart';
 import '../update/firmware_update_flow.dart';
 import '../update/pump_firmware_update.dart';
 import '../update/tank_firmware_update.dart';
@@ -17,6 +19,8 @@ Future<void> showPumpSettingsSheet(BuildContext context) {
   context.read<PumpFirmwareUpdate>().clearSnooze();
   context.read<TankFirmwareUpdate>().checkForUpdates(force: true);
   context.read<TankFirmwareUpdate>().clearSnooze();
+  context.read<AppSelfUpdate>().checkForUpdates(force: true);
+  context.read<AppSelfUpdate>().clearSnooze();
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -166,6 +170,7 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 20),
+            const _AppUpdateTile(),
             _FirmwareTile(ready: ready),
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -1008,6 +1013,65 @@ class _TankFirmwareTile extends StatelessWidget {
                     : const Icon(Icons.refresh_rounded),
               ),
       ),
+    );
+  }
+}
+
+class _AppUpdateTile extends StatelessWidget {
+  const _AppUpdateTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppSelfUpdate>();
+    if (!app.enabled) {
+      return const SizedBox.shrink();
+    }
+    final current = app.installedVersion ?? '—';
+    final available = app.updateAvailable();
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Badge(
+            isLabelVisible: available,
+            smallSize: 10,
+            child: const Icon(Icons.smartphone_outlined),
+          ),
+          title: const Text('TankLink app'),
+          subtitle: Text(
+            available
+                ? '$current → ${app.latestVersion}'
+                : current,
+          ),
+          trailing: available
+              ? FilledButton.tonal(
+                  onPressed: () => showAppUpdateConfirmSheet(context),
+                  child: Text('Update to ${app.latestVersion}'),
+                )
+              : IconButton(
+                  tooltip: 'Check for app updates',
+                  onPressed: () => app.checkForUpdates(force: true),
+                  icon: app.phase == FwUpdatePhase.checking
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                ),
+        ),
+        if (app.errorMessage != null && !available)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              app.errorMessage!,
+              style: TextStyle(color: scheme.error, fontSize: 13),
+            ),
+          ),
+        const Divider(height: 24),
+      ],
     );
   }
 }

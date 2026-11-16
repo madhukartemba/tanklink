@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'ble/pump_session.dart';
 import 'screens/home_screen.dart';
+import 'update/app_self_update.dart';
 import 'update/pump_firmware_update.dart';
 import 'update/tank_firmware_update.dart';
 
@@ -26,6 +27,9 @@ class TankLinkApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (_) => TankFirmwareUpdate()..loadCache(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => AppSelfUpdate()..loadCache(),
         ),
       ],
       child: MaterialApp(
