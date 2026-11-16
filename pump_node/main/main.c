@@ -23,6 +23,7 @@
 #include "gatt_svr.h"
 #include "lora_link.h"
 #include "pump_config.h"
+#include "pump_sched.h"
 #include "pump_errors.h"
 #include "pump_factory.h"
 #include "pump_ota.h"
@@ -272,6 +273,7 @@ void app_main(void)
         ESP_LOGW(TAG, "buzzer init failed — continuing");
     }
     ESP_ERROR_CHECK(pump_config_init());
+    ESP_ERROR_CHECK(pump_sched_init());
     if (relay_control_init() != ESP_OK) {
         ESP_LOGW(TAG, "relay init failed — continuing");
     }
@@ -297,7 +299,7 @@ void app_main(void)
         buzzer_play(BUZZER_TONE_CLICK, true);
     }
 
-    if (xTaskCreate(pair_poll_task, "pair_poll", 2048, NULL, 3, NULL) != pdPASS) {
+    if (xTaskCreate(pair_poll_task, "pair_poll", 3072, NULL, 3, NULL) != pdPASS) {
         ESP_LOGW(TAG, "pair_poll task failed");
     }
 

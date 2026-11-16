@@ -5,6 +5,8 @@ idf_component_register(
         "buzzer.c"
         "status_led.cpp"
         "pump_config.c"
+        "pump_clock.c"
+        "pump_sched.c"
         "pump_pair.c"
         "pump_factory.c"
         "pump_ota.c"

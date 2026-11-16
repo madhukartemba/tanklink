@@ -14,8 +14,10 @@
 #include "board.h"
 #include "buzzer.h"
 #include "lora_link.h"
+#include "pump_clock.h"
 #include "pump_config.h"
 #include "pump_errors.h"
+#include "pump_sched.h"
 #include "pump_factory.h"
 #include "pump_ota.h"
 #include "pump_pair.h"
@@ -33,6 +35,7 @@ typedef struct {
     bool state_notify;
     bool ota_status_notify;
     bool tank_notify;
+    bool sched_notify;
 } conn_slot_t;
 
 static const ble_uuid128_t uuid_svc = TANKLINK_SVC_UUID_INIT;
@@ -46,18 +49,22 @@ static const ble_uuid128_t uuid_ota_ctrl = TANKLINK_CHR_OTA_CTRL_INIT;
 static const ble_uuid128_t uuid_ota_data = TANKLINK_CHR_OTA_DATA_INIT;
 static const ble_uuid128_t uuid_ota_status = TANKLINK_CHR_OTA_STATUS_INIT;
 static const ble_uuid128_t uuid_tank = TANKLINK_CHR_TANK_INIT;
+static const ble_uuid128_t uuid_sched = TANKLINK_CHR_SCHED_INIT;
 
 static conn_slot_t s_conns[TANKLINK_MAX_BLE_CONN];
 static uint16_t s_pair_val_handle;
 static uint16_t s_state_val_handle;
 static uint16_t s_ota_status_val_handle;
 static uint16_t s_tank_val_handle;
+static uint16_t s_sched_val_handle;
 static uint8_t s_pump_on;
 static int64_t s_pump_on_since_us;
 static uint8_t s_last_error;
 
 static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
                       struct ble_gatt_access_ctxt *ctxt, void *arg);
+static void sched_notify(void);
+static int append_sched(struct os_mbuf *om);
 
 static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
     {
@@ -117,6 +124,12 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
                 .access_cb = chr_access,
                 .val_handle = &s_tank_val_handle,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+            },
+            {
+                .uuid = &uuid_sched.u,
+                .access_cb = chr_access,
+                .val_handle = &s_sched_val_handle,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
             },
             { 0 },
         },
@@ -533,6 +546,68 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         return 0;
     }
 
+    if (ble_uuid_cmp(uuid, &uuid_sched.u) == 0) {
+        if (!gatt_svr_is_authed_conn(conn_handle)) {
+            return ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR
+                       ? BLE_ATT_ERR_READ_NOT_PERMITTED
+                       : BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+        }
+        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+            return append_sched(ctxt->om) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
+        if (len < 1) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        uint8_t buf[1 + 1 + PUMP_SCHED_MAX * 3];
+        if (len > sizeof(buf)) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, len, NULL);
+        if (rc != 0) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        if (buf[0] == TANKLINK_SCHED_OP_SET_CLOCK) {
+            if (len != 9) {
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+            const int year = (int)buf[1] | ((int)buf[2] << 8);
+            if (pump_clock_set(year, buf[3], buf[4], buf[5], buf[6], buf[7], buf[8]) != ESP_OK) {
+                return BLE_ATT_ERR_UNLIKELY;
+            }
+            pump_sched_clear_fired();
+            ESP_LOGI(TAG, "clock set %04d-%02u-%02u %02u:%02u:%02u",
+                     year, buf[3], buf[4], buf[5], buf[6], buf[7]);
+            sched_notify();
+            return 0;
+        }
+        if (buf[0] == TANKLINK_SCHED_OP_SET_LIST) {
+            if (len < 2) {
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+            const unsigned count = buf[1];
+            if (count > PUMP_SCHED_MAX || len != 2 + count * 3) {
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+            pump_sched_entry_t entries[PUMP_SCHED_MAX];
+            memset(entries, 0, sizeof(entries));
+            for (unsigned i = 0; i < count; i++) {
+                entries[i].enabled = buf[2 + i * 3] ? 1 : 0;
+                entries[i].hour = buf[2 + i * 3 + 1];
+                entries[i].minute = buf[2 + i * 3 + 2];
+            }
+            if (pump_sched_set(entries, count) != ESP_OK) {
+                return BLE_ATT_ERR_UNLIKELY;
+            }
+            sched_notify();
+            return 0;
+        }
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
     if (ble_uuid_cmp(uuid, &uuid_ota_status.u) == 0) {
         if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
             return BLE_ATT_ERR_UNLIKELY;
@@ -807,8 +882,77 @@ void gatt_svr_toggle_pump(void)
     gatt_svr_set_pump_state_silent(s_pump_on ? 0 : 1);
 }
 
+static int append_sched(struct os_mbuf *om)
+{
+    pump_civil_time_t now;
+    const bool valid = pump_clock_now(&now);
+    uint8_t hdr[4] = {
+        valid ? 1 : 0,
+        valid ? (uint8_t)now.hour : 0,
+        valid ? (uint8_t)now.minute : 0,
+        (uint8_t)pump_sched_count(),
+    };
+    int rc = os_mbuf_append(om, hdr, sizeof(hdr));
+    if (rc != 0) {
+        return rc;
+    }
+    const unsigned count = pump_sched_count();
+    const pump_sched_entry_t *entries = pump_sched_entries();
+    for (unsigned i = 0; i < count; i++) {
+        uint8_t rec[3] = {
+            entries[i].enabled ? 1 : 0,
+            entries[i].hour,
+            entries[i].minute,
+        };
+        rc = os_mbuf_append(om, rec, sizeof(rec));
+        if (rc != 0) {
+            return rc;
+        }
+    }
+    return 0;
+}
+
+static void sched_notify(void)
+{
+    uint8_t buf[4 + PUMP_SCHED_MAX * 3];
+    pump_civil_time_t now;
+    const bool valid = pump_clock_now(&now);
+    const unsigned count = pump_sched_count();
+    buf[0] = valid ? 1 : 0;
+    buf[1] = valid ? (uint8_t)now.hour : 0;
+    buf[2] = valid ? (uint8_t)now.minute : 0;
+    buf[3] = (uint8_t)count;
+    const pump_sched_entry_t *entries = pump_sched_entries();
+    for (unsigned i = 0; i < count; i++) {
+        buf[4 + i * 3] = entries[i].enabled ? 1 : 0;
+        buf[4 + i * 3 + 1] = entries[i].hour;
+        buf[4 + i * 3 + 2] = entries[i].minute;
+    }
+    const uint16_t len = (uint16_t)(4 + count * 3);
+    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
+        if (!s_conns[i].in_use || !s_conns[i].sched_notify) {
+            continue;
+        }
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, len);
+        if (!om) {
+            continue;
+        }
+        int rc = ble_gatts_notify_custom(s_conns[i].conn_handle, s_sched_val_handle, om);
+        if (rc != 0) {
+            ESP_LOGW(TAG, "sched notify conn=%u rc=%d", s_conns[i].conn_handle, rc);
+        }
+    }
+}
+
 void gatt_svr_poll(void)
 {
+    pump_civil_time_t now;
+    if (pump_clock_now(&now) && pump_sched_take_due(&now)) {
+        if (!s_pump_on) {
+            ESP_LOGI(TAG, "Schedule start %02u:%02u", now.hour, now.minute);
+            gatt_svr_set_pump_state(1);
+        }
+    }
     if (!s_pump_on) {
         return;
     }
@@ -886,5 +1030,8 @@ void gatt_svr_on_subscribe(uint16_t conn_handle, uint16_t attr_handle, bool noti
     }
     if (attr_handle == s_tank_val_handle) {
         slot->tank_notify = notify_enabled;
+    }
+    if (attr_handle == s_sched_val_handle) {
+        slot->sched_notify = notify_enabled;
     }
 }

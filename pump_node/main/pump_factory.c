@@ -8,6 +8,7 @@
 #include "lora_link.h"
 #include "pump_config.h"
 #include "pump_pair.h"
+#include "pump_sched.h"
 #include "relay_control.h"
 #include "status_led.h"
 
@@ -33,6 +34,10 @@ esp_err_t pump_factory_reset(void)
     err = lora_link_unpair_tank();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "tank clear failed: %s", esp_err_to_name(err));
+    }
+    err = pump_sched_clear();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "schedule clear failed: %s", esp_err_to_name(err));
     }
     err = pump_config_reset_defaults();
     if (err != ESP_OK) {

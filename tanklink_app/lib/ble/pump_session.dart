@@ -89,6 +89,29 @@ class SavedPump {
   }
 }
 
+/// One daily fill time stored on the pump. Runs every day.
+class FillSchedule {
+  FillSchedule({
+    required this.enabled,
+    required this.hour,
+    required this.minute,
+  });
+
+  final bool enabled;
+  final int hour;
+  final int minute;
+
+  int get minutesOfDay => hour * 60 + minute;
+
+  FillSchedule copyWith({bool? enabled, int? hour, int? minute}) {
+    return FillSchedule(
+      enabled: enabled ?? this.enabled,
+      hour: hour ?? this.hour,
+      minute: minute ?? this.minute,
+    );
+  }
+}
+
 class PumpSession extends ChangeNotifier {
   final List<SavedPump> pumps = [];
   String? selectedRemoteId;
@@ -129,6 +152,12 @@ class PumpSession extends ChangeNotifier {
   int? tankSnrDb;
   /// Last pump NeoPixel / start-deny error (0 = none).
   int pumpLastError = 0;
+  /// False on pumps older than the schedule characteristic.
+  bool schedulesSupported = false;
+  bool pumpClockValid = false;
+  int pumpClockHour = 0;
+  int pumpClockMinute = 0;
+  List<FillSchedule> schedules = [];
   final List<ScanResult> scanResults = [];
 
   BluetoothDevice? _device;
@@ -141,14 +170,17 @@ class PumpSession extends ChangeNotifier {
   BluetoothCharacteristic? _otaData;
   BluetoothCharacteristic? _otaStatus;
   BluetoothCharacteristic? _tank;
+  BluetoothCharacteristic? _sched;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<List<int>>? _pairNotifySub;
   StreamSubscription<List<int>>? _stateNotifySub;
   StreamSubscription<List<int>>? _otaStatusSub;
   StreamSubscription<List<int>>? _tankNotifySub;
+  StreamSubscription<List<int>>? _schedNotifySub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
   Timer? _runTicker;
   Timer? _ageTicker;
+  Timer? _clockSyncTimer;
 
   bool get tankOtaReady =>
       tankBound &&
@@ -421,6 +453,7 @@ class PumpSession extends ChangeNotifier {
       }
       authed = true;
       await _state!.setNotifyValue(true);
+      await _bindSchedules();
       final stateVal = await _state!.read();
       if (stateVal.isNotEmpty) {
         _applyPumpOn(stateVal[0] != 0);
@@ -966,6 +999,7 @@ class PumpSession extends ChangeNotifier {
     firmware = info.fw;
     autoOffMin = info.autoOffMin;
     await _state!.setNotifyValue(true);
+    await _bindSchedules();
     // Refresh tank bind status after claim (char may already be subscribed).
     try {
       if (_tank != null) {
@@ -1327,22 +1361,29 @@ class PumpSession extends ChangeNotifier {
     _runTicker = null;
     _ageTicker?.cancel();
     _ageTicker = null;
+    _clockSyncTimer?.cancel();
+    _clockSyncTimer = null;
     await _pairNotifySub?.cancel();
     await _stateNotifySub?.cancel();
     await _otaStatusSub?.cancel();
     await _tankNotifySub?.cancel();
+    await _schedNotifySub?.cancel();
     await _connSub?.cancel();
     _pairNotifySub = null;
     _stateNotifySub = null;
     _otaStatusSub = null;
     _tankNotifySub = null;
+    _schedNotifySub = null;
     _connSub = null;
     try {
       await _device?.disconnect();
     } catch (_) {}
     _device = null;
     _pair = _auth = _state = _cmd = _settings = null;
-    _otaCtrl = _otaData = _otaStatus = _tank = null;
+    _otaCtrl = _otaData = _otaStatus = _tank = _sched = null;
+    schedulesSupported = false;
+    pumpClockValid = false;
+    schedules = [];
     connected = false;
     authed = false;
     connecting = false;
@@ -1382,9 +1423,11 @@ class PumpSession extends ChangeNotifier {
     await _connSub?.cancel();
     _connSub = device.connectionState.listen((s) {
       connected = s == BluetoothConnectionState.connected;
-      if (!connected) {
-        authed = false;
-        _applyPumpOn(false);
+        if (!connected) {
+          authed = false;
+          _clockSyncTimer?.cancel();
+          _clockSyncTimer = null;
+          _applyPumpOn(false);
         if (!connecting) {
           status = 'Disconnected';
           connectFailed = true;
@@ -1427,6 +1470,12 @@ class PumpSession extends ChangeNotifier {
     } catch (_) {
       _tank = null;
     }
+    try {
+      _sched = svc.characteristics
+          .firstWhere((c) => c.uuid == TankLinkUuids.sched);
+    } catch (_) {
+      _sched = null;
+    }
 
     try {
       await device.requestMtu(512);
@@ -1454,10 +1503,116 @@ class PumpSession extends ChangeNotifier {
     }
   }
 
+  /// Push the phone's local civil time. Schedules do not run until this lands.
+  Future<void> syncPumpClock() async {
+    final chr = _sched;
+    if (chr == null || !authed) {
+      return;
+    }
+    final now = DateTime.now();
+    final year = now.year;
+    final bytes = Uint8List(9);
+    bytes[0] = TankLinkUuids.schedOpSetClock;
+    bytes[1] = year & 0xff;
+    bytes[2] = (year >> 8) & 0xff;
+    bytes[3] = now.month;
+    bytes[4] = now.day;
+    bytes[5] = now.hour;
+    bytes[6] = now.minute;
+    bytes[7] = now.second;
+    bytes[8] = now.weekday % 7;
+    await chr.write(bytes, withoutResponse: false);
+    try {
+      _applySchedulePayload(await chr.read());
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Replace the pump's daily fill times. Throws if the pump rejects the list.
+  Future<void> replaceFillSchedules(List<FillSchedule> next) async {
+    final chr = _sched;
+    if (chr == null || !authed) {
+      throw StateError('Schedules need a connected pump');
+    }
+    if (next.length > TankLinkUuids.schedMax) {
+      throw StateError('Only ${TankLinkUuids.schedMax} fill times');
+    }
+    final sorted = [...next]
+      ..sort((a, b) => a.minutesOfDay.compareTo(b.minutesOfDay));
+    final seen = <int>{};
+    for (final s in sorted) {
+      if (s.hour < 0 || s.hour > 23 || s.minute < 0 || s.minute > 59) {
+        throw StateError('Pick a valid time');
+      }
+      if (!seen.add(s.minutesOfDay)) {
+        throw StateError('That time is already scheduled');
+      }
+    }
+    final bytes = BytesBuilder();
+    bytes.addByte(TankLinkUuids.schedOpSetList);
+    bytes.addByte(sorted.length);
+    for (final s in sorted) {
+      bytes.addByte(s.enabled ? 1 : 0);
+      bytes.addByte(s.hour);
+      bytes.addByte(s.minute);
+    }
+    await chr.write(bytes.toBytes(), withoutResponse: false);
+    schedules = sorted;
+    notifyListeners();
+  }
+
+  Future<void> _bindSchedules() async {
+    final chr = _sched;
+    if (chr == null) {
+      schedulesSupported = false;
+      pumpClockValid = false;
+      schedules = [];
+      return;
+    }
+    schedulesSupported = true;
+    await _schedNotifySub?.cancel();
+    await chr.setNotifyValue(true);
+    _schedNotifySub = chr.onValueReceived.listen((value) {
+      _applySchedulePayload(value);
+      notifyListeners();
+    });
+    await syncPumpClock();
+    _clockSyncTimer?.cancel();
+    _clockSyncTimer = Timer.periodic(const Duration(minutes: 15), (_) {
+      if (authed && connected) {
+        unawaited(syncPumpClock());
+      }
+    });
+  }
+
+  void _applySchedulePayload(List<int> value) {
+    if (value.length < 4) {
+      return;
+    }
+    pumpClockValid = value[0] != 0;
+    pumpClockHour = value[1];
+    pumpClockMinute = value[2];
+    final count = value[3];
+    if (count > TankLinkUuids.schedMax || value.length < 4 + count * 3) {
+      return;
+    }
+    final next = <FillSchedule>[];
+    for (var i = 0; i < count; i++) {
+      final o = 4 + i * 3;
+      next.add(FillSchedule(
+        enabled: value[o] != 0,
+        hour: value[o + 1],
+        minute: value[o + 2],
+      ));
+    }
+    schedules = next;
+  }
+
   @override
   void dispose() {
     _runTicker?.cancel();
     _ageTicker?.cancel();
+    _clockSyncTimer?.cancel();
     unawaited(disconnect());
     unawaited(stopScan());
     super.dispose();

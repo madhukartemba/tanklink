@@ -11,6 +11,7 @@ import '../update/pump_firmware_update.dart';
 import '../update/tank_firmware_update.dart';
 import '../update/tank_firmware_update_flow.dart';
 import 'error_codes_screen.dart';
+import 'schedules_screen.dart';
 import 'starter_settings_screen.dart';
 
 Future<void> showPumpSettingsSheet(BuildContext context) {
@@ -338,6 +339,32 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 ),
               ),
             ],
+            const Divider(height: 28),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.schedule_rounded),
+              title: const Text('Schedules'),
+              subtitle: Text(
+                !ready
+                    ? 'Connect to change'
+                    : !session.schedulesSupported
+                        ? 'Needs a pump firmware update'
+                        : session.schedules.isEmpty
+                            ? 'No daily fill times'
+                            : '${session.schedules.where((s) => s.enabled).length} active · every day',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              enabled: ready,
+              onTap: !ready
+                  ? null
+                  : () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const SchedulesScreen(),
+                        ),
+                      );
+                    },
+            ),
             const Divider(height: 28),
             ListTile(
               contentPadding: EdgeInsets.zero,

@@ -18,6 +18,7 @@ class TankLinkUuids {
   static final otaData = Guid('7f1a0009-ac01-4c8c-9b2e-74616e6b6c6e');
   static final otaStatus = Guid('7f1a000a-ac01-4c8c-9b2e-74616e6b6c6e');
   static final tank = Guid('7f1a000b-ac01-4c8c-9b2e-74616e6b6c6e');
+  static final sched = Guid('7f1a000c-ac01-4c8c-9b2e-74616e6b6c6e');
 
   static const tokenLen = 16;
   static const cmdUnpair = 0xF0;
@@ -26,6 +27,10 @@ class TankLinkUuids {
   static const cmdTestBeep = 0xB1;
   static const cmdTankPair = 0xA1;
   static const cmdTankUnpair = 0xA2;
+
+  static const schedOpSetClock = 0x01;
+  static const schedOpSetList = 0x02;
+  static const schedMax = 4;
 
   static const tankFlagFull = 1 << 0;
   static const tankFlagEmpty = 1 << 1;

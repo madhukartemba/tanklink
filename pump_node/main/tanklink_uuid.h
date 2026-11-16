@@ -19,6 +19,7 @@ extern "C" {
  *   OtaData  7f1a0009-ac01-4c8c-9b2e-74616e6b6c6e
  *   OtaStatus 7f1a000a-ac01-4c8c-9b2e-74616e6b6c6e
  *   Tank      7f1a000b-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Schedule 7f1a000c-ac01-4c8c-9b2e-74616e6b6c6e
  */
 #define TANKLINK_UUID_BASE_TAIL 0x6e, 0x6c, 0x6b, 0x6e, 0x61, 0x74, 0x2e, 0x9b, \
                                 0x8c, 0x4c, 0x01, 0xac
@@ -34,10 +35,11 @@ extern "C" {
 #define TANKLINK_CHR_OTA_DATA_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x09, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_OTA_STATUS_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0a, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_TANK_INIT  BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0b, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_SCHED_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0c, 0x00, 0x1a, 0x7f)
 
 #define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
 #define TANKLINK_DEVICE_NAME "TankLink-Pump"
-#define TANKLINK_FW_VERSION  "0.8.3"
+#define TANKLINK_FW_VERSION  "0.8.4"
 
 /* OTA_CTRL opcodes */
 #define TANKLINK_OTA_OP_START  0x01
@@ -84,6 +86,11 @@ extern "C" {
  */
 #define TANKLINK_TANK_STATUS_BASE_LEN 19
 #define TANKLINK_TANK_STATUS_LEN 35
+
+/* Schedule char write opcodes (authenticated). */
+#define TANKLINK_SCHED_OP_SET_CLOCK 0x01
+#define TANKLINK_SCHED_OP_SET_LIST  0x02
+#define TANKLINK_SCHED_MAX          4
 
 #ifdef __cplusplus
 }
