@@ -446,11 +446,17 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         if (len < 1) {
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
         }
-        uint8_t cmd = 0;
-        int rc = ble_hs_mbuf_to_flat(ctxt->om, &cmd, 1, NULL);
+        /* Read the whole value. A 1-byte peek returns EMSGSIZE when the
+         * packet is longer, which was rejecting select and rename. */
+        uint8_t body[1 + 1 + PUMP_TANK_NAME_LEN];
+        if (len > sizeof(body)) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        int rc = ble_hs_mbuf_to_flat(ctxt->om, body, len, NULL);
         if (rc != 0) {
             return BLE_ATT_ERR_UNLIKELY;
         }
+        const uint8_t cmd = body[0];
         if (cmd == TANKLINK_CMD_UNPAIR) {
             if (pump_pair_unpair() != ESP_OK) {
                 return BLE_ATT_ERR_UNLIKELY;
@@ -489,12 +495,7 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
             return 0;
         }
         if (cmd == TANKLINK_CMD_TANK_SELECT || cmd == TANKLINK_CMD_TANK_RENAME) {
-            uint8_t body[1 + 1 + PUMP_TANK_NAME_LEN];
-            if (len > sizeof(body)) {
-                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-            }
-            int flat = ble_hs_mbuf_to_flat(ctxt->om, body, len, NULL);
-            if (flat != 0 || len < 2) {
+            if (len < 2) {
                 return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
             }
             if (cmd == TANKLINK_CMD_TANK_SELECT) {
