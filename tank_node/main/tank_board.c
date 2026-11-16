@@ -25,8 +25,24 @@ static int pin_led(void)
     return CONFIG_TANK_LED_GPIO;
 }
 
+static void release_hold(int gpio)
+{
+    gpio_hold_dis((gpio_num_t)gpio);
+}
+
+/** Internal pull-up, no pull-down. Hold from the previous deep sleep locks the pad. */
+static void force_pullup(int gpio)
+{
+    gpio_hold_dis((gpio_num_t)gpio);
+    gpio_set_pull_mode((gpio_num_t)gpio, GPIO_PULLUP_ONLY);
+}
+
 esp_err_t tank_board_init(void)
 {
+    release_hold(pin_full());
+    release_hold(pin_empty());
+    release_hold(pin_btn());
+
     uint64_t mask = (1ULL << pin_full()) | (1ULL << pin_empty()) | (1ULL << pin_btn());
     gpio_config_t in = {
         .mode = GPIO_MODE_INPUT,
@@ -75,6 +91,14 @@ static void arm_level(uint64_t mask, esp_sleep_gpio_wake_up_mode_t mode, const c
 
 void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
 {
+    /* Always pull-up. C3 deep-sleep wake is level-only, so "state change"
+     * means arming the opposite of the level sampled here. IDF must not
+     * replace that pull-up with a pull-down (ESP_SLEEP_GPIO_ENABLE_INTERNAL_RESISTORS=n);
+     * it then gpio_hold_en()s these pads and latches the pull-up through sleep. */
+    force_pullup(pin_btn());
+    force_pullup(pin_full());
+    force_pullup(pin_empty());
+
     /* Button wake always (pair / OTA / manual TX). */
     if (gpio_get_level(pin_btn()) != 0) {
         arm_level(1ULL << pin_btn(), ESP_GPIO_WAKEUP_GPIO_LOW, "button");

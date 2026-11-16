@@ -21,6 +21,11 @@ CONFIG_TANK_BUTTON_GPIO=3
 CONFIG_TANK_LED_GPIO=7
 CONFIG_TANK_BAT_ADC_GPIO=2
 
+# Wake GPIOs stay pull-up in deep sleep. Default IDF behavior installs a
+# pull-down when a pin is armed to wake on HIGH, which holds a float low
+# after the switch opens so the release never wakes the chip.
+CONFIG_ESP_SLEEP_GPIO_ENABLE_INTERNAL_RESISTORS=n
+
 # XIAO default SPI silkscreen + MCU RESET. MISO must NOT be on D9 (BOOT).
 # Required HW: 10k NSS+SCK+MOSI→3V3. LED on D5; DIO0 on D4 (swap — avoid LED on MTCK).
 CONFIG_TANK_LORA_SCK_GPIO=8
