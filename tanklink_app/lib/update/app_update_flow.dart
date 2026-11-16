@@ -168,31 +168,49 @@ class AppUpdateBanner extends StatelessWidget {
     if (!app.enabled || !app.updateAvailable()) {
       return const SizedBox.shrink();
     }
+    final scheme = Theme.of(context).colorScheme;
+    final current = app.installedVersion ?? '—';
     final latest = app.latestVersion ?? '';
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.only(top: 12),
       child: Material(
-        color: Theme.of(context).colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(14),
+        color: scheme.primary.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
           child: Row(
             children: [
-              const Icon(Icons.system_update_alt_rounded, size: 22),
-              const SizedBox(width: 10),
+              Icon(Icons.smartphone_outlined, color: scheme.primary),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  'App update $latest',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'App update available',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: scheme.primary,
+                      ),
+                    ),
+                    Text(
+                      '$current → $latest',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              TextButton(
-                onPressed: () => app.snoozeLatest(),
-                child: const Text('Later'),
-              ),
-              FilledButton.tonal(
+              FilledButton(
                 onPressed: () => showAppUpdateConfirmSheet(context),
                 child: const Text('Update'),
+              ),
+              IconButton(
+                tooltip: 'Dismiss',
+                onPressed: () => app.snoozeLatest(),
+                icon: const Icon(Icons.close_rounded),
               ),
             ],
           ),
