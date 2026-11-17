@@ -54,7 +54,7 @@ Menu: **Pump Board**. The values below are the ones in `sdkconfig.defaults`.
 | `PUMP_RELAY_START_GPIO` | `0` | `-1` = not wired |
 | `PUMP_RELAY_STOP_GPIO` | `1` | `-1` = not wired |
 | `PUMP_RELAY_ACTIVE_HIGH` | `n` | `n` suits 2-ch opto modules (IN LOW = relay on) |
-| `PUMP_RELAY_PULSE_MS` | `400` | Only used until saved settings load. The app's **Starter** setting is the one that counts |
+| `PUMP_RELAY_PULSE_MS` | `1000` | Only used until saved settings load. The app's **Starter** setting is the one that counts |
 | **DS3231 clock** | | |
 | `PUMP_ENABLE_RTC` | `y` | Soft-fails if the chip isn't wired |
 | `PUMP_RTC_SDA_GPIO` | `7` | |
@@ -109,7 +109,9 @@ Stored on the pump in NVS namespace `pump`, key `cfg`. Defaults apply after a fi
 | Buzzer tone | click | click, soft, sharp, double | Pump settings |
 | LED brightness | 70 % | 1 – 100 % | Pump settings |
 | **Starter type** | **none** | none, two-button | **Starter** |
-| Relay pulse | 400 ms | 50 – 2000 ms | Starter |
+| Relay pulse | 1000 ms | 50 – 2000 ms | Starter |
+
+Pumps set up before pump 0.11.0 keep the 400 ms they saved; change it under **Starter** if you want 1 s.
 | Second float | off | off, almost-empty, two tanks | Tank sensor settings |
 
 > **The starter type defaults to "none".** In that mode the pump tracks on/off and the LED, but never pulses the relays. A new or factory-reset pump needs **Starter → two-button** set in the app before it will actually run a motor.
@@ -123,6 +125,7 @@ Other data the pump saves (all cleared by factory reset or `erase-flash`):
 | `tl_tank` | Bound tank ID, the tank's BLE OTA token, and the last tank packet (`last`) for restoring last-seen after a restart |
 | `tl_tanks` | Tank slots and names (two-tank mode) |
 | `tl_sched` | Fill schedules (up to 4) |
+| `tl_run` | "Pump is running" record while a fill runs (refreshed each minute), and the interrupted-fill notice until it is dismissed |
 
 The tank saves its pairing and BLE OTA token in NVS namespace `tank`.
 

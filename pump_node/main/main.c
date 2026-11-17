@@ -30,6 +30,7 @@
 #include "pump_factory.h"
 #include "pump_ota.h"
 #include "pump_pair.h"
+#include "pump_runlog.h"
 #include "relay_control.h"
 #include "status_led.h"
 #include "tanklink_uuid.h"
@@ -280,6 +281,8 @@ void app_main(void)
     ESP_ERROR_CHECK(pump_config_init());
     /* Clock before schedules and LoRa: both need the time from the RTC. */
     pump_clock_init();
+    /* Before anything can start the pump: spot a fill cut short by a power cut. */
+    pump_runlog_init();
     ESP_ERROR_CHECK(pump_sched_init());
     {
         pump_civil_time_t now;

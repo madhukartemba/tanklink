@@ -22,6 +22,7 @@
 #include "pump_factory.h"
 #include "pump_ota.h"
 #include "pump_pair.h"
+#include "pump_runlog.h"
 #include "relay_control.h"
 #include "status_led.h"
 #include "tanklink_lora_proto.h"
@@ -283,6 +284,19 @@ static void fill_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
     if (lora_link_tank_has_ble_token()) {
         memcpy(&out[19], lora_link_tank_ble_token(), TANKLINK_TOKEN_LEN);
     }
+    const pump_runlog_event_t *ev = pump_runlog_event();
+    if (ev) {
+        uint8_t *o = &out[TANKLINK_TANK_STATUS_TOKEN_LEN];
+        o[0] = ev->reason;
+        const uint32_t vals[4] = {ev->started_local, ev->last_seen_local, ev->back_local,
+                                  ev->ran_sec};
+        for (int i = 0; i < 4; i++) {
+            o[1 + i * 4] = (uint8_t)(vals[i] & 0xff);
+            o[2 + i * 4] = (uint8_t)((vals[i] >> 8) & 0xff);
+            o[3 + i * 4] = (uint8_t)((vals[i] >> 16) & 0xff);
+            o[4 + i * 4] = (uint8_t)((vals[i] >> 24) & 0xff);
+        }
+    }
 }
 
 static int append_tank_status(struct os_mbuf *om)
@@ -492,6 +506,11 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         }
         if (cmd == TANKLINK_CMD_CLEAR_ERROR) {
             gatt_svr_clear_last_error();
+            return 0;
+        }
+        if (cmd == TANKLINK_CMD_DISMISS_INTERRUPT) {
+            pump_runlog_clear_event();
+            gatt_svr_notify_tank_if_subscribed();
             return 0;
         }
         if (cmd == TANKLINK_CMD_TANK_SELECT || cmd == TANKLINK_CMD_TANK_RENAME) {
@@ -871,10 +890,12 @@ static void set_pump_state_internal(uint8_t on, bool allow_pump_buzz)
     if (next && !s_pump_on) {
         s_pump_on_since_us = esp_timer_get_time();
         s_last_error = PUMP_ERR_NONE;
+        pump_runlog_on_start();
         gatt_svr_notify_tank_if_subscribed();
     }
     if (!next) {
         s_pump_on_since_us = 0;
+        pump_runlog_on_stop();
     }
     s_pump_on = next;
     board_set_pump_on(s_pump_on != 0);
@@ -1060,6 +1081,7 @@ void gatt_svr_notify_tanks_if_subscribed(void)
 
 void gatt_svr_poll(void)
 {
+    pump_runlog_poll(s_pump_on != 0, gatt_svr_run_seconds());
     pump_civil_time_t now;
     const int due_slot = pump_clock_now(&now) ? pump_sched_take_due(&now) : -1;
     if (due_slot >= 0 && !s_pump_on) {

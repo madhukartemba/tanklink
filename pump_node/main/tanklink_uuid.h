@@ -40,7 +40,7 @@ extern "C" {
 
 #define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
 #define TANKLINK_DEVICE_NAME "TankLink-Pump"
-#define TANKLINK_FW_VERSION  "0.10.0"
+#define TANKLINK_FW_VERSION  "0.11.0"
 
 /* OTA_CTRL opcodes */
 #define TANKLINK_OTA_OP_START  0x01
@@ -80,15 +80,19 @@ extern "C" {
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
 #define TANKLINK_CMD_CLEAR_ERROR   0xE0
+#define TANKLINK_CMD_DISMISS_INTERRUPT 0xE1
 
 /**
  * Tank char payload:
  * bound(1) pairing(1) id(6) fw(3) flags(1) bat(1) online(1) age_sec_le(2)
- * rssi_dbm_i8(1) snr_db_i8(1) last_error(1) ble_token(16) = 35 bytes
- * Older apps may ignore bytes beyond 19.
+ * rssi_dbm_i8(1) snr_db_i8(1) last_error(1) ble_token(16) = 35 bytes, then
+ * (0.11.0+) interrupted fill: reason(1) started(u32) last_seen(u32)
+ * back(u32) ran_sec(u32) = 52 bytes. Times are pump-local seconds since
+ * 1970, 0 = unknown. Older apps ignore bytes they don't know.
  */
 #define TANKLINK_TANK_STATUS_BASE_LEN 19
-#define TANKLINK_TANK_STATUS_LEN 35
+#define TANKLINK_TANK_STATUS_TOKEN_LEN 35
+#define TANKLINK_TANK_STATUS_LEN 52
 
 /* Schedule char write opcodes (authenticated). */
 #define TANKLINK_SCHED_OP_SET_CLOCK 0x01

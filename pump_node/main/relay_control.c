@@ -23,7 +23,7 @@
 #define RELAY_ACTIVE_HIGH 0
 #endif
 #ifndef CONFIG_PUMP_RELAY_PULSE_MS
-#define CONFIG_PUMP_RELAY_PULSE_MS 400
+#define CONFIG_PUMP_RELAY_PULSE_MS 1000
 #endif
 
 static SemaphoreHandle_t s_mu;

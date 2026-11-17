@@ -7,6 +7,7 @@ idf_component_register(
         "pump_config.c"
         "pump_clock.c"
         "pump_rtc.c"
+        "pump_runlog.c"
         "pump_sched.c"
         "pump_tanks.c"
         "pump_pair.c"

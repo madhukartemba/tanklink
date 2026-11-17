@@ -100,7 +100,9 @@ apksigner verify --print-certs tanklink_app/build/app/outputs/flutter-apk/app-re
 
 ## Time on the pump
 
-The pump keeps **local** time (whatever the phone sends, not UTC) in `pump_clock.c`, anchored to the DS3231 (`pump_rtc.c`) at boot and re-read hourly. Only two things need wall-clock time: **fill schedules** and the **tank's last-seen time**, which `lora_link.c` saves to NVS (`tl_tank/last`) so a restart knows the real age. Everything else (auto-off, pairing windows, button holds) uses time since boot on purpose. Without a DS3231, or with its "oscillator stopped" flag set, the pump has no time until the app syncs.
+The pump keeps **local** time (whatever the phone sends, not UTC) in `pump_clock.c`, anchored to the DS3231 (`pump_rtc.c`) at boot and re-read hourly. Only two things need wall-clock time: **fill schedules** and the **tank's last-seen time**, which `lora_link.c` saves to NVS (`tl_tank/last`) so a restart knows the real age. Everything else (auto-off, pairing windows, button holds) uses time since boot on purpose.
+
+A fill cut short by a power cut or restart is detected by `pump_runlog.c` (a "running" record in NVS that a normal stop deletes) and shown in the app as a notice. The pump never restarts a fill on its own after power returns; that is a deliberate safety choice. Without a DS3231, or with its "oscillator stopped" flag set, the pump has no time until the app syncs.
 
 ## Hardware gotchas
 

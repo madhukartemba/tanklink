@@ -8,6 +8,7 @@
 #include "lora_link.h"
 #include "pump_config.h"
 #include "pump_pair.h"
+#include "pump_runlog.h"
 #include "pump_sched.h"
 #include "pump_tanks.h"
 #include "relay_control.h"
@@ -51,6 +52,7 @@ esp_err_t pump_factory_reset(void)
     pump_config_apply_buzzer();
     pump_config_apply_led();
     gatt_svr_clear_last_error();
+    pump_runlog_clear_event();
 
     status_led_set_mode(STATUS_LED_UPDATE_OK);
     if (xTaskCreate(factory_reboot_task, "fac_rst", 2048, NULL, 5, NULL) != pdPASS) {

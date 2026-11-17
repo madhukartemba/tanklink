@@ -61,6 +61,7 @@ Byte 0 is the opcode.
 | `0xA5` | Rename tank slot | `slot(1) name(≤16, UTF-8)` |
 | `0xB1` | Test beep | — |
 | `0xE0` | Clear last error | — |
+| `0xE1` | Dismiss the interrupted-fill notice (pump 0.11.0+) | — |
 | `0xF0` | Unpair this phone (clears token) | — |
 | `0xF1` | Factory reset | — |
 
@@ -80,7 +81,7 @@ Write: a prefix of `auto_off_min(1) buzzer_flags(1) buzzer_tone(1) led_brightnes
 
 ### Tank (read + notify)
 
-35 bytes. Older apps read only the first 19.
+52 bytes from pump 0.11.0 (35 before). Older apps read only the bytes they know.
 
 | Offset | Size | Field |
 | --- | --- | --- |
@@ -96,6 +97,11 @@ Write: a prefix of `auto_off_min(1) buzzer_flags(1) buzzer_tone(1) led_brightnes
 | 17 | 1 | SNR dB (int8) |
 | 18 | 1 | pump last error code (see `ERROR_CODES.md`) |
 | 19 | 16 | tank BLE OTA token (zeros if unknown) |
+| 35 | 1 | interrupted fill reason (0.11.0+): 0 none, 1 power cut, 2 power dip (brownout), 3 pump restarted |
+| 36 | 4 | when that run started (u32, pump-local seconds since 1970; 0 = unknown) |
+| 40 | 4 | last time it was seen running, ±1 min (u32, same format) |
+| 44 | 4 | when the pump came back (u32, same format; filled in after the next phone time sync if the clock was unknown at boot) |
+| 48 | 4 | how long it ran before the cut, seconds (u32, ±1 min) |
 
 The app uses the token at offset 19 to authenticate to the tank directly for tank OTA.
 

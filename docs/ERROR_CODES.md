@@ -45,6 +45,18 @@ Same blink pattern as the tank: **N long hard red blinks**, pause, repeat twice.
 
 Hold the pump **button** for BLE pairing (~5 s, blue progress), then **keep holding** (~10 s more, red progress). On completion the strip flashes green and the pump reboots with pairing, tank bind, and settings cleared. From the app: Settings → Factory reset → type `RESET`.
 
+## Interrupted fill (app notice, not an error code)
+
+If the pump loses power, browns out, or restarts **while running**, it does **not** start again by itself (it pulses Stop at boot). Instead it saves a notice that the app shows on the home screen until you dismiss it:
+
+| Notice | Cause |
+| --- | --- |
+| Fill stopped by a power cut | Supply went away (power-on reset) |
+| Fill stopped by a power dip | Supply dropped below the brownout level, e.g. when the motor started on a shared supply |
+| Fill stopped by a pump restart | Crash, watchdog or software reset |
+
+It shows how long the pump ran, about when it stopped, and when power came back. A normal stop (app, button, tank full, auto-off) never creates one.
+
 ## Almost-empty float (optional)
 
 The almost-empty float is **optional**. The tank always sends both pin levels. Settings → Empty float is stored on the pump: off ignores the empty pin; on treats both pins high as full and the empty pin low as almost empty. Full still stops the pump.

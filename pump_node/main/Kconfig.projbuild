@@ -187,7 +187,7 @@ menu "Pump Board"
     config PUMP_RELAY_PULSE_MS
         int "Start/Stop pulse width (ms)"
         range 50 2000
-        default 400
+        default 1000
         help
             How long Start/Stop relays stay closed for a two-button starter.
 
