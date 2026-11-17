@@ -2325,7 +2325,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "2a124689-c532-4bd2-bf47-80862df9d145")
+		(uuid "62b7b0ff-2d83-491f-b427-b119ec9502de")
 	)
 	(symbol
 		(lib_id "TankLinkPumpPCB:ESP32C3_SuperMini")
@@ -2336,7 +2336,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "6b4fa2fd-6a65-4ba0-9dea-7b9233a23c1e")
+		(uuid "b8573d3e-152d-4878-8f0d-b95393eaa952")
 		(property "Reference" "A1"
 			(at 76.2 55.88 0)
 			(effects
@@ -2374,52 +2374,52 @@
 			)
 		)
 		(pin "1"
-			(uuid "7b4ff544-7c21-4a9b-b466-e37b9841e227")
+			(uuid "04565ccc-4e64-4a6d-ad5c-6cebbd1bd910")
 		)
 		(pin "2"
-			(uuid "037a41c5-b487-4833-835a-c5015333c0d3")
+			(uuid "46537943-7f33-40bd-ac9f-337b6ccd73bd")
 		)
 		(pin "3"
-			(uuid "2ba9c2c0-ce34-4330-99ce-afffe0645a66")
+			(uuid "3be45f6b-707a-4c31-9572-1d75a13a1925")
 		)
 		(pin "4"
-			(uuid "fab24022-a859-4448-ae20-e35b7f15583e")
+			(uuid "b11c2d6a-56ea-48ff-8975-de9a0677c608")
 		)
 		(pin "5"
-			(uuid "d6c0f0f2-f1db-4d3f-8064-92829f34152f")
+			(uuid "6a1642b6-69fa-4f92-af92-04091a6b78b4")
 		)
 		(pin "6"
-			(uuid "6b7c5695-531e-4c36-8087-2b249bdcb20d")
+			(uuid "439c9417-3358-409c-a1f0-53df45998d5a")
 		)
 		(pin "7"
-			(uuid "93f61970-58d4-46b1-883d-7a722aba7df4")
+			(uuid "a4584c23-717b-46ab-bd70-90f10ef94779")
 		)
 		(pin "8"
-			(uuid "3df395b4-46bb-47e9-b314-c63a126a5493")
+			(uuid "d7337c47-9fd5-4664-9069-a2f2e87dfd3e")
 		)
 		(pin "9"
-			(uuid "8ab1bc95-04ab-44a1-a03e-0fd7b4dd23fd")
+			(uuid "2dcf4957-bef1-4188-abc6-655b3c2d19f6")
 		)
 		(pin "10"
-			(uuid "b0cf59bb-fa1d-4607-b3dd-348658b3e219")
+			(uuid "a2d79af4-58ec-40ad-90ce-e3d08c653511")
 		)
 		(pin "11"
-			(uuid "5131a755-b62d-4597-b778-f441f4e16c6b")
+			(uuid "89779c77-5603-44f0-9069-863b9e69fc10")
 		)
 		(pin "12"
-			(uuid "8bb6ec5c-5a09-4124-9c9d-3090629fbf84")
+			(uuid "0f5c1c0d-98f1-41de-b8c5-d5611cdd65b0")
 		)
 		(pin "13"
-			(uuid "aef64ea3-192d-4f09-9682-33a70ef258a8")
+			(uuid "84a5884d-4760-412e-b2d9-38eb2cede7c3")
 		)
 		(pin "14"
-			(uuid "b6cdb0ae-7558-4668-9bfb-0026caee5d59")
+			(uuid "db9ce7d9-ac85-4429-ab51-23f380432881")
 		)
 		(pin "15"
-			(uuid "75b4973c-ea52-4438-b323-4b6351161c2a")
+			(uuid "22dea942-90c9-478e-9e99-5f8a234ca026")
 		)
 		(pin "16"
-			(uuid "c833332c-b83a-4887-995a-a7292d56f6d4")
+			(uuid "b37186cb-edbc-4d5b-8d20-e33d9f98cb79")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -2439,7 +2439,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "6ce7fca0-8cfa-4cae-8b5d-bc717c474c3c")
+		(uuid "28824a06-75ac-4445-830a-7a2503f37831")
 	)
 	(symbol
 		(lib_id "power:+5V")
@@ -2450,7 +2450,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "8eca7615-c5ce-46e2-a3d1-bf5fc7992d97")
+		(uuid "1dc4548e-0bb1-4318-b79d-b57c4a30b165")
 		(property "Reference" "#PWR001"
 			(at 71.12 67.23 0)
 			(hide yes)
@@ -2489,7 +2489,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "82f42b78-2a8a-4043-ad5e-841ef8bf8b43")
+			(uuid "476bdb0f-a90e-46a8-9101-4b40d82c31a8")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -2509,7 +2509,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "67e94675-81c8-47f8-b8bd-030e6375c18e")
+		(uuid "f826d482-ad57-4a77-a1f6-ea7ba20b5cfb")
 	)
 	(wire
 		(pts
@@ -2520,7 +2520,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "5a07d28a-55b6-4c67-96c3-69834200e275")
+		(uuid "9982226a-677e-49ba-8889-758e197ec011")
 	)
 	(symbol
 		(lib_id "power:GND")
@@ -2531,7 +2531,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "98a51cce-f934-4a0c-a62b-e069294dcdb9")
+		(uuid "6230f909-ad24-4e15-9db5-29eb6b786d6a")
 		(property "Reference" "#PWR002"
 			(at 63.5 64.69 0)
 			(hide yes)
@@ -2570,7 +2570,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "a885f5bc-d37b-4c2c-a60f-52fb46a3ada5")
+			(uuid "9d41282a-4eb1-4adc-a333-806537d22eb7")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -2590,7 +2590,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "a2fdaa5d-0a46-4a7a-aa73-b38c688b7675")
+		(uuid "cd417eab-2f60-4a27-b119-776a246f5bb8")
 	)
 	(wire
 		(pts
@@ -2601,7 +2601,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "e94fc774-87cf-49b9-b703-7d88abd0b2ab")
+		(uuid "82db60ef-fa17-4d3a-8adf-c1e43d8bd97f")
 	)
 	(symbol
 		(lib_id "power:+3V3")
@@ -2612,7 +2612,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "1c125287-b38f-42cd-974a-9c4b6959da3d")
+		(uuid "a4f3ca8d-8904-4b51-8b74-67f0146d4ccb")
 		(property "Reference" "#PWR003"
 			(at 55.88 59.61 0)
 			(hide yes)
@@ -2651,7 +2651,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "80da37c5-5c04-40ec-aaf0-20732619e45d")
+			(uuid "ba168f90-dd0c-4046-ac6c-f19baedc2299")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -2671,7 +2671,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "6c41880e-624c-4452-af47-7aef338459d8")
+		(uuid "f5dcee8a-b6e9-4dc8-baa3-d29248d7cba9")
 	)
 	(label "LORA_RST"
 		(at 71.12 69.85 180)
@@ -2681,7 +2681,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "4a1bb9cc-5ae0-46f8-aa10-0ce1bffd954f")
+		(uuid "72b1df89-82d8-4627-8bce-a121ec7445d6")
 	)
 	(wire
 		(pts
@@ -2692,7 +2692,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "d6940486-084f-46bb-b85d-b5cbe9edf7d4")
+		(uuid "53eb61a0-b4b5-4e83-b5df-6bbdc760de5d")
 	)
 	(label "LORA_MOSI"
 		(at 71.12 72.39 180)
@@ -2702,7 +2702,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "7dfe2a9d-f4f7-47b0-ad99-254dd0faecd5")
+		(uuid "7e00ce60-cfd8-4a72-ad59-8b32d7e65c32")
 	)
 	(wire
 		(pts
@@ -2713,7 +2713,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "70278dd7-5a65-4510-90f8-9f5309e7af87")
+		(uuid "2e6486ff-4410-4bea-9b51-181747668cb1")
 	)
 	(label "LORA_MISO"
 		(at 71.12 74.93 180)
@@ -2723,7 +2723,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "c073a756-4404-4ac4-b5f7-235b28908357")
+		(uuid "c88b9052-9639-423a-a8c9-4e3e90154229")
 	)
 	(wire
 		(pts
@@ -2734,7 +2734,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "e934cd27-718c-4c80-9ac7-6c1ccc27c171")
+		(uuid "aae4e1ae-1905-4fab-98d2-1b922098b52a")
 	)
 	(label "RELAY_STOP"
 		(at 71.12 77.47 180)
@@ -2744,7 +2744,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "dab5e447-bf0c-4a35-9526-8c2a67aadc4f")
+		(uuid "5517e0fd-640f-4e22-9b8b-b6a316412194")
 	)
 	(wire
 		(pts
@@ -2755,7 +2755,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "8691f672-972d-41be-97ee-4a131b87de4d")
+		(uuid "cb300e58-a4a3-4b84-9322-e58b17371bac")
 	)
 	(label "RELAY_START"
 		(at 71.12 80.01 180)
@@ -2765,7 +2765,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "51f88471-9233-41d1-a7e7-389b8656ddb8")
+		(uuid "78f80a7c-e754-4598-b6e1-34df4c714cdd")
 	)
 	(wire
 		(pts
@@ -2776,7 +2776,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "26dab867-5217-4d79-94f8-37c6b7abc57d")
+		(uuid "cc72ddbe-5ddd-4df9-8e47-02fa4cb3e98c")
 	)
 	(label "LORA_NSS"
 		(at 111.76 62.23 0)
@@ -2786,7 +2786,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "6ee4abb4-fe84-4bc1-976e-cb83f6080261")
+		(uuid "1f24d0c9-87a5-4bec-abb9-4e025f269a92")
 	)
 	(wire
 		(pts
@@ -2797,7 +2797,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "c8e2edcd-7412-4007-a159-d8ea579bfdd4")
+		(uuid "cfa2be06-0ef5-4241-8bde-f3afc282758a")
 	)
 	(label "RTC_SCL"
 		(at 111.76 64.77 0)
@@ -2807,7 +2807,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "5717407d-dbd0-4b36-88f6-c17a09f6d6ae")
+		(uuid "485cdc3d-e406-48c7-b6bd-ef2299a0d3be")
 	)
 	(wire
 		(pts
@@ -2818,7 +2818,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "3a44043a-afda-4b35-8014-6de8b1a4608b")
+		(uuid "95d321e0-51b1-485e-974f-6f14d48964d6")
 	)
 	(label "RTC_SDA"
 		(at 111.76 67.31 0)
@@ -2828,7 +2828,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "e70750ac-aa3f-46fe-9d71-1cde620ed046")
+		(uuid "f5e17abc-6f99-4775-9e08-1bb29524a3b2")
 	)
 	(wire
 		(pts
@@ -2839,7 +2839,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "56d9c139-c6e7-4f75-9aca-bd15887990e0")
+		(uuid "544c6b20-a8c3-424f-84ef-f3daaf816825")
 	)
 	(label "LORA_DIO0"
 		(at 111.76 69.85 0)
@@ -2849,7 +2849,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "de7a47b4-473a-48bd-a085-290bc49a8986")
+		(uuid "ef4bfc9b-7141-446c-95a6-3634840ebed9")
 	)
 	(wire
 		(pts
@@ -2860,7 +2860,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "3f0945e8-2126-43d0-b761-56f1e5ea3122")
+		(uuid "35f80d85-2094-4697-ad19-2f59a8cc5542")
 	)
 	(label "BTN"
 		(at 111.76 72.39 0)
@@ -2870,7 +2870,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "6bd7cfd4-2443-4026-a615-25eb907aa2cd")
+		(uuid "c11706e3-cacb-4d08-94b6-37bc3891d462")
 	)
 	(wire
 		(pts
@@ -2881,7 +2881,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "53f7e9fb-31eb-4c44-ab0c-29666c06e793")
+		(uuid "95c9ca2d-9e85-4d04-8a30-da2a541c867e")
 	)
 	(label "LORA_SCK"
 		(at 111.76 74.93 0)
@@ -2891,7 +2891,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "bd2f7493-46a5-4c1c-b91e-2bf57f679392")
+		(uuid "5cc94111-c3b4-46c6-9a2f-f909893a83dd")
 	)
 	(wire
 		(pts
@@ -2902,7 +2902,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "55b2b840-cd79-483e-a5be-748edc30c93d")
+		(uuid "12a98696-2b97-4d4f-912f-a5e3df827532")
 	)
 	(label "NEO_DIN"
 		(at 111.76 77.47 0)
@@ -2912,7 +2912,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "29dc69c6-1b05-4420-b5a3-6bfce2815241")
+		(uuid "febb9b59-aeb1-46f0-8abf-854ab472f1e7")
 	)
 	(wire
 		(pts
@@ -2923,7 +2923,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "1bb9cc4d-0f87-46e6-b54b-927e5e286838")
+		(uuid "0d98b908-a49a-4d69-8a7e-1a1a25037f9f")
 	)
 	(label "BUZZER"
 		(at 111.76 80.01 0)
@@ -2933,7 +2933,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "cc87854c-3ac6-47e0-be56-35f02acf3ba1")
+		(uuid "75d9df3f-47d8-42a0-9d72-dc6f1269646c")
 	)
 	(text "Powered from the SuperMini USB-C; its 5V pin feeds\nthe relay module and NeoPixel."
 		(exclude_from_sim no)
@@ -2944,7 +2944,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "fb976100-2803-4ece-9a33-08c2b280285a")
+		(uuid "c89e0d63-3bfd-4bed-919a-a0ef6e77c807")
 	)
 	(symbol
 		(lib_id "RF_Module:Ai-Thinker-Ra-02")
@@ -2955,7 +2955,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "7c75cacb-443b-427d-a7bf-531e735bcba5")
+		(uuid "a8dfe418-6a8c-40bd-8e8c-cdd5e92b20a4")
 		(property "Reference" "U1"
 			(at 167.64 48.26 0)
 			(effects
@@ -2993,52 +2993,52 @@
 			)
 		)
 		(pin "1"
-			(uuid "293efcc4-ad5d-4218-9b50-f286b85f2e86")
+			(uuid "ce4f54c2-a1af-44f4-90b6-82ca2923222e")
 		)
 		(pin "2"
-			(uuid "c9397c70-561a-40b4-8876-35ab89289bfb")
+			(uuid "7689d073-8b40-4090-849b-f8ad9ca50804")
 		)
 		(pin "3"
-			(uuid "357a2932-f584-407e-a862-543a5775d550")
+			(uuid "b0190e45-f1a3-4833-8527-df59fe05c8b0")
 		)
 		(pin "4"
-			(uuid "41da96b2-33f5-4d3a-b5bb-fcb62d1decd2")
+			(uuid "eb6b3d85-c77f-4d39-9e7b-c98b8e44de77")
 		)
 		(pin "5"
-			(uuid "fa91bc37-c3a5-478c-a25a-7bb13d30286e")
+			(uuid "0dd2a0ba-9b61-423c-9fb2-7baba3067fa8")
 		)
 		(pin "6"
-			(uuid "d73036e6-e7ec-44d5-9025-6b96406216b2")
+			(uuid "0e28f329-c1db-440f-8e29-f9153106d767")
 		)
 		(pin "7"
-			(uuid "b8cbc519-457a-4eb6-9894-427aacd524c0")
+			(uuid "f1aafe0a-b9fe-4e36-b637-4304675046bb")
 		)
 		(pin "8"
-			(uuid "efd74f7f-0f6f-43ce-8644-85638a3c7aec")
+			(uuid "645d4a9f-5c3a-49c5-a7e2-bb35f7b55e78")
 		)
 		(pin "9"
-			(uuid "eee76404-d83c-46a3-855a-5e13eb5e01a3")
+			(uuid "820c06e3-5185-459e-9fed-203251f0478a")
 		)
 		(pin "10"
-			(uuid "65a1964b-8539-4bd0-8640-373fb03daa39")
+			(uuid "9a2a9f40-5331-41ed-8663-db7ff893e5fc")
 		)
 		(pin "11"
-			(uuid "ece79b5e-8d76-4daf-b050-1b36032c1dea")
+			(uuid "2a578134-c1a4-4068-b1a8-5f4d4a01caa4")
 		)
 		(pin "12"
-			(uuid "9b0df699-9c72-45b1-9a4d-69644cd0aefd")
+			(uuid "833971d8-2b0d-4918-ae51-8f950565bb26")
 		)
 		(pin "13"
-			(uuid "a2e5f72c-cb17-4fdb-a935-37b0a266e02f")
+			(uuid "1dc40a75-da3d-4341-bcc8-b18798b3d403")
 		)
 		(pin "14"
-			(uuid "bfa92cdc-653d-4b9c-9b57-8ae500e49610")
+			(uuid "e1266f79-2c9a-48e2-a952-fe467e56141c")
 		)
 		(pin "15"
-			(uuid "25abf5b5-f8df-4dd9-85c9-2b5432ebe7c4")
+			(uuid "5d50dba4-cdb8-4964-82d6-7e96cb4408ba")
 		)
 		(pin "16"
-			(uuid "1a7770b1-c26c-406a-8417-83e9fb5bc0e2")
+			(uuid "37e22723-f737-4624-ad71-5e446f293636")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -3058,7 +3058,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "8109b82b-f438-4b82-bcc4-9b19ed3fafd2")
+		(uuid "9073ef59-5c70-4866-a372-8e666b7378f5")
 	)
 	(symbol
 		(lib_id "power:+3V3")
@@ -3069,7 +3069,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "4a43469d-f1b9-4942-bc00-9b3c2bb51740")
+		(uuid "eeb0e84c-49f4-4ac8-b56c-473867cc63d2")
 		(property "Reference" "#PWR004"
 			(at 165.1 53.26 0)
 			(hide yes)
@@ -3108,7 +3108,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "6a66e2d1-124c-417c-9bc5-211cb82fae1e")
+			(uuid "9cdf69eb-e8bc-4286-8ee4-f03c260b16ab")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -3128,7 +3128,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "246ffcd7-3813-4aba-85f9-f3d8eef2efab")
+		(uuid "81dc20b9-a178-476b-aa51-d05c41fbb7b2")
 	)
 	(symbol
 		(lib_id "power:GND")
@@ -3139,7 +3139,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "9b827387-12a6-4a08-8f82-d9faef35c3b0")
+		(uuid "4aaf0e5e-02fe-4def-ae79-0b2dd48f8f06")
 		(property "Reference" "#PWR005"
 			(at 165.1 91.36 0)
 			(hide yes)
@@ -3178,7 +3178,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "1f6f3baf-19de-4cef-a711-c7de8715af83")
+			(uuid "992d930a-52fb-454f-8abf-26bf125be726")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -3198,7 +3198,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "f01690bd-9366-44a5-9a2a-624b2b31b4c7")
+		(uuid "7a3f6de2-c5f4-4f9d-b13b-ccf0ab56d76b")
 	)
 	(label "LORA_RST"
 		(at 152.4 76.2 180)
@@ -3208,7 +3208,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "56d81ee8-22ec-46a8-8ab4-1df6bea4dc68")
+		(uuid "4ad5e2bc-bfa7-420d-b4b7-32826404e24f")
 	)
 	(wire
 		(pts
@@ -3219,7 +3219,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "fda03086-6313-4eb0-9710-1fd6c6794536")
+		(uuid "912d8c3a-8bd9-488e-8858-75e23aa1fff7")
 	)
 	(label "LORA_SCK"
 		(at 152.4 68.58 180)
@@ -3229,7 +3229,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "07ff27b3-2281-428a-8a6c-0ec8f5c8f3f2")
+		(uuid "78d56ea5-8b90-481b-931a-11b8c8e7d85f")
 	)
 	(wire
 		(pts
@@ -3240,7 +3240,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "3d6ee7cb-40fb-432e-bc17-d5e107736a95")
+		(uuid "46e549c3-1a0f-4fb5-9497-87013f9a8fdd")
 	)
 	(label "LORA_MISO"
 		(at 152.4 66.04 180)
@@ -3250,7 +3250,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "1ae7ed10-7156-473a-be4a-8728848143e5")
+		(uuid "ee6917c3-ecb9-4f79-9cf6-bc36c66876a0")
 	)
 	(wire
 		(pts
@@ -3261,7 +3261,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "9dd9c0b6-5984-4c1f-ae2a-83109bc1c989")
+		(uuid "bf478e5b-51e9-4603-8750-016b5346f6f1")
 	)
 	(label "LORA_MOSI"
 		(at 152.4 63.5 180)
@@ -3271,7 +3271,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "842a3868-f575-49b4-af86-8473f74a94f9")
+		(uuid "ebe807cc-07ab-47d2-8429-ccff6382aa6f")
 	)
 	(wire
 		(pts
@@ -3282,7 +3282,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "40bccd84-ca75-45e8-87c1-56830085fe50")
+		(uuid "0ae748af-d144-4e57-bec3-789dd4734033")
 	)
 	(label "LORA_NSS"
 		(at 152.4 71.12 180)
@@ -3292,7 +3292,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "47a00802-0c42-46c2-8f7e-9b4ae192a6aa")
+		(uuid "a3188c8e-ca69-4dd4-a8a1-916e5283bdf9")
 	)
 	(wire
 		(pts
@@ -3303,7 +3303,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "dce567d2-44dc-4ec6-87e8-897d19cc458a")
+		(uuid "59ba9d91-adfe-4ad3-806b-5fa1208e3566")
 	)
 	(label "LORA_DIO0"
 		(at 177.8 63.5 0)
@@ -3313,27 +3313,27 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "f3f9d60c-52e2-42a5-b600-71b8e743efa4")
+		(uuid "1bf77d2f-0a78-495a-8962-53656db3a1c0")
 	)
 	(no_connect
 		(at 175.26 66.04)
-		(uuid "9115d57e-8a95-48f2-baaa-80ab4e299f34")
+		(uuid "44f000ed-8f5d-4365-b23c-a4f886ef5250")
 	)
 	(no_connect
 		(at 175.26 68.58)
-		(uuid "3c35a180-67e1-4ddd-98b8-9ec7b1f3a2d8")
+		(uuid "f168ea7e-5742-45d1-b320-02cf9eae5e40")
 	)
 	(no_connect
 		(at 175.26 71.12)
-		(uuid "e17da68d-a619-419c-be1d-e7dd873d8968")
+		(uuid "74fccdd1-4711-405f-b05d-d84d0d1584d3")
 	)
 	(no_connect
 		(at 175.26 73.66)
-		(uuid "92a22b60-631e-4318-9161-47fcac2a4704")
+		(uuid "c0fbaab4-be2f-429f-b3c1-ae3e6444a19e")
 	)
 	(no_connect
 		(at 175.26 76.2)
-		(uuid "2244cb58-964e-45ee-8928-121ae955a4ed")
+		(uuid "cb427c99-87dd-407e-b932-7355194d9a50")
 	)
 	(text "Ra-02 on its 2x8 2.54 mm adapter board.\n433 MHz antenna on the U.FL connector."
 		(exclude_from_sim no)
@@ -3344,7 +3344,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "0fa15b9e-b1cc-405f-841c-92d1d9fda54c")
+		(uuid "55d67c69-556e-4a77-a1c4-8bbd440a6a7a")
 	)
 	(symbol
 		(lib_id "Device:R")
@@ -3355,7 +3355,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp yes)
-		(uuid "cb039048-0c0e-465f-90d5-d94b4f5e0415")
+		(uuid "58b5e0ef-9a7d-4d8a-aa02-fa6637c24b1e")
 		(property "Reference" "R1"
 			(at 154.94 110.49 0)
 			(effects
@@ -3393,10 +3393,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "9b9c6ac0-8328-46d9-9f2b-c062724c66a1")
+			(uuid "f1fea045-4c4d-4630-9246-fff97a638e8c")
 		)
 		(pin "2"
-			(uuid "20d1b3f3-af74-4607-9a90-13b880b37564")
+			(uuid "6c217214-05f8-46d8-b9da-3f7c1d2b6d80")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -3416,7 +3416,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "f8ec47ab-20f2-4a80-bff1-3da6c45f3b45")
+		(uuid "4d404150-b313-4d78-8061-0863cb12bfd5")
 	)
 	(symbol
 		(lib_id "power:+3V3")
@@ -3427,7 +3427,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "1a106b09-0644-4fcc-98b5-ba4f8be60709")
+		(uuid "cbb4c0ae-040c-4201-b358-d6bc03a22470")
 		(property "Reference" "#PWR006"
 			(at 152.4 110.41 0)
 			(hide yes)
@@ -3466,7 +3466,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "3d0173ad-96fd-4472-9e8c-b21e09f45fdd")
+			(uuid "7f23acc1-30c6-454b-841d-8717e1589974")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -3486,7 +3486,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "f400ac49-b10f-42ec-a095-d91606bd36c7")
+		(uuid "63d20f00-a7fc-4eb2-a45c-9fc3d77aa531")
 	)
 	(label "RELAY_START"
 		(at 152.4 118.11 270)
@@ -3496,7 +3496,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "c0074ebf-7ea5-4bd9-a223-24477a863041")
+		(uuid "6e272434-8f2e-47ae-954b-543fb5f8b488")
 	)
 	(symbol
 		(lib_id "Device:R")
@@ -3507,7 +3507,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp yes)
-		(uuid "1cb5f065-db3c-4c87-a9a4-23daa0829dc0")
+		(uuid "ed52488c-7031-48b4-8c55-d3bc84c28f22")
 		(property "Reference" "R2"
 			(at 167.64 110.49 0)
 			(effects
@@ -3545,10 +3545,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "984be579-08e0-4198-99c6-5ff287a55fe2")
+			(uuid "5b958845-2e07-4c44-b181-eee165a62286")
 		)
 		(pin "2"
-			(uuid "395caf77-8747-41ac-8522-730deae5b289")
+			(uuid "5fdd7cd5-9c3a-4ea7-8d5b-0c4066356191")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -3568,7 +3568,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "31714f3e-a62a-442e-b6e7-da9210ca90d9")
+		(uuid "8e97fb97-61b8-449d-94ca-323b6e48facb")
 	)
 	(symbol
 		(lib_id "power:+3V3")
@@ -3579,7 +3579,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "e2b58157-3214-48b1-a653-a637a69273cd")
+		(uuid "5bd67d37-a0da-4e6f-9182-026ca4ec3d1d")
 		(property "Reference" "#PWR007"
 			(at 165.1 110.41 0)
 			(hide yes)
@@ -3618,7 +3618,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "fe99bee2-363e-4bcc-b811-82c70b768737")
+			(uuid "da060e68-e92f-4d3f-9408-809603e6ce8f")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -3638,7 +3638,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "ee9cbfa4-ed1c-445a-912e-cd01e08a64bc")
+		(uuid "df56d6c7-4ded-493f-a6bd-6ad9b51eaa47")
 	)
 	(label "RELAY_STOP"
 		(at 165.1 118.11 270)
@@ -3648,7 +3648,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "c2e63a96-a84b-4abd-a96c-4dc219f4c755")
+		(uuid "7d458f0d-519e-46dc-a2e2-b14999e1e1c3")
 	)
 	(text "Optional relay pull-ups (DNP): hold the relay\ninputs high while the ESP32 resets (active-low module)."
 		(exclude_from_sim no)
@@ -3659,7 +3659,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "0b7c51cb-b2b5-4da1-bc73-df152dc92c2f")
+		(uuid "4beadc3b-ce49-4248-b2b4-5d1391d7628d")
 	)
 	(symbol
 		(lib_id "Connector_Generic:Conn_01x04")
@@ -3670,7 +3670,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "48f7d1c4-2d96-4420-8754-a06e73f9f5ca")
+		(uuid "f093906f-7a31-4be9-811a-be2a0be54492")
 		(property "Reference" "J1"
 			(at 255.27 31.75 0)
 			(effects
@@ -3708,16 +3708,16 @@
 			)
 		)
 		(pin "1"
-			(uuid "76efe4eb-e9f4-4c87-a5a6-1f9204c99459")
+			(uuid "49363f09-448f-4585-99df-088916866813")
 		)
 		(pin "2"
-			(uuid "bd5ebd6c-1114-490c-bd97-e5fc59b80820")
+			(uuid "cbcb0dd8-3ae5-4be5-80d9-a622f18618cd")
 		)
 		(pin "3"
-			(uuid "f2411fab-62ab-4cb8-8b3a-684242ccef02")
+			(uuid "04efbd2c-9a98-4e0d-ad89-be0e84e7dab1")
 		)
 		(pin "4"
-			(uuid "d050262e-a204-4f8d-ac18-976a40ae8389")
+			(uuid "7811e3f5-9f42-4c83-8e77-8f362e0c001c")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -3737,7 +3737,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "687259cb-49de-43d3-9ef9-ada3fe132b57")
+		(uuid "ed580753-aa00-469b-9f09-77c981e61e68")
 	)
 	(symbol
 		(lib_id "power:+5V")
@@ -3748,7 +3748,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "bf84a278-106c-4f5f-8138-dae374832895")
+		(uuid "a47853b7-ce04-40fa-87e6-e81d052b8d3e")
 		(property "Reference" "#PWR008"
 			(at 246.38 43.1 0)
 			(hide yes)
@@ -3787,7 +3787,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "d6b2d9a4-b5dd-4664-b31e-0e189be4a943")
+			(uuid "b9309216-b9aa-4336-bde5-8ef0b75569ad")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -3807,7 +3807,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "933a96e0-08b6-46fa-a1d9-45b73424e730")
+		(uuid "f9f1cf11-d5ac-4157-a9ec-67ab96999d27")
 	)
 	(label "RELAY_START"
 		(at 246.38 40.64 180)
@@ -3817,7 +3817,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "a00133ae-1b35-4044-8b8f-c7f7c07f089d")
+		(uuid "f862eb71-a36b-49f6-b96a-7116665ccf80")
 	)
 	(wire
 		(pts
@@ -3828,7 +3828,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "267df20e-c260-4262-8b4c-627fed73110c")
+		(uuid "f704f031-eec3-4b30-86ac-aa7e4aa0107f")
 	)
 	(label "RELAY_STOP"
 		(at 246.38 43.18 180)
@@ -3838,7 +3838,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "b71143af-00ad-43c3-9daa-3c75cae6434a")
+		(uuid "82c7b48e-8a15-4eb5-9f0b-e30d82f88419")
 	)
 	(wire
 		(pts
@@ -3849,7 +3849,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "b3be0a00-88fb-4903-8c5d-c5940519d566")
+		(uuid "de968399-e3e3-49b0-a196-87742c59ef2d")
 	)
 	(symbol
 		(lib_id "power:GND")
@@ -3860,7 +3860,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "c051ac23-1101-468b-8476-29e1e13c108b")
+		(uuid "64bd1818-2305-4f48-bab4-2bd63bb1f140")
 		(property "Reference" "#PWR009"
 			(at 246.38 50.72 0)
 			(hide yes)
@@ -3899,7 +3899,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "74610ea2-801a-4952-9a04-1b11efe4f57d")
+			(uuid "a0f65ade-a3e9-4daf-afe4-4c0f9612f8a1")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -3919,7 +3919,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "326cd084-2e20-4279-9bea-e82758ae5e97")
+		(uuid "e8039446-b944-4146-a754-8dcb03b9fff0")
 	)
 	(text "R1 START (IN1)"
 		(exclude_from_sim no)
@@ -3930,7 +3930,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "2b4cf0b6-3dcf-4c59-8d72-e29791a9bac3")
+		(uuid "55b4dc4d-c9df-4b16-b4f2-24b800cb2a80")
 	)
 	(text "R2 STOP (IN2)"
 		(exclude_from_sim no)
@@ -3941,7 +3941,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "fc761a0e-3dcf-4b2a-97c7-e8e2cf7f456b")
+		(uuid "21c2d5bc-685a-441b-8660-6d90344776bd")
 	)
 	(text "GND"
 		(exclude_from_sim no)
@@ -3952,7 +3952,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "9b4e0528-ad20-4882-b917-1831459952d8")
+		(uuid "7ce327a7-02c5-41fc-86cf-8ab62dc4b2c3")
 	)
 	(symbol
 		(lib_id "Connector_Generic:Conn_01x03")
@@ -3963,7 +3963,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "f2002486-3e28-4ddb-81d1-a744fb9d7f45")
+		(uuid "c32a6696-2553-4bdb-a610-dfb4ca299baf")
 		(property "Reference" "J2"
 			(at 255.27 57.15 0)
 			(effects
@@ -4001,13 +4001,13 @@
 			)
 		)
 		(pin "1"
-			(uuid "3050b21d-f066-4dfc-be38-0f6bb2d10fe3")
+			(uuid "3f54273e-9f2f-4073-9271-2cf30fe50c29")
 		)
 		(pin "2"
-			(uuid "9482c7aa-3ebb-42f1-8e3b-4b4caf0ed0c8")
+			(uuid "849a89d4-3c7f-4b60-a9b2-61cb0477fa0c")
 		)
 		(pin "3"
-			(uuid "3ed1b146-eac3-4c17-b967-374243761e87")
+			(uuid "0a1006b4-2559-41a2-9f31-ea03172bb7a6")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -4027,7 +4027,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "fc1b312e-8ae1-4907-a538-ecff9e5feeb0")
+		(uuid "501a8f79-a406-4408-b972-a61b7d57c679")
 	)
 	(symbol
 		(lib_id "power:+5V")
@@ -4038,7 +4038,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "2e030db1-0c9d-4dbc-949c-f06aa84eecb8")
+		(uuid "f29e6118-044c-413c-9bb7-5a020684d0e5")
 		(property "Reference" "#PWR010"
 			(at 246.38 68.5 0)
 			(hide yes)
@@ -4077,7 +4077,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "b6c0deca-82f9-47ff-a312-1963c199a905")
+			(uuid "fdf2b35a-0701-4d88-bd15-9537d44fb707")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -4097,7 +4097,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "1f2fbacb-9d72-46ca-bd39-a5d0ef8895be")
+		(uuid "4aa56c91-17ab-4001-9602-e3f9cbcb46fa")
 	)
 	(label "NEO_DIN"
 		(at 246.38 66.04 180)
@@ -4107,7 +4107,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "5bd5444d-c4fc-462c-a291-d96ed8818c48")
+		(uuid "fad13696-b65b-4ab3-b560-b53ae6fb2f91")
 	)
 	(wire
 		(pts
@@ -4118,7 +4118,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "edb04844-5feb-4f5e-8ca5-77085fbcf5a7")
+		(uuid "3281f8bc-60a9-4d11-b0cb-5b01bc9ebc26")
 	)
 	(symbol
 		(lib_id "power:GND")
@@ -4129,7 +4129,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "ddbe5ca4-3550-4513-a9f0-273620146bea")
+		(uuid "66df6830-fcea-4d63-b607-8b96fed8bd7c")
 		(property "Reference" "#PWR011"
 			(at 246.38 73.58 0)
 			(hide yes)
@@ -4168,7 +4168,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "95717473-a173-4dd2-999a-4f7dcc425dcd")
+			(uuid "9135cdb7-a68c-4928-a4f5-a0f45e220469")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -4188,7 +4188,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "49b507d5-8063-485d-a220-e9db405e6a1f")
+		(uuid "c7cf3173-313a-4573-a192-1bb283fa9768")
 	)
 	(text "DIN"
 		(exclude_from_sim no)
@@ -4199,7 +4199,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "406fc136-c7e1-4841-b54f-e1e162cfb802")
+		(uuid "5eb1c098-9376-4c51-8f0d-13484d95eb10")
 	)
 	(text "GND"
 		(exclude_from_sim no)
@@ -4210,7 +4210,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "faa9e8ec-68f7-4461-93f5-6e43281084ff")
+		(uuid "ed96489f-4658-4e7f-ba6a-c7aa09bf43b1")
 	)
 	(symbol
 		(lib_id "Connector_Generic:Conn_01x02")
@@ -4221,7 +4221,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "89c9b628-da61-424d-bc85-b6b09886ba64")
+		(uuid "ababe4a6-8b4e-4562-a439-4a14d2846670")
 		(property "Reference" "J3"
 			(at 255.27 77.47 0)
 			(effects
@@ -4259,10 +4259,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "69efa970-004d-4e2f-9aed-b1889af71eec")
+			(uuid "9cae0569-afcb-455d-8359-25441fe6eb69")
 		)
 		(pin "2"
-			(uuid "ced286f5-f803-4dad-83f4-ee788b53798c")
+			(uuid "15ac1ccb-6227-48ac-90e1-2447014a1660")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -4282,7 +4282,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "ad8d4808-5a41-4bf4-9f18-646bb63ac3cc")
+		(uuid "c600152e-4a4e-4c38-b1e6-fb05a1cdb3b1")
 	)
 	(label "BTN"
 		(at 246.38 86.36 180)
@@ -4292,7 +4292,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "895b77d6-86f1-41e7-b845-4aa2e0f694e1")
+		(uuid "b4f24995-6f78-4cf0-afaf-ab6114cefdba")
 	)
 	(wire
 		(pts
@@ -4303,7 +4303,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "62757cac-007d-4f74-bc52-2b0fbc5e38a7")
+		(uuid "325b3420-2055-4f25-8f23-6825a3223a4f")
 	)
 	(symbol
 		(lib_id "power:GND")
@@ -4314,7 +4314,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "ed1e7b7a-77ce-42bb-8322-ef0a0eb8e234")
+		(uuid "8457376c-8518-47a0-a649-85a6e87eacf8")
 		(property "Reference" "#PWR012"
 			(at 246.38 93.9 0)
 			(hide yes)
@@ -4353,7 +4353,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "ac71ee56-75b1-4993-8ea7-a99bcd4ed1e7")
+			(uuid "241d82f5-04bc-4a46-9b1a-1a5aea654560")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -4373,7 +4373,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "f0a11994-bf10-4cdf-8ec7-d15b413792bc")
+		(uuid "25799b58-568b-4629-9b77-9548083b95f7")
 	)
 	(text "BTN- (GND)"
 		(exclude_from_sim no)
@@ -4384,7 +4384,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "fa14548d-5c58-48d5-8de9-b32ed69c1e17")
+		(uuid "0ba577cb-dfc0-4c49-b813-7c3d2b71c9e6")
 	)
 	(symbol
 		(lib_id "Connector_Generic:Conn_01x03")
@@ -4395,7 +4395,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "2c961cb1-5f69-42ea-bc22-7fc378d9917c")
+		(uuid "6b308132-e1e1-4ffa-b754-50cc07a610ee")
 		(property "Reference" "J4"
 			(at 255.27 97.79 0)
 			(effects
@@ -4433,13 +4433,13 @@
 			)
 		)
 		(pin "1"
-			(uuid "d9bb1861-c306-40cb-bef6-74f3f9d08282")
+			(uuid "21090fb3-75ad-40c2-bcfc-ec780cc4ab30")
 		)
 		(pin "2"
-			(uuid "b6d0d286-73e2-45e7-8f85-d4cee0d5d6af")
+			(uuid "8b308186-2fc3-4e85-918b-a9534bf68ead")
 		)
 		(pin "3"
-			(uuid "9f8de791-670d-410d-addd-7d95641c00d2")
+			(uuid "1090b41e-913b-4abd-af53-f9b8606932f7")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -4459,10 +4459,10 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "39ad0407-022d-4d7a-a137-d75ee2866c36")
+		(uuid "a6396b02-65c2-4f24-95d0-c29f0246a604")
 	)
 	(symbol
-		(lib_id "power:+3V3")
+		(lib_id "power:+5V")
 		(at 246.38 104.14 0)
 		(unit 1)
 		(body_style 1)
@@ -4470,7 +4470,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "23aec521-2bed-4ed3-b46e-0dcd1e8e035c")
+		(uuid "65074954-39ba-4e44-b3fd-2a394ff69a0e")
 		(property "Reference" "#PWR013"
 			(at 246.38 109.14 0)
 			(hide yes)
@@ -4481,7 +4481,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "+3V3"
+		(property "Value" "+5V"
 			(at 243.84 100.33 0)
 			(effects
 				(font
@@ -4509,7 +4509,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "368e7e82-d3c8-4e0f-970c-2f52b09dabec")
+			(uuid "ce7fb4ea-636f-4894-852e-9f86bd242d88")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -4529,7 +4529,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "3fa3be00-41f0-4e0e-8aaf-bbeb2de397f2")
+		(uuid "beb30323-54e6-4567-a9a5-2a6bc8b7a541")
 	)
 	(label "BUZZER"
 		(at 246.38 106.68 180)
@@ -4539,7 +4539,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "b6510687-7420-420f-a9a1-fe6b2b1f8f25")
+		(uuid "fce21cf2-dcf4-4b5d-a70f-c0498f66f0e8")
 	)
 	(wire
 		(pts
@@ -4550,7 +4550,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "236a2792-3975-47a1-926a-c1dd927c7aa7")
+		(uuid "31e2c3c4-e037-49c6-a830-1fbad48ae932")
 	)
 	(symbol
 		(lib_id "power:GND")
@@ -4561,7 +4561,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "68334223-f925-4220-9429-f42868fa9aa7")
+		(uuid "2dc728c7-5179-4672-acfb-076ebddbf91b")
 		(property "Reference" "#PWR014"
 			(at 246.38 114.22 0)
 			(hide yes)
@@ -4600,7 +4600,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "c6f01add-a2d4-4c6b-b9b0-e8480f9c8fa5")
+			(uuid "14b8773d-ad9c-42b7-b0e7-c962e52e94d6")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -4611,7 +4611,7 @@
 			)
 		)
 	)
-	(text "VCC (3V3)"
+	(text "VCC (5V)"
 		(exclude_from_sim no)
 		(at 257.81 103.34 0)
 		(effects
@@ -4620,7 +4620,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "b19a6af5-5603-45a6-9d3c-5b5f3a4e1e5c")
+		(uuid "255fb6da-9620-4457-9015-238a25bdd51d")
 	)
 	(text "SIG"
 		(exclude_from_sim no)
@@ -4631,7 +4631,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "ef45f851-7b27-4bb2-876a-a429cf8f0f54")
+		(uuid "f6095118-a3cf-49c4-9d6b-7b9822d17287")
 	)
 	(text "GND"
 		(exclude_from_sim no)
@@ -4642,7 +4642,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "3b36a480-4920-4fac-ae46-1a84d0fd8054")
+		(uuid "39634ea6-0612-4d07-9410-d4dc4c0d6ca3")
 	)
 	(symbol
 		(lib_id "Connector_Generic:Conn_01x04")
@@ -4653,7 +4653,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "09d3c33c-7ae2-4da1-8fd9-3e9ceb0149e1")
+		(uuid "367e59df-4cb5-43de-abd3-75c75ab00f28")
 		(property "Reference" "J5"
 			(at 255.27 123.19 0)
 			(effects
@@ -4691,16 +4691,16 @@
 			)
 		)
 		(pin "1"
-			(uuid "d1e334b4-0285-439e-846c-dae9f5cf3dd3")
+			(uuid "535e18fd-70b0-4f13-b1b1-e9cf25e78fc2")
 		)
 		(pin "2"
-			(uuid "6c35d88c-6179-4b91-b27c-77f43217bd77")
+			(uuid "de16507d-6148-4cfb-a44d-f3c118ba41fd")
 		)
 		(pin "3"
-			(uuid "15e633da-5417-460f-b529-ff36ffbd4c5d")
+			(uuid "df7322df-ca13-4585-a9d6-2bd4f55c4d00")
 		)
 		(pin "4"
-			(uuid "2369ca13-04f8-4eca-87ab-8f03a33e8caa")
+			(uuid "5c280b68-a581-4952-b849-0055766cd221")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -4720,7 +4720,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "57bcc247-0940-4d69-95ec-2b3b6d4683b5")
+		(uuid "21d795d0-d7cc-4c55-b06b-27c066ff8e3c")
 	)
 	(symbol
 		(lib_id "power:+3V3")
@@ -4731,7 +4731,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "82e4cf01-1202-44ab-b9a4-f6091f29a4fc")
+		(uuid "fdca71c6-d821-4b0d-b583-f08321bda471")
 		(property "Reference" "#PWR015"
 			(at 246.38 134.54 0)
 			(hide yes)
@@ -4770,7 +4770,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "9fcb0156-2332-49c2-9ce3-f636b9ad7e3a")
+			(uuid "6f280e9a-08e7-4fb4-8735-0f3f33fd4a92")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -4790,7 +4790,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "b0718659-d17f-4621-b20a-1cbf9de0aade")
+		(uuid "868a57fe-9a84-46f2-ab90-438745e67748")
 	)
 	(label "RTC_SDA"
 		(at 246.38 132.08 180)
@@ -4800,7 +4800,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "04d50e17-7563-4f67-81ba-3af7909afd2e")
+		(uuid "b1b66dd8-b14e-46a9-9b67-ac77254c5fc4")
 	)
 	(wire
 		(pts
@@ -4811,7 +4811,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "1880c54b-775e-4bfb-913e-83326ae477fe")
+		(uuid "036a6cf4-83f9-4d94-93c5-9489119f4b1c")
 	)
 	(label "RTC_SCL"
 		(at 246.38 134.62 180)
@@ -4821,7 +4821,7 @@
 			)
 			(justify right bottom)
 		)
-		(uuid "3157e533-4712-40a3-af87-b5ae9b5abac2")
+		(uuid "5c03982f-2f28-4c4e-842c-1cf3edf663ec")
 	)
 	(wire
 		(pts
@@ -4832,7 +4832,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "470cef91-def2-427a-aa80-8f9832f16d4e")
+		(uuid "c8c1a74e-0c48-430a-8be7-ca5687edd24d")
 	)
 	(symbol
 		(lib_id "power:GND")
@@ -4843,7 +4843,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "d00ab910-0254-4472-b990-874ec3848da6")
+		(uuid "7c260e1a-8813-4665-85f8-04dbbf54e3a0")
 		(property "Reference" "#PWR016"
 			(at 246.38 142.16 0)
 			(hide yes)
@@ -4882,7 +4882,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "559f7a8d-da5e-4775-abcf-d292ffae9de1")
+			(uuid "4ed47461-a844-417b-89a9-445fcc0a171b")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -4902,7 +4902,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "4f8d608b-a5d2-4150-bdc2-601b29236493")
+		(uuid "7c3816db-b8bf-4e04-be94-3a527a2ad613")
 	)
 	(text "SDA"
 		(exclude_from_sim no)
@@ -4913,7 +4913,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "0d7aab36-51d2-4a43-9625-d16cc14a355b")
+		(uuid "73fc28b8-0b74-4f14-9185-2c5999905f3a")
 	)
 	(text "SCL"
 		(exclude_from_sim no)
@@ -4924,7 +4924,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "6ae73a30-6aa5-41c3-920d-8d54b28f66a1")
+		(uuid "f5745791-8db3-409b-8b42-0b891f7b39f6")
 	)
 	(text "GND"
 		(exclude_from_sim no)
@@ -4935,7 +4935,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "cef97397-2f25-4a5a-a10e-4109b87bc466")
+		(uuid "024bea9f-9b34-49ae-9e96-b3aad0a5b9be")
 	)
 	(text "Button is in parallel with BOOT (IO9): holding it at\npower-up enters download mode."
 		(exclude_from_sim no)
@@ -4946,7 +4946,7 @@
 			)
 			(justify left top)
 		)
-		(uuid "83134225-ff57-474a-b770-31cea064f965")
+		(uuid "8fa3345b-5e81-4ae8-91a7-d4c6cf63b56b")
 	)
 	(symbol
 		(lib_id "power:PWR_FLAG")
@@ -4957,7 +4957,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "0cec9040-737a-4fa7-b2b7-a3428a770695")
+		(uuid "e2ff76e9-37c9-4b46-ba6a-ba9a9a987a4e")
 		(property "Reference" "#FLG01"
 			(at 25.4 148 0)
 			(hide yes)
@@ -4996,7 +4996,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "32080b42-3dc4-4e9e-872e-7c5b04bdce5b")
+			(uuid "3d0796af-a259-44f5-8800-362e5bf019f7")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -5016,7 +5016,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "865bbf44-4291-4527-891f-481091439612")
+		(uuid "35b7093a-479d-438c-b23b-799195a5eaac")
 		(property "Reference" "#PWR099"
 			(at 25.4 162 0)
 			(hide yes)
@@ -5055,7 +5055,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "a6857821-8424-425f-ae0b-d5b622fe514d")
+			(uuid "c8e9328d-fd91-4c18-b7c1-f5878726f6db")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -5075,7 +5075,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "0c12bcac-94c7-4e45-9182-4d61878b3f35")
+		(uuid "19ab7026-a522-4e9a-8bc1-229faf7a2c58")
 	)
 	(symbol
 		(lib_id "power:PWR_FLAG")
@@ -5086,7 +5086,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "35d83efb-0b85-4ff9-9761-fbd3fd6de65d")
+		(uuid "8697de64-66d5-49b6-a60c-26bf0f847f73")
 		(property "Reference" "#FLG02"
 			(at 38.1 148 0)
 			(hide yes)
@@ -5125,7 +5125,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "8fe64d95-9d55-48f9-81a4-eada8e4ff6be")
+			(uuid "4614fdea-73df-4dbe-91d4-53eb5ff70b96")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -5145,7 +5145,7 @@
 		(in_bom no)
 		(on_board no)
 		(dnp no)
-		(uuid "7099c910-ebd2-460e-9ade-21b61fbf3310")
+		(uuid "2c7d81c6-f542-4778-b5b2-68bbbc9a07a5")
 		(property "Reference" "#PWR098"
 			(at 38.1 165 0)
 			(hide yes)
@@ -5184,7 +5184,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "e0c699e8-c51f-4d12-b816-eee8de7da7a6")
+			(uuid "4b4a0be9-2086-408c-93f5-4ed46be4ddb5")
 		)
 		(instances
 			(project "TankLinkPumpPCB"
@@ -5204,7 +5204,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "c29c0765-0711-4ef2-8a07-2b160cabf671")
+		(uuid "960c12e0-d2d3-408f-8739-2c97e0b9a918")
 	)
 	(sheet_instances
 		(path "/"
