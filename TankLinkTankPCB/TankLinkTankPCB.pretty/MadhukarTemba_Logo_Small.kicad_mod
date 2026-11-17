@@ -1,0 +1,89 @@
+(footprint "MadhukarTemba_Logo_Small"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(property "Reference" "G***"
+		(at 0 0 0)
+		(layer "User.4")
+		(hide yes)
+		(uuid "381b607f-0d0b-43fd-8999-6cbe9235e01b")
+		(effects
+			(font
+				(size 1.5 1.5)
+				(thickness 0.3)
+			)
+		)
+	)
+	(property "Value" "LOGO"
+		(at 0.75 0 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "00bf4266-9829-4caa-8061-c2115bb9658a")
+		(effects
+			(font
+				(size 1.5 1.5)
+				(thickness 0.3)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "181b4481-6b4f-4895-b43c-149a60fc87b1")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "6a06620e-f0ca-457a-899e-24c4a72f086c")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr board_only exclude_from_pos_files exclude_from_bom)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_poly
+		(pts
+			(xy 4.7625 -1.5875) (xy 4.7625 -1.2700) (xy 4.1275 -1.2700) (xy 3.4925 -1.2700) (xy 3.4925 0.3175) (xy 3.4925 1.9050)
+			(xy 2.8575 1.9050) (xy 2.2225 1.9050) (xy 2.2225 0.3175) (xy 2.2225 -1.2700) (xy 1.5875 -1.2700) (xy 0.9525 -1.2700)
+			(xy 0.9525 -1.5875) (xy 0.9525 -1.9050) (xy 2.8575 -1.9050) (xy 4.7625 -1.9050)
+		)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill yes)
+		(layer "F.SilkS")
+		(uuid "fcffe498-2a45-4b96-8ced-7c3638298949")
+	)
+	(fp_poly
+		(pts
+			(xy -3.4925 -1.5875) (xy -3.4925 -1.2700) (xy -3.1750 -1.2700) (xy -2.8575 -1.2700) (xy -2.8575 -0.9525) (xy -2.8575 -0.6350)
+			(xy -2.2225 -0.6350) (xy -1.5875 -0.6350) (xy -1.5875 -0.9525) (xy -1.5875 -1.2700) (xy -1.2700 -1.2700) (xy -0.9525 -1.2700)
+			(xy -0.9525 -1.5875) (xy -0.9525 -1.9050) (xy -0.3175 -1.9050) (xy 0.3175 -1.9050) (xy 0.3175 0.0000) (xy 0.3175 1.9050)
+			(xy -0.3175 1.9050) (xy -0.9525 1.9050) (xy -0.9525 0.9525) (xy -0.9525 0.0000) (xy -1.2700 0.0000) (xy -1.5875 0.0000) (xy -1.5875 0.3175)
+			(xy -1.5875 0.6350) (xy -2.2225 0.6350) (xy -2.8575 0.6350) (xy -2.8575 0.3175) (xy -2.8575 0.0000) (xy -3.1750 0.0000) (xy -3.4925 0.0000)
+			(xy -3.4925 0.9525) (xy -3.4925 1.9050) (xy -4.1275 1.9050) (xy -4.7625 1.9050) (xy -4.7625 0.0000) (xy -4.7625 -1.9050)
+			(xy -4.1275 -1.9050) (xy -3.4925 -1.9050)
+		)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill yes)
+		(layer "F.SilkS")
+		(uuid "040a63b0-4acf-4b6b-8b76-76a2b2642c9d")
+	)
+	(embedded_fonts no)
+)
