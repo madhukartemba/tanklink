@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Keep in sync with docs/ERROR_CODES.md when adding light codes.
 class ErrorCodesScreen extends StatelessWidget {

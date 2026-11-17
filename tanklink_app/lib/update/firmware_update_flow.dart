@@ -1,7 +1,5 @@
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -200,15 +198,13 @@ Future<void> runFirmwareUpdate(
 }
 
 Future<void> pickAndInstallFirmware(BuildContext context) async {
-  final result = await FilePicker.platform.pickFiles(
-    type: FileType.any,
-    withData: true,
-  );
-  if (result == null || result.files.isEmpty) return;
-  final file = result.files.first;
-  Uint8List? bytes = file.bytes;
-  if (bytes == null && file.path != null) {
-    bytes = await File(file.path!).readAsBytes();
+  final file = await FilePicker.pickFile();
+  if (file == null) return;
+  Uint8List? bytes;
+  try {
+    bytes = await file.readAsBytes();
+  } catch (_) {
+    bytes = null;
   }
   if (bytes == null || bytes.isEmpty) {
     if (context.mounted) {
