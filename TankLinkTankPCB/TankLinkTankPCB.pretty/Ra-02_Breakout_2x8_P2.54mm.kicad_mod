@@ -4,7 +4,7 @@
 	(layer "F.Cu")
 	(descr "Ai-Thinker Ra-02 on the blue 2x8 2.54 mm adapter board (20.26 x 28.3 mm, rows 25.4 mm apart), mounted module-up on female headers. Courtyard covers only the header strips so low parts can sit underneath. Pad numbers match the Ra-02 symbol: bottom row 1-8 = GND GND 3V3 RST DIO0 DIO1 DIO2 DIO3, top row 9-16 right to left = GND DIO4 DIO5 SCK MISO MOSI NSS GND.")
 	(tags "Ra-02 LoRa SX1278 breakout adapter")
-	(property "Reference" "REF**" (at 0 -10.3 0) (layer "F.SilkS") (effects (font (size 0.8 0.8) (thickness 0.12))))
+	(property "Reference" "REF**" (at 0 -10.3 0) (layer "F.SilkS") (effects (font (size 0.8 0.8) (thickness 0.15))))
 	(property "Value" "Ra-02_Breakout" (at 0 0 0) (layer "F.Fab") (effects (font (size 1 1) (thickness 0.15))))
 	(attr through_hole)
 	(fp_rect (start -10.13 -14.15) (end 10.13 14.15) (stroke (width 0.1) (type solid)) (fill no) (layer "F.Fab"))
