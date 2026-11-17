@@ -1,0 +1,5 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "TankLinkTankPCB") (type "KiCad") (uri "${KIPRJMOD}/../TankLinkTankPCB/TankLinkTankPCB.pretty") (options "") (descr "Tank node footprints"))
+	(lib (name "TankLinkPumpPCB") (type "KiCad") (uri "${KIPRJMOD}/../TankLinkPumpPCB/TankLinkPumpPCB.pretty") (options "") (descr "Pump node footprints"))
+)
