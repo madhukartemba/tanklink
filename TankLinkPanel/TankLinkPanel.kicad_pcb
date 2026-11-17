@@ -16143,18 +16143,6 @@
 			(justify mirror)
 		)
 	)
-	(gr_text "JLCJLCJLCJLC"
-		(at 106 136.6 0)
-		(layer "B.SilkS")
-		(uuid "74092b8e-7f43-4ece-a2ed-6f74cbccee5a")
-		(effects
-			(font
-				(size 1 1)
-				(thickness 0.15)
-			)
-			(justify mirror)
-		)
-	)
 	(gr_text "REV 1 - 2026\nMADHUKAR TEMBA"
 		(at 109.5 125.4 0)
 		(layer "B.SilkS")

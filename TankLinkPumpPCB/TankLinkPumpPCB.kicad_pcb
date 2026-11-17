@@ -3665,18 +3665,6 @@
 			(justify mirror)
 		)
 	)
-	(gr_text "JLCJLCJLCJLC"
-		(at 145.24 131.6 0)
-		(layer "B.SilkS")
-		(uuid "e828f158-d1ef-4fb5-83da-e65e985bd17d")
-		(effects
-			(font
-				(size 1 1)
-				(thickness 0.15)
-			)
-			(justify mirror)
-		)
-	)
 	(gr_text "Pump Node"
 		(at 114.75 115.1 0)
 		(layer "B.SilkS")
