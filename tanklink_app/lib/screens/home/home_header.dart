@@ -42,6 +42,7 @@ class PumpHeader extends StatelessWidget {
     required this.connecting,
     required this.connected,
     required this.status,
+    this.bleRssiDbm,
     required this.onOpenList,
     required this.onSettings,
     required this.onRename,
@@ -51,6 +52,9 @@ class PumpHeader extends StatelessWidget {
   final bool connecting;
   final bool connected;
   final String status;
+
+  /// Phone-to-pump BLE RSSI in dBm, when the link is up.
+  final int? bleRssiDbm;
   final VoidCallback onOpenList;
   final VoidCallback onSettings;
   final VoidCallback onRename;
@@ -108,6 +112,10 @@ class PumpHeader extends StatelessWidget {
                   ],
                 ),
               ),
+              if (bleRssiDbm != null) ...[
+                _BleSignal(rssi: bleRssiDbm!),
+                const SizedBox(width: 2),
+              ],
               IconButton(
                 tooltip: 'Settings',
                 onPressed: onSettings,
@@ -116,6 +124,68 @@ class PumpHeader extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Four-bar BLE indicator plus the reading in dBm.
+class _BleSignal extends StatelessWidget {
+  const _BleSignal({required this.rssi});
+
+  final int rssi;
+
+  int get _level {
+    if (rssi >= -55) return 4;
+    if (rssi >= -65) return 3;
+    if (rssi >= -75) return 2;
+    if (rssi >= -85) return 1;
+    return 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final level = _level;
+    const heights = [5.0, 8.0, 11.0, 14.0];
+    final color = level <= 1 ? scheme.error : scheme.primary;
+
+    return Tooltip(
+      message: 'BLE signal $rssi dBm',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          SizedBox(
+            width: 16,
+            height: 14,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                for (var i = 0; i < 4; i++)
+                  Container(
+                    width: 2.5,
+                    height: heights[i],
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(1),
+                      color: i < level
+                          ? color
+                          : scheme.outlineVariant.withValues(alpha: 0.55),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '$rssi dBm',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

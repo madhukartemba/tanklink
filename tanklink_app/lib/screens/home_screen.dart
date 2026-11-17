@@ -116,6 +116,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   pump: pump,
                   connecting: session.connecting,
                   connected: ready,
+                  bleRssiDbm: session.connected ? session.bleRssiDbm : null,
                   status: session.status,
                   onOpenList: () {
                     Navigator.of(context).push(
@@ -157,8 +158,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           child: TankHero(
                             session: session,
                             ready: ready,
-                            onOpenSettings: () =>
-                                showPumpSettingsSheet(context),
                           ),
                         ),
                       ],

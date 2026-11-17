@@ -8,12 +8,10 @@ class TankHero extends StatelessWidget {
     super.key,
     required this.session,
     required this.ready,
-    required this.onOpenSettings,
   });
 
   final PumpSession session;
   final bool ready;
-  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +98,16 @@ class TankHero extends StatelessWidget {
             ),
             const SizedBox(height: 22),
             FilledButton.tonal(
-              onPressed: onOpenSettings,
+              onPressed: () async {
+                try {
+                  await session.startTankPair();
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Tank pair failed: $e')),
+                  );
+                }
+              },
               child: const Text('Pair tank sensor'),
             ),
           ],
@@ -164,7 +171,13 @@ class TankHero extends StatelessWidget {
       batAccent = scheme.error;
     } else {
       batValue = '$batPct%';
-      batDetail = lowBat ? 'Recharge soon' : null;
+      if (lowBat) {
+        batDetail = 'Charge it soon';
+      } else if (batPct >= 60) {
+        batDetail = 'No need to charge';
+      } else {
+        batDetail = 'Fine for now';
+      }
       batAccent = lowBat ? scheme.error : accent;
     }
     final rssi = session.tankRssiDbm;

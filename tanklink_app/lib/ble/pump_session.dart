@@ -63,6 +63,9 @@ class PumpSession extends ChangeNotifier {
   /// Last LoRa packet RSSI (dBm); null if unknown.
   int? tankRssiDbm;
 
+  /// Phone-to-pump BLE RSSI (dBm); null when disconnected or not yet read.
+  int? bleRssiDbm;
+
   /// Last LoRa packet SNR (dB); null if unknown.
   int? tankSnrDb;
 
@@ -103,6 +106,8 @@ class PumpSession extends ChangeNotifier {
   Timer? _runTicker;
   Timer? _ageTicker;
   Timer? _clockSyncTimer;
+  Timer? _rssiTimer;
+  bool _rssiBusy = false;
 
   /// The pump speaks a BLE protocol major this app does not. Only a firmware
   /// update is possible until the pump or the app is updated.
@@ -1080,6 +1085,7 @@ class PumpSession extends ChangeNotifier {
     _ageTicker = null;
     _clockSyncTimer?.cancel();
     _clockSyncTimer = null;
+    _stopBleRssiPoll();
     await _pairNotifySub?.cancel();
     await _stateNotifySub?.cancel();
     await _tankNotifySub?.cancel();
@@ -1122,6 +1128,7 @@ class PumpSession extends ChangeNotifier {
     tankBatteryPct = 0;
     _tankLastHeardAt = null;
     tankRssiDbm = null;
+    bleRssiDbm = null;
     tankSnrDb = null;
     pumpLastError = 0;
     fillInterruption = null;
@@ -1155,6 +1162,7 @@ class PumpSession extends ChangeNotifier {
         authed = false;
         _clockSyncTimer?.cancel();
         _clockSyncTimer = null;
+        _stopBleRssiPoll();
         _applyPumpOn(false);
         if (!connecting) {
           status = 'Disconnected';
@@ -1181,6 +1189,38 @@ class PumpSession extends ChangeNotifier {
     try {
       await device.requestMtu(512);
     } catch (_) {}
+    _startBleRssiPoll();
+  }
+
+  void _startBleRssiPoll() {
+    _rssiTimer?.cancel();
+    _rssiTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      unawaited(_readBleRssi());
+    });
+    unawaited(_readBleRssi());
+  }
+
+  void _stopBleRssiPoll() {
+    _rssiTimer?.cancel();
+    _rssiTimer = null;
+    bleRssiDbm = null;
+  }
+
+  Future<void> _readBleRssi() async {
+    final device = _device;
+    if (device == null || !connected || _rssiBusy) return;
+    _rssiBusy = true;
+    try {
+      final rssi = await device.readRssi(timeout: 4);
+      if (!connected || _device != device) return;
+      if (bleRssiDbm != rssi) {
+        bleRssiDbm = rssi;
+        notifyListeners();
+      }
+    } catch (_) {
+    } finally {
+      _rssiBusy = false;
+    }
   }
 
   BluetoothService? _service;
@@ -1352,6 +1392,7 @@ class PumpSession extends ChangeNotifier {
     _runTicker?.cancel();
     _ageTicker?.cancel();
     _clockSyncTimer?.cancel();
+    _rssiTimer?.cancel();
     unawaited(disconnect());
     unawaited(stopScan());
     super.dispose();
