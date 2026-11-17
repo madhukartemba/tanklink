@@ -42,7 +42,7 @@
 				)
 			)
 		)
-		(property "Description" "ESP32-C3 SuperMini on two 1x8 2.54 mm headers. Check the pin order against your board before layout."
+		(property "Description" "ESP32-C3 SuperMini on two 1x8 2.54 mm headers. Pin order checked against the board's own pinout."
 			(at 0 0 0)
 			(hide yes)
 			(effects

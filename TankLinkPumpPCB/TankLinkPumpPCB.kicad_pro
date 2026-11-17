@@ -297,17 +297,12 @@
     "top_level_sheets": [
       {
         "filename": "TankLinkPumpPCB.kicad_sch",
-        "name": "Root",
-        "uuid": "3d0c8bf3-8e5b-4b96-bf26-0c474a6aff3a"
+        "name": "TankLinkPumpPCB",
+        "uuid": "00000000-0000-0000-0000-000000000000"
       }
     ]
   },
-  "sheets": [
-    [
-      "3d0c8bf3-8e5b-4b96-bf26-0c474a6aff3a",
-      "Root"
-    ]
-  ],
+  "sheets": [],
   "text_variables": {},
   "tuning_profiles": {
     "meta": {
