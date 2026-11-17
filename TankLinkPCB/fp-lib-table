@@ -1,4 +1,0 @@
-(fp_lib_table
-	(version 7)
-	(lib (name "TankLinkPCB") (type "KiCad") (uri "${KIPRJMOD}/TankLinkPCB.pretty") (options "") (descr "TankLink project footprints"))
-)

@@ -24,7 +24,7 @@
 				)
 			)
 		)
-		(property "Footprint" "TankLinkPCB:XIAO_ESP32C3_Socket"
+		(property "Footprint" "TankLinkTankPCB:XIAO_ESP32C3_Socket"
 			(at 0 0 0)
 			(hide yes)
 			(effects

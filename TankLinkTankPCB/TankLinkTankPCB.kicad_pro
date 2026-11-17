@@ -248,7 +248,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "TankLinkPCB.kicad_pro",
+    "filename": "TankLinkTankPCB.kicad_pro",
     "version": 3
   },
   "net_settings": {
@@ -296,8 +296,8 @@
     "legacy_lib_list": [],
     "top_level_sheets": [
       {
-        "filename": "TankLinkPCB.kicad_sch",
-        "name": "TankLinkPCB",
+        "filename": "TankLinkTankPCB.kicad_sch",
+        "name": "TankLinkTankPCB",
         "uuid": "00000000-0000-0000-0000-000000000000"
       }
     ]
