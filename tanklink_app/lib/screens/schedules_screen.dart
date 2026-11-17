@@ -91,7 +91,11 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
       hour: session.pumpClockHour,
       minute: session.pumpClockMinute,
     );
-    return 'Phone time sent · pump clock ${t.format(context)}';
+    final clock = 'pump clock ${t.format(context)}';
+    if (session.pumpRtcOk) {
+      return 'Pump keeps time on its own · $clock';
+    }
+    return 'Phone time sent · $clock';
   }
 
   String _stopLine(PumpSession session) {

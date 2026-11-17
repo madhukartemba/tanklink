@@ -171,6 +171,8 @@ class PumpSession extends ChangeNotifier {
   /// False on pumps older than the schedule characteristic.
   bool schedulesSupported = false;
   bool pumpClockValid = false;
+  /// The DS3231 holds a trusted time, so schedules survive a restart.
+  bool pumpRtcOk = false;
   int pumpClockHour = 0;
   int pumpClockMinute = 0;
   List<FillSchedule> schedules = [];
@@ -1433,6 +1435,7 @@ class PumpSession extends ChangeNotifier {
     _otaCtrl = _otaData = _otaStatus = _tank = _sched = _tanks = null;
     schedulesSupported = false;
     pumpClockValid = false;
+    pumpRtcOk = false;
     schedules = [];
     tanksSupported = false;
     sensorMode = 0;
@@ -1670,6 +1673,10 @@ class PumpSession extends ChangeNotifier {
       ));
     }
     schedules = next;
+    // Optional trailing clock-flags byte (pump 0.10.0+).
+    final flagsAt = 4 + count * 4;
+    final clockFlags = value.length > flagsAt ? value[flagsAt] : 0;
+    pumpRtcOk = (clockFlags & 0x02) != 0;
   }
 
   Future<void> selectTank(int slot) async {
