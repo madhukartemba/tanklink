@@ -112,7 +112,7 @@ class ErrorCodesScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Hold the Start and Stop buttons on the pump for about 5 seconds to start setup (blue light). '
+            'Hold the button on the pump for about 5 seconds to start setup (blue light). '
             'Keep holding for about 10 more seconds to reset it (red light fills up). '
             'Or go to Settings, then Factory reset, and type RESET.',
             style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),

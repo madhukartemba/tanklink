@@ -21,18 +21,35 @@ Firmware: `pump_node/` · defaults: `pump_node/sdkconfig.defaults`
 
 ### Other (optional; soft-fail if unwired)
 
-| Function | GPIO |
-| --- | --- |
-| Start (hold ~1 s = ON; both ~5 s = BLE pair; keep both ~10 s more = factory reset) | 0 |
-| Stop (hold ~1 s = OFF / exit BLE pair; dual-hold as above) | 1 |
-| I2C SDA (DS3231) | 6 |
-| I2C SCL (DS3231) | 7 |
-| Relay START | 18 |
-| Relay STOP | 19 |
-| NeoPixel | 20 |
-| Buzzer | 21 |
+SuperMini header pins: GPIO 0–10, 20, 21 — all 13 used.
 
-Relays default to unassigned (`-1`) until wired.
+| Function | GPIO | Notes |
+| --- | --- | --- |
+| Relay START (IN1) | 0 | Not a strap pin; floats at reset → relay off during boot |
+| Relay STOP (IN2) | 1 | Same |
+| I2C SDA (DS3231) | 6 | |
+| I2C SCL (DS3231) | 7 | |
+| Button (single) | 9 | Active-low to GND, parallel with onboard BOOT. Holding at power-up = download mode |
+| NeoPixel | 20 | |
+| Buzzer | 21 | UART0 TX — may chirp during ROM boot log |
+
+**Button:** running → press = OFF · off → hold ~1 s, release = ON · hold ~5 s = BLE pair · keep holding ~10 s more = factory reset.
+
+**Don't use** GPIO18/19 (USB D−/D+, not on headers) or GPIO9 for relays (pulled HIGH at boot).
+
+### Relay module (2-ch opto, active-low, JD-VCC)
+
+| Module | Connect to |
+| --- | --- |
+| JD-VCC jumper | **Remove** (never bridge VCC–GND) |
+| JD-VCC / GND (3-pin) | 5 V / GND (coil supply) |
+| VCC (4-pin) | **3V3** |
+| IN1 / IN2 | GPIO0 / GPIO1 (optional 10 kΩ → 3V3 each) |
+| GND (4-pin) | C3 GND (omit for full isolation) |
+
+Firmware: `CONFIG_PUMP_RELAY_ACTIVE_HIGH` **off** (IN LOW = relay ON).
+
+Contacts: START relay **COM+NO** in parallel with starter Start button; STOP relay **COM+NC** in series with starter Stop button.
 
 ---
 

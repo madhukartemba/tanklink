@@ -260,6 +260,8 @@ static void host_task(void *param)
 
 void app_main(void)
 {
+    /* Relays idle before anything else (pins float from reset until here). */
+    relay_control_early_safe();
     ESP_LOGI(TAG, "TankLink pump starting…");
 
     esp_err_t err = nvs_flash_init();

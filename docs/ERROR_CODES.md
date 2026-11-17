@@ -43,7 +43,7 @@ Same blink pattern as the tank: **N long hard red blinks**, pause, repeat twice.
 
 ### Factory reset (not an error code)
 
-Hold **Start + Stop** for BLE pairing (~5 s, blue progress), then **keep holding** (~10 s more, red progress). On completion the strip flashes green and the pump reboots with pairing, tank bind, and settings cleared. From the app: Settings → Factory reset → type `RESET`.
+Hold the pump **button** for BLE pairing (~5 s, blue progress), then **keep holding** (~10 s more, red progress). On completion the strip flashes green and the pump reboots with pairing, tank bind, and settings cleared. From the app: Settings → Factory reset → type `RESET`.
 
 ## Almost-empty float (optional)
 
@@ -55,7 +55,7 @@ These are not LED blink codes; they appear in the app when a BLE command fails.
 
 | Situation | Typical message |
 | --- | --- |
-| Pump not in phone-pairing window | Claim rejected — hold Start+Stop 5 s |
+| Pump not in phone-pairing window | Claim rejected — hold the pump button 5 s |
 | Not authenticated | Cmd rejected |
 | Tank pair window / LoRa down | Tank pair failed |
 | Unpair tank | Unpair tank failed |

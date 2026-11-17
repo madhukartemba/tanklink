@@ -14,11 +14,11 @@ typedef void (*board_long_press_cb_t)(void);
 esp_err_t board_init(void);
 void board_set_pump_on(bool on);
 
-void board_set_start_callback(board_button_cb_t cb); /* short Start */
-void board_set_stop_callback(board_button_cb_t cb);  /* short Stop */
+void board_set_start_callback(board_button_cb_t cb); /* pump off: hold ~1 s + release */
+void board_set_stop_callback(board_button_cb_t cb);  /* pump running: press */
 void board_set_hold_progress_callback(board_hold_progress_cb_t cb);
-void board_set_long_press_callback(board_long_press_cb_t cb); /* both held → BLE pair */
-/** Keep holding both after BLE-pair threshold → factory reset. */
+void board_set_long_press_callback(board_long_press_cb_t cb); /* hold ~5 s → BLE pair */
+/** Keep holding after BLE-pair threshold → factory reset. */
 void board_set_factory_reset_callback(board_long_press_cb_t cb);
 
 #ifdef __cplusplus

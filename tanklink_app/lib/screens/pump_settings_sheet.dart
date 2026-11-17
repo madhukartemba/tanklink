@@ -512,7 +512,7 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 child: const Text('Factory reset pump…'),
               ),
               Text(
-                'Or hold Start and Stop on the pump for about 5 seconds, then keep holding about 10 seconds more.',
+                'Or hold the pump button for about 5 seconds, then keep holding about 10 seconds more.',
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
                   fontSize: 12,

@@ -16,8 +16,11 @@
 #ifndef CONFIG_PUMP_RELAY_STOP_GPIO
 #define CONFIG_PUMP_RELAY_STOP_GPIO (-1)
 #endif
-#ifndef CONFIG_PUMP_RELAY_ACTIVE_HIGH
-#define CONFIG_PUMP_RELAY_ACTIVE_HIGH 1
+/* Bool Kconfig: undefined means "n" (active-low). Don't default it to 1. */
+#ifdef CONFIG_PUMP_RELAY_ACTIVE_HIGH
+#define RELAY_ACTIVE_HIGH 1
+#else
+#define RELAY_ACTIVE_HIGH 0
 #endif
 #ifndef CONFIG_PUMP_RELAY_PULSE_MS
 #define CONFIG_PUMP_RELAY_PULSE_MS 400
@@ -56,12 +59,12 @@ static int stop_gpio(void)
 
 static int relay_idle_level(void)
 {
-    return CONFIG_PUMP_RELAY_ACTIVE_HIGH ? 0 : 1;
+    return RELAY_ACTIVE_HIGH ? 0 : 1;
 }
 
 static int relay_active_level(void)
 {
-    return CONFIG_PUMP_RELAY_ACTIVE_HIGH ? 1 : 0;
+    return RELAY_ACTIVE_HIGH ? 1 : 0;
 }
 
 static bool gpio_assigned(int gpio)
@@ -79,6 +82,9 @@ static esp_err_t configure_output(int gpio)
     if (!gpio_assigned(gpio)) {
         return ESP_ERR_INVALID_ARG;
     }
+    /* Latch idle level BEFORE enabling the output driver, so the pin never
+     * drives the active level (out reg resets to 0 = ON for active-low). */
+    gpio_set_level(gpio, relay_idle_level());
     gpio_config_t io = {
         .pin_bit_mask = 1ULL << gpio,
         .mode = GPIO_MODE_OUTPUT,
@@ -159,6 +165,17 @@ static void two_button_start_pulse(void)
         pulse_gpio(start_gpio());
     } else {
         ESP_LOGW(TAG, "Start pulse skipped — START GPIO not assigned");
+    }
+}
+
+void relay_control_early_safe(void)
+{
+    /* Called first thing in app_main (before NVS): drive relays idle ASAP. */
+    if (gpio_assigned(start_gpio())) {
+        configure_output(start_gpio());
+    }
+    if (gpio_assigned(stop_gpio())) {
+        configure_output(stop_gpio());
     }
 }
 

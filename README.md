@@ -29,7 +29,7 @@ idf.py build
 idf.py -p /dev/cu.usbmodemXXXX flash monitor
 ```
 
-Hold **Start and Stop** together ~5 s to enter BLE pairing. Advertise name is `TankLink-XXXX` (MAC suffix).
+Hold the pump **button** ~5 s to enter BLE pairing. Advertise name is `TankLink-XXXX` (MAC suffix).
 
 `idf.py erase-flash` clears NVS pairing.
 

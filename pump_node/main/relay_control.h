@@ -22,6 +22,9 @@ typedef enum {
     PUMP_STARTER_COUNT
 } pump_starter_type_t;
 
+/** Drive relay GPIOs to idle immediately. Call first in app_main (no NVS needed). */
+void relay_control_early_safe(void);
+
 /** Init GPIOs (if assigned) and immediately force the starter OFF. */
 esp_err_t relay_control_init(void);
 

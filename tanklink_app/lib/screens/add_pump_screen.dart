@@ -87,7 +87,7 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
               session.scanning
                   ? 'Looking for TankLink pumps nearby…'
                   : session.scanResults.isEmpty
-                      ? 'Nothing found. Hold Start and Stop together 5s for pairing, then scan again.'
+                      ? 'Nothing found. Hold the pump button 5s for pairing, then scan again.'
                       : 'Tap a pump to claim it.',
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),

@@ -23,26 +23,20 @@ menu "Pump Board"
             Number of LEDs on the status strip (linear bar).
 
     config PUMP_ENABLE_BUTTON
-        bool "Enable local Start/Stop buttons"
+        bool "Enable local button"
         default y
         help
-            Momentary Start and Stop. Hold both for BLE phone pairing.
+            Single momentary button. Press while running = OFF; hold ~1 s and
+            release while off = ON; hold ~5 s = BLE pairing; keep holding = factory reset.
 
-    config PUMP_BUTTON_START_GPIO
-        int "Start button GPIO"
+    config PUMP_BUTTON_GPIO
+        int "Button GPIO"
         depends on PUMP_ENABLE_BUTTON
         range 0 21
-        default 0
+        default 9
         help
-            Active-low to GND. Short press = pump ON.
-
-    config PUMP_BUTTON_STOP_GPIO
-        int "Stop button GPIO"
-        depends on PUMP_ENABLE_BUTTON
-        range 0 21
-        default 1
-        help
-            Active-low to GND. Short press = pump OFF / exit BLE pairing.
+            Active-low to GND. GPIO9 = SuperMini onboard BOOT button (wire an
+            external button in parallel). Holding it at power-up enters download mode.
 
     config PUMP_BUTTON_ACTIVE_LOW
         bool "Buttons are active low"
@@ -52,15 +46,16 @@ menu "Pump Board"
             Buttons to GND with internal pull-up (inverted).
 
     config PUMP_ACTION_HOLD_MS
-        int "Hold Start or Stop to actuate pump (ms)"
+        int "Hold button then release to start pump (ms)"
         depends on PUMP_ENABLE_BUTTON
         range 200 5000
         default 1000
         help
-            Center LED expands while held; action fires at threshold.
+            While the pump is off: hold at least this long, then release, to turn ON.
+            Center LED fills while held.
 
     config PUMP_PAIRING_HOLD_MS
-        int "Hold both buttons to enter BLE pairing (ms)"
+        int "Hold button to enter BLE pairing (ms)"
         depends on PUMP_ENABLE_BUTTON
         range 1000 15000
         default 5000
@@ -71,7 +66,7 @@ menu "Pump Board"
         range 5000 60000
         default 10000
         help
-            Keep holding Start+Stop after the 5s BLE-pair cue. Red progress
+            Keep holding the button after the 5s BLE-pair cue. Red progress
             fills for this long, then factory reset + reboot. Hard to trigger
             by accident (default 5s pair + 10s = 15s total).
 
@@ -95,16 +90,18 @@ menu "Pump Board"
     config PUMP_RELAY_START_GPIO
         int "Starter relay A / START GPIO (−1 = unassigned)"
         range -1 21
-        default -1
+        default 0
         help
-            Two-button starter START. Leave −1 until wired (LoRa-only tests OK).
+            Two-button starter START (relay COM+NO across starter Start button).
+            GPIO0: not a strap pin, floats at reset → relay stays off during boot.
 
     config PUMP_RELAY_STOP_GPIO
         int "Starter relay B / STOP GPIO (−1 = unassigned)"
         range -1 21
-        default -1
+        default 1
         help
-            Two-button starter STOP (normally-closed path). −1 = unassigned.
+            Two-button starter STOP (relay COM+NC in series with starter Stop button).
+            GPIO1: not a strap pin, floats at reset → relay stays off during boot.
 
     config PUMP_ENABLE_LORA
         bool "Enable RA-02 LoRa (tank link)"
@@ -162,9 +159,11 @@ menu "Pump Board"
 
     config PUMP_RELAY_ACTIVE_HIGH
         bool "Relays active high"
-        default y
+        default n
         help
-            GPIO HIGH energizes the relay coil (common for transistor drivers).
+            GPIO HIGH energizes the relay. Leave OFF for the common opto-isolated
+            relay modules (IN LOW = relay ON), wired with JD-VCC jumper removed,
+            input VCC = 3V3, JD-VCC = 5V.
 
     config PUMP_RELAY_PULSE_MS
         int "Start/Stop pulse width (ms)"
