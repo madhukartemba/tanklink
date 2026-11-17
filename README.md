@@ -8,11 +8,14 @@ Local rooftop **tank ↔ pump** control — no cloud required.
 
 | Folder | Role |
 | --- | --- |
-| [`pump_node/`](pump_node/) | ESP32-C3 SuperMini pump (BLE GATT, relays, LoRa RX) |
+| [`pump_node/`](pump_node/) | ESP32-C3 SuperMini pump (BLE GATT, starter relays, LoRa RX, schedules) |
 | [`tank_node/`](tank_node/) | XIAO ESP32-C3 tank sensor (floats, LoRa TX, deep sleep) |
-| [`tanklink_app/`](tanklink_app/) | Flutter app — multi-pump, slide-to-start, settings |
+| [`tanklink_app/`](tanklink_app/) | Flutter app — multi-pump, slide-to-start, settings, schedules, in-app updates |
+| [`components/tanklink_lora/`](components/tanklink_lora/) | Shared SX1278 driver and LoRa packet format |
 
 **Pin maps (both boards):** [`docs/PINMAPS.md`](docs/PINMAPS.md)  
+**BLE + LoRa byte layouts:** [`docs/PROTOCOL.md`](docs/PROTOCOL.md)  
+**Working on this repo with an agent:** [`AGENTS.md`](AGENTS.md)  
 **Tank LED error codes:** [`docs/ERROR_CODES.md`](docs/ERROR_CODES.md)
 
 ## Quick start
@@ -59,10 +62,12 @@ First flash after the OTA partition change must be over **USB**. Later updates u
 - [x] Pump On/Off + auto-off + buzzer settings
 - [x] NeoPixel status + slide-to-start UI
 - [x] BLE OTA + GitHub Releases check
-- [ ] Relay wiring / starter control
+- [x] Starter relays (GPIO0/1, active-low) + single button
 - [x] Tank node floats + LoRa TX + deep sleep / heartbeat
 - [x] Pump LoRa RX + tank auto-pair (app → BLE → LoRa PAIR)
-- [ ] Optional DS3231 schedules on pump
+- [x] Daily fill schedules (clock set from the phone)
+- [x] Second float: almost-empty sensor or a second tank
+- [ ] Optional DS3231 RTC so schedules survive a reboot without the phone
 - [ ] Tank solar (small panel + CN3065 + LiPo)
 
 ## License

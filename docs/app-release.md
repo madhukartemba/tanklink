@@ -4,6 +4,8 @@ Android sideload + in-app update (no Play Store required). Firmware releases rem
 
 ## Signing (one-time)
 
+> **Current state:** no `key.properties` exists, so releases so far are signed with the build machine's **debug key** (cert SHA-256 `4eaeb0bf…afa381`). Keep building on that machine, or existing installs must uninstall before they can update. Setting up the upload key below changes the signer, so plan that switch as a one-time reinstall.
+
 ```bash
 cd tanklink_app/android
 keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
