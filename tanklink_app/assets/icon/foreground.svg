@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <clipPath id="drop">
+      <path d="M512 238 C470 300 312 450 312 588 A200 200 0 0 0 712 588 C712 450 554 300 512 238 Z"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#drop)">
+    <path d="M280 540 C360 590 430 590 512 540 S664 490 744 540 V820 H280 Z" fill="#FFFFFF" fill-opacity="0.45"/>
+    <path d="M280 570 C360 520 430 520 512 570 S664 620 744 570 V820 H280 Z" fill="#FFFFFF"/>
+  </g>
+  <path d="M512 238 C470 300 312 450 312 588 A200 200 0 0 0 712 588 C712 450 554 300 512 238 Z" fill="none" stroke="#FFFFFF" stroke-width="34" stroke-linejoin="round"/>
+</svg>
