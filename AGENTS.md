@@ -91,7 +91,7 @@ apksigner verify --print-certs tanklink_app/build/app/outputs/flutter-apk/app-re
 2. **Rebuild.** Never upload whatever is already in `build/`. It may be an older build.
 3. Run the manifest script (`scripts/make_*_manifest.sh X.Y.Z`) and **check the sha256 differs from the previous release's manifest.** If it matches, you are about to re-ship the old binary.
 4. Check that the binary contains the new version: `strings pump_node/build/pump_node.bin | grep -x X.Y.Z`.
-5. Push the commit, then `gh release create <tag> --target <sha>` with exactly the asset names the app expects:
+5. Push the commit, then `gh release create <tag> --target <full 40-char sha>` (a short SHA fails with *target_commitish is invalid*) with exactly the asset names the app expects:
    - pump: `pump_node.bin`, `firmware-manifest.json`
    - tank: `tank_node.bin`, `firmware-manifest.json`
    - app: `TankLink.apk`, `app-manifest.json`
