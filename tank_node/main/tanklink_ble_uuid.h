@@ -18,6 +18,18 @@ extern "C" {
 #define TANKLINK_CHR_OTA_STATUS_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0a, 0x00, 0x1a, 0x7f)
 
 #define TANKLINK_TANK_ADV_PREFIX "TL-Tank-"
+
+/*
+ * App <-> tank BLE protocol version, reported first in Info. Same rules as
+ * the pump (see pump_node/main/tanklink_uuid.h): MINOR = appended fields,
+ * MAJOR = breaking. The 13-byte Info layout (append-only), Auth and the OTA
+ * characteristics never change, so any app can update any tank.
+ */
+#define TANKLINK_PROTO_MAJOR 1
+#define TANKLINK_PROTO_MINOR 0
+
+/* proto_major proto_minor hw_rev paired tank_id(6) fw_major fw_minor fw_patch */
+#define TANKLINK_TANK_INFO_LEN 13
 #define TANKLINK_TOKEN_LEN 16
 #define TANKLINK_DEVICE_ID_LEN 6
 #define TANKLINK_ADV_NAME_MAX 16

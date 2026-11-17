@@ -632,7 +632,6 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<PingPong>(kN, Color::rgb(255, 150, 30)));
         break;
     case STATUS_LED_IDLE:
-    case STATUS_LED_CONNECTED: /* legacy: no separate connected anim */
         s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN));
         break;
     case STATUS_LED_PUMP_ON:

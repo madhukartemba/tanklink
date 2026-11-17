@@ -14,7 +14,6 @@ typedef enum {
     STATUS_LED_PAIRING,       /* BLE phone pair — blue ping-pong */
     STATUS_LED_TANK_PAIRING,  /* LoRa tank search — teal ping-pong */
     STATUS_LED_IDLE,          /* standby — color reflects tank full */
-    STATUS_LED_CONNECTED,     /* deprecated: same as IDLE (kept for callers) */
     STATUS_LED_PUMP_ON,
     STATUS_LED_HOLD_PROGRESS, /* both-button hold feedback 0..100% */
     STATUS_LED_UPDATING,      /* BLE OTA in progress */

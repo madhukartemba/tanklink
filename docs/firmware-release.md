@@ -4,7 +4,7 @@ Android app sideload updates: [`app-release.md`](app-release.md) (`app-v*`).
 
 ## Pump (`pump-v*`)
 
-1. Edit `TANKLINK_FW_VERSION` in [`pump_node/main/tanklink_uuid.h`](../pump_node/main/tanklink_uuid.h) (semver `X.Y.Z`).
+1. Edit `TANKLINK_FW_MAJOR` / `_MINOR` / `_PATCH` in [`pump_node/main/tanklink_uuid.h`](../pump_node/main/tanklink_uuid.h). If the board changed, bump `PUMP_HW_REV` in `sdkconfig.defaults`. If the BLE protocol changed, bump `TANKLINK_PROTO_MAJOR` or `_MINOR` (see [`PROTOCOL.md`](PROTOCOL.md#versioning)).
 2. Build with **ESP-IDF v6.1.0** (tag `v6.1`; see [`firmware-build-setup.md`](firmware-build-setup.md)):
 
 ```bash
@@ -20,18 +20,23 @@ idf.py build
 | `pump_node.bin` | `pump_node/build/pump_node.bin` |
 | `firmware-manifest.json` | `./scripts/make_pump_manifest.sh X.Y.Z` |
 
+The script refuses a binary that doesn't contain `X.Y.Z`, and fills in the protocol major and board revision from the build:
+
 ```json
 {
   "component": "pump_node",
-  "version": "0.4.0",
+  "version": "0.12.0",
   "sha256": "<sha256 hex of pump_node.bin>",
-  "min_app": "1.0.0"
+  "proto_major": 1,
+  "hw_revs": [1]
 }
 ```
 
+The app only offers a release whose `proto_major` equals its own and whose `hw_revs` lists the connected board. To ship one binary for several board revisions, edit `hw_revs` by hand (for example `[1, 2]`) after checking it really runs on each.
+
 ## Tank (`tank-v*`)
 
-1. Edit `TANK_FW_*` in [`tank_node/main/tank_version.h`](../tank_node/main/tank_version.h).
+1. Edit `TANK_FW_MAJOR` / `_MINOR` / `_PATCH` in [`tank_node/main/tank_version.h`](../tank_node/main/tank_version.h) (the version string is built from them). Bump `TANK_HW_REV` for a new board.
 2. Build `tank_node`, then:
 
 ```bash

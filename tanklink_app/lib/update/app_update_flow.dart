@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'app_install.dart';
 import 'app_self_update.dart';
-import 'pump_firmware_update.dart' show FwUpdatePhase;
+import 'firmware_update.dart' show FwUpdatePhase;
 
 String _fmtBytes(int n) {
   if (n < 1024) return '$n B';

@@ -65,6 +65,7 @@ Menu: **Pump Board**. The values below are the ones in `sdkconfig.defaults`.
 | `PUMP_LORA_CS_GPIO` / `RST` / `DIO0` | `5` / `4` / `8` | |
 | `PUMP_LORA_FREQ_HZ` | `433000000` | **Must match the tank** |
 | `PUMP_TANK_PAIR_TIMEOUT_MS` | `60000` | LoRa tank-pair window opened from the app |
+| `PUMP_HW_REV` | `1` | Board revision, reported in Info and matched against firmware manifests. Bump when the board changes |
 | `PUMP_TANK_STALE_SEC` | `1500` | Tank counts as out of range after this long with no packet. **Must match the app** (`tankStaleSec`) |
 
 Other `sdkconfig.defaults` settings: USB Serial/JTAG console, 4 MB flash, the custom `partitions_ota.csv` (two OTA slots), and NimBLE with up to 5 connections and MTU 512.
@@ -75,6 +76,7 @@ Menu: **TankLink Tank Node**. The values below are the ones in `sdkconfig.defaul
 
 | Option | Value | Notes |
 | --- | --- | --- |
+| `TANK_HW_REV` | `1` | Board revision, sent in every LoRa packet and matched against firmware manifests |
 | **Sensors and button** | | |
 | `TANK_FLOAT_FULL_GPIO` | `4` | Raw level sent. The pump decides what it means |
 | `TANK_ENABLE_EMPTY_FLOAT` | `y` | |
@@ -104,14 +106,12 @@ Stored on the pump in NVS namespace `pump`, key `cfg`. Defaults apply after a fi
 
 | Setting | Default | Range / values | App location |
 | --- | --- | --- | --- |
-| Auto-off | 30 min | 0 (off) – 240 min | Pump settings |
+| Auto-off (per tank) | 30 min | 0 (off) – 240 min | Pump settings. Stored with the tank slot in `tl_tanks` |
 | Buzzer | on for button, pump start/stop, auto-off | per-event switches | Pump settings |
 | Buzzer tone | click | click, soft, sharp, double | Pump settings |
 | LED brightness | 70 % | 1 – 100 % | Pump settings |
 | **Starter type** | **none** | none, two-button | **Starter** |
 | Relay pulse | 1000 ms | 50 – 2000 ms | Starter |
-
-Pumps set up before pump 0.11.0 keep the 400 ms they saved; change it under **Starter** if you want 1 s.
 | Second float | off | off, almost-empty, two tanks | Tank sensor settings |
 
 > **The starter type defaults to "none".** In that mode the pump tracks on/off and the LED, but never pulses the relays. A new or factory-reset pump needs **Starter → two-button** set in the app before it will actually run a motor.
@@ -123,7 +123,7 @@ Other data the pump saves (all cleared by factory reset or `erase-flash`):
 | `pump` | Runtime settings above |
 | `tl_pair` | Phone pairing (paired flag + 16-byte token) |
 | `tl_tank` | Bound tank ID, the tank's BLE OTA token, and the last tank packet (`last`) for restoring last-seen after a restart |
-| `tl_tanks` | Tank slots and names (two-tank mode) |
+| `tl_tanks` | Tank slots: names, which float, and each tank's auto-off |
 | `tl_sched` | Fill schedules (up to 4) |
 | `tl_run` | "Pump is running" record while a fill runs (refreshed each minute), and the interrupted-fill notice until it is dismissed |
 
@@ -139,6 +139,8 @@ The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, 
 | Tank stale window | `PUMP_TANK_STALE_SEC`, app `TankLinkUuids.tankStaleSec` | 1500 s |
 | Tank heartbeat vs stale window | `TANK_HEARTBEAT_SEC` must be well below `PUMP_TANK_STALE_SEC` | 600 s vs 1500 s |
 | BLE UUIDs, opcodes, payloads | see [`AGENTS.md`](../AGENTS.md#shared-contracts--change-all-copies-together) | — |
+| BLE protocol major | `TANKLINK_PROTO_MAJOR` (pump, tank), app `TankLinkUuids.protoMajor` | 1 |
+| LoRa protocol major | `TANKLINK_LORA_VER` (shared header) | 5 |
 
 ## App configuration
 
@@ -147,6 +149,7 @@ The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, 
 | Version + Android versionCode | `tanklink_app/pubspec.yaml` (`version: X.Y.Z+N`) |
 | Android package ID | `com.tanklink.tanklink` (`android/app/build.gradle.kts`) |
 | Min Android | API 24 (Android 7.0) |
-| Release signing | `android/key.properties` + keystore. Not present today, so builds use the debug key; see [`app-release.md`](app-release.md) |
-| Update source | GitHub Releases on this repo (`app-v*`, `pump-v*`, `tank-v*`), highest semver wins |
+| Release signing | `android/key.properties` + upload keystore. A release build fails without them; see [`app-release.md`](app-release.md) |
+| Backup | Off (`allowBackup=false`, `data_extraction_rules.xml`): pump tokens never leave the phone |
+| Update source | GitHub Releases on this repo (`app-v*`, `pump-v*`, `tank-v*`). Highest semver wins, among firmware whose manifest matches the app's protocol major and the board's revision |
 | BLE UUIDs / opcodes | `lib/ble/tanklink_uuids.dart` |

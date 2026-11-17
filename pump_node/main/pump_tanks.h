@@ -12,6 +12,8 @@ extern "C" {
 /** Room for a later second paired node. This build only fills slots from one node. */
 #define PUMP_TANK_SLOT_MAX 4
 #define PUMP_TANK_NAME_LEN 16
+#define PUMP_AUTO_OFF_DEFAULT_MIN 30
+#define PUMP_AUTO_OFF_MAX_MIN 240
 
 #define PUMP_SENSOR_MODE_OFF 0
 #define PUMP_SENSOR_MODE_EMPTY 1
@@ -21,6 +23,7 @@ typedef struct {
     uint8_t present;
     uint8_t node_mac[6];
     uint8_t sensor; /* 0 = sensor 1 pin, 1 = sensor 2 pin */
+    uint8_t auto_off_min; /* 0 = off, else stop a fill after this many minutes */
     char name[PUMP_TANK_NAME_LEN];
 } pump_tank_slot_t;
 
@@ -48,6 +51,12 @@ esp_err_t pump_tanks_set_mode(uint8_t mode, bool pump_running);
 esp_err_t pump_tanks_select(uint8_t slot, bool pump_running);
 
 esp_err_t pump_tanks_rename(uint8_t slot, const uint8_t *name, size_t len);
+
+/** Auto-off for one slot, 0 (off) to PUMP_AUTO_OFF_MAX_MIN minutes. */
+esp_err_t pump_tanks_set_auto_off(uint8_t slot, uint8_t minutes);
+
+/** Auto-off minutes of the active slot (0 = off). */
+uint8_t pump_tanks_active_auto_off_min(void);
 
 /** True when the active slot's float says that tank is full. */
 bool pump_tanks_active_is_full(uint8_t raw_flags);

@@ -1,9 +1,17 @@
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-/// Must match pump_node/main/tanklink_uuid.h
+/// Must match pump_node/main/tanklink_uuid.h and
+/// tank_node/main/tanklink_ble_uuid.h.
 class TankLinkUuids {
+  /// BLE protocol major this app speaks. A pump or tank reporting another
+  /// major is only offered a firmware update (see docs/PROTOCOL.md).
+  static const protoMajor = 1;
+
+  /// Pump Info: proto_major proto_minor hw_rev paired flags device_id(6)
+  /// fw(3) run_secs(u32). Frozen; later versions only append.
+  static const infoLen = 18;
+
   static const deviceNamePrefix = 'TankLink-';
-  static const deviceName = 'TankLink-Pump';
   static const tankAdvNamePrefix = 'TL-Tank-';
   static const tankMfgCompanyId = 0xFFFF;
 
@@ -25,18 +33,23 @@ class TankLinkUuids {
   static const cmdUnpair = 0xF0;
   static const cmdFactoryReset = 0xF1;
   static const cmdClearError = 0xE0;
-  /// Dismiss the interrupted-fill notice (pump 0.11.0+).
+  /// Dismiss the interrupted-fill notice.
   static const cmdDismissInterrupt = 0xE1;
   static const cmdTestBeep = 0xB1;
   static const cmdTankPair = 0xA1;
   static const cmdTankUnpair = 0xA2;
   static const cmdTankSelect = 0xA4;
   static const cmdTankRename = 0xA5;
+  /// slot(1) minutes(1), 0 = off.
+  static const cmdTankAutoOff = 0xA6;
 
   static const sensorModeOff = 0;
   static const sensorModeEmpty = 1;
   static const sensorModeTwo = 2;
   static const tankNameLen = 16;
+  /// Tanks entry: slot_index sensor auto_off_min name(16).
+  static const tanksEntryLen = 3 + tankNameLen;
+  static const autoOffMaxMin = 240;
 
   static const schedOpSetClock = 0x01;
   static const schedOpSetList = 0x02;
@@ -55,11 +68,12 @@ class TankLinkUuids {
   static const pumpErrBlocked = 4;
   static const pumpErrNotPaired = 5;
 
-  /** Base tank char length (bound…snr…last_error). Token may follow. */
-  static const tankStatusLen = 19;
-  static const tankStatusWithTokenLen = 35;
-  /// Tank status with the interrupted-fill fields (pump 0.11.0+).
-  static const tankStatusWithInterruptLen = 52;
+  /// Tank characteristic: base fields, the tank BLE token at 19, then the
+  /// interrupted-fill fields at 35.
+  static const tankStatusTokenAt = 19;
+  static const tankStatusInterruptAt = 35;
+  static const tankStatusHwRevAt = 52;
+  static const tankStatusLen = 53;
 
   static const interruptNone = 0;
   static const interruptPowerLost = 1;

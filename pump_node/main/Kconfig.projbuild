@@ -1,5 +1,15 @@
 menu "Pump Board"
 
+    config PUMP_HW_REV
+        int "Pump board revision"
+        range 1 255
+        default 1
+        help
+            Hardware revision of the pump board this firmware is built for.
+            Reported to the app in Info. Bump it when the board changes in a
+            way that needs different firmware (pins, parts), and list the
+            revisions a release supports in its firmware manifest.
+
     config PUMP_ENABLE_NEOPIXEL
         bool "Enable NeoPixel status LED"
         default y

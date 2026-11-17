@@ -6,8 +6,7 @@ import 'package:provider/provider.dart';
 import 'ble/pump_session.dart';
 import 'screens/home_screen.dart';
 import 'update/app_self_update.dart';
-import 'update/pump_firmware_update.dart';
-import 'update/tank_firmware_update.dart';
+import 'update/firmware_update.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,11 +25,14 @@ class TankLinkApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => PumpSession()..init()),
-        ChangeNotifierProvider(
+        // Each updater only offers firmware built for the connected board.
+        ChangeNotifierProxyProvider<PumpSession, PumpFirmwareUpdate>(
           create: (_) => PumpFirmwareUpdate()..loadCache(),
+          update: (_, session, fw) => fw!..setBoardRev(session.pumpHwRev),
         ),
-        ChangeNotifierProvider(
+        ChangeNotifierProxyProvider<PumpSession, TankFirmwareUpdate>(
           create: (_) => TankFirmwareUpdate()..loadCache(),
+          update: (_, session, fw) => fw!..setBoardRev(session.tankHwRev),
         ),
         ChangeNotifierProvider(
           create: (_) => AppSelfUpdate()..loadCache(),

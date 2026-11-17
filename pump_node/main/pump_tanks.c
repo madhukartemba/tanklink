@@ -11,7 +11,7 @@
 #define TAG "TANKS"
 #define NVS_NS "tl_tanks"
 #define NVS_KEY "slots"
-#define TANKS_MAGIC 0x544E4B34u /* 'TNK4' */
+#define TANKS_MAGIC 0x544E4B35u /* 'TNK5': per-slot auto-off */
 
 typedef struct {
     uint32_t magic;
@@ -61,6 +61,7 @@ static void ensure_slot0(void)
         memset(&s_blob.slots[0], 0, sizeof(s_blob.slots[0]));
         s_blob.slots[0].present = 1;
         s_blob.slots[0].sensor = 0;
+        s_blob.slots[0].auto_off_min = PUMP_AUTO_OFF_DEFAULT_MIN;
         set_name(s_blob.slots[0].name, "Tank");
     }
 }
@@ -71,6 +72,7 @@ static void ensure_slot1(void)
         memset(&s_blob.slots[1], 0, sizeof(s_blob.slots[1]));
         s_blob.slots[1].present = 1;
         s_blob.slots[1].sensor = 1;
+        s_blob.slots[1].auto_off_min = s_blob.slots[0].auto_off_min;
         memcpy(s_blob.slots[1].node_mac, s_blob.slots[0].node_mac, 6);
         set_name(s_blob.slots[1].name, "Tank 2");
     }
@@ -260,6 +262,27 @@ esp_err_t pump_tanks_rename(uint8_t slot, const uint8_t *name, size_t len)
     }
     set_name(s_blob.slots[slot].name, tmp);
     return save_blob();
+}
+
+esp_err_t pump_tanks_set_auto_off(uint8_t slot, uint8_t minutes)
+{
+    if (slot >= PUMP_TANK_SLOT_MAX || !s_blob.slots[slot].present) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (minutes > PUMP_AUTO_OFF_MAX_MIN) {
+        minutes = PUMP_AUTO_OFF_MAX_MIN;
+    }
+    s_blob.slots[slot].auto_off_min = minutes;
+    ESP_LOGI(TAG, "slot %u auto-off %u min", slot, minutes);
+    return save_blob();
+}
+
+uint8_t pump_tanks_active_auto_off_min(void)
+{
+    if (s_blob.active >= PUMP_TANK_SLOT_MAX || !s_blob.slots[s_blob.active].present) {
+        return s_blob.slots[0].auto_off_min;
+    }
+    return s_blob.slots[s_blob.active].auto_off_min;
 }
 
 bool pump_tanks_active_is_full(uint8_t raw_flags)

@@ -161,10 +161,8 @@ bool pump_clock_is_valid(void)
 }
 
 esp_err_t pump_clock_set(int year, unsigned month, unsigned day,
-                         unsigned hour, unsigned minute, unsigned second,
-                         unsigned wday)
+                         unsigned hour, unsigned minute, unsigned second)
 {
-    (void)wday;
     pump_civil_time_t t = {
         .year = year,
         .month = month,

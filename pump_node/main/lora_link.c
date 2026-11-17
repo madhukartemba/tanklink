@@ -25,7 +25,7 @@
 #define NVS_KEY_BLE_TOKEN "ble_tok"
 /* Last packet from the bound tank, so a restart knows how long ago it was heard. */
 #define NVS_KEY_LAST "last"
-#define LAST_REC_VER 1
+#define LAST_REC_VER 2
 /* Save at most once a minute unless the float flags changed. */
 #define LAST_SAVE_MIN_US (60LL * 1000000)
 
@@ -111,6 +111,10 @@ uint8_t lora_link_tank_fw_patch(void)
 {
     return 0;
 }
+uint8_t lora_link_tank_hw_rev(void)
+{
+    return 0;
+}
 bool lora_link_tank_has_ble_token(void)
 {
     return false;
@@ -140,6 +144,7 @@ static bool s_has_ble_token;
 static uint8_t s_flags;
 static uint8_t s_bat;
 static uint8_t s_fw_maj;
+static uint8_t s_hw_rev;
 static uint8_t s_fw_min;
 static uint8_t s_fw_pat;
 static int16_t s_rssi_dbm;
@@ -156,6 +161,7 @@ typedef struct {
     uint8_t flags;
     uint8_t bat;
     uint8_t fw[3];
+    uint8_t hw_rev;
     int8_t snr_db;
     int16_t rssi_dbm;
     int64_t rx_local_unix; /* pump clock (local time) when the packet arrived */
@@ -243,6 +249,7 @@ static void save_last(void)
         .flags = s_flags,
         .bat = s_bat,
         .fw = {s_fw_maj, s_fw_min, s_fw_pat},
+        .hw_rev = s_hw_rev,
         .snr_db = s_snr_db,
         .rssi_dbm = s_rssi_dbm,
         .rx_local_unix = now_unix - (age_s > 0 ? age_s : 0),
@@ -341,6 +348,7 @@ static void restore_last(void)
     s_fw_maj = rec.fw[0];
     s_fw_min = rec.fw[1];
     s_fw_pat = rec.fw[2];
+    s_hw_rev = rec.hw_rev;
     s_rssi_dbm = rec.rssi_dbm;
     s_snr_db = rec.snr_db;
     s_last_saved_once = true;
@@ -404,6 +412,7 @@ static void apply_tank_packet(const tanklink_lora_status_t *pkt, int16_t rssi_db
     s_fw_maj = pkt->fw_major;
     s_fw_min = pkt->fw_minor;
     s_fw_pat = pkt->fw_patch;
+    s_hw_rev = pkt->hw_rev;
     s_rssi_dbm = rssi_dbm;
     s_snr_db = snr_db;
     const bool full = pump_tanks_active_is_full(pkt->flags);
@@ -479,26 +488,23 @@ static void lora_task(void *arg)
             const tanklink_lora_status_t *pkt = (const tanklink_lora_status_t *)buf;
             if (pkt->magic0 != TANKLINK_LORA_MAGIC0 ||
                 pkt->magic1 != TANKLINK_LORA_MAGIC1 ||
-                pkt->ver < TANKLINK_LORA_VER_MIN || pkt->ver > TANKLINK_LORA_VER) {
+                pkt->ver != TANKLINK_LORA_VER) {
                 vTaskDelay(pdMS_TO_TICKS(15));
                 continue;
             }
 
             if (pkt->type == TANKLINK_LORA_TYPE_PAIR) {
-                if (!pairing_window_open()) {
+                if (n < TANKLINK_LORA_PAIR_LEN) {
+                    ESP_LOGW(TAG, "PAIR ignored — %u bytes, no token", (unsigned)n);
+                } else if (!pairing_window_open()) {
                     ESP_LOGW(TAG, "PAIR ignored — window closed");
                 } else {
                     memcpy(s_tank_id, pkt->tank_id, TANKLINK_LORA_TANK_ID_LEN);
                     s_bound = true;
                     s_pairing = false;
-                    if (n >= TANKLINK_LORA_PAIR_LEN) {
-                        memcpy(s_ble_token, buf + sizeof(tanklink_lora_status_t),
-                               TANKLINK_LORA_BLE_TOKEN_LEN);
-                        s_has_ble_token = token_nonzero(s_ble_token);
-                    } else {
-                        memset(s_ble_token, 0, sizeof(s_ble_token));
-                        s_has_ble_token = false;
-                    }
+                    memcpy(s_ble_token, buf + sizeof(tanklink_lora_status_t),
+                           TANKLINK_LORA_BLE_TOKEN_LEN);
+                    s_has_ble_token = token_nonzero(s_ble_token);
                     restore_led_after_tank_pair();
                     save_bind();
                     pump_tanks_on_node_bound(s_tank_id);
@@ -719,6 +725,11 @@ uint8_t lora_link_tank_fw_minor(void)
 uint8_t lora_link_tank_fw_patch(void)
 {
     return s_fw_pat;
+}
+
+uint8_t lora_link_tank_hw_rev(void)
+{
+    return s_hw_rev;
 }
 
 #endif /* CONFIG_PUMP_ENABLE_LORA */

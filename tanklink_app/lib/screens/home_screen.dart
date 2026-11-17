@@ -6,8 +6,7 @@ import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
 import '../update/app_self_update.dart';
 import '../update/home_update_banner.dart';
-import '../update/pump_firmware_update.dart';
-import '../update/tank_firmware_update.dart';
+import '../update/firmware_update.dart';
 import '../widgets/slide_to_start.dart';
 import 'add_pump_screen.dart';
 import 'pump_list_screen.dart';
@@ -64,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   String _statusLine(PumpSession session, bool ready) {
     if (!ready) {
+      if (session.connected && session.protocolMismatch) return 'Update needed';
       return session.connecting ? 'Connecting…' : 'Not connected';
     }
     if (session.pumpOn) {
@@ -80,7 +80,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final session = context.watch<PumpSession>();
     final pump = session.selected;
     final scheme = Theme.of(context).colorScheme;
-    final ready = session.authed && session.connected;
+    final ready = session.ready;
+    final linked = session.authed && session.connected;
 
     return Scaffold(
       body: SafeArea(
@@ -135,6 +136,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (linked && session.protocolMismatch) ...[
+                          _ProtocolMismatchBanner(session: session),
+                          const SizedBox(height: 8),
+                        ],
                         if (ready && session.fillInterruption != null) ...[
                           _FillInterruptedBanner(
                             event: session.fillInterruption!,
@@ -160,6 +165,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 _PumpControls(
                   session: session,
                   ready: ready,
+                  linked: linked,
                   statusLine: _statusLine(session, ready),
                   onStart: () => _setPump(true),
                   onStop: () {
@@ -293,6 +299,7 @@ class _PumpControls extends StatelessWidget {
   const _PumpControls({
     required this.session,
     required this.ready,
+    required this.linked,
     required this.statusLine,
     required this.onStart,
     required this.onStop,
@@ -301,6 +308,9 @@ class _PumpControls extends StatelessWidget {
 
   final PumpSession session;
   final bool ready;
+
+  /// Connected and signed in, even if the protocol versions differ.
+  final bool linked;
   final String statusLine;
   final Future<void> Function() onStart;
   final VoidCallback onStop;
@@ -350,7 +360,7 @@ class _PumpControls extends StatelessWidget {
                   ],
                 ),
         ),
-        if (!ready && !session.connecting) ...[
+        if (!linked && !session.connecting) ...[
           const SizedBox(height: 12),
           FilledButton(
             onPressed: onConnect,
@@ -402,12 +412,16 @@ class _TankHero extends StatelessWidget {
             Icon(Icons.sensors_off_outlined, size: 48, color: scheme.outline),
             const SizedBox(height: 16),
             Text(
-              'Connect to see the tank',
+              session.protocolMismatch
+                  ? 'Update needed'
+                  : 'Connect to see the tank',
               style: text.titleMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 6),
             Text(
-              'Tank level, signal, and battery show up here.',
+              session.protocolMismatch
+                  ? 'The tank shows up here once the pump and app match.'
+                  : 'Tank level, signal, and battery show up here.',
               textAlign: TextAlign.center,
               style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
             ),
@@ -516,17 +530,27 @@ class _TankHero extends StatelessWidget {
       subtitle = 'Level looks good';
     }
 
+    // Offline: the last reading may be hours old, so show it as unknown
+    // (like the signal) and keep the old value only as a hint.
     final batPct = session.tankBatteryPct;
-    final batUnknown = batPct <= 0;
-    final String batDetail;
-    if (batUnknown) {
+    final batMissing = !offline && batPct <= 0;
+    final String batValue;
+    final String? batDetail;
+    final Color batAccent;
+    if (offline) {
+      batValue = 'Unknown';
+      batDetail = batPct > 0 ? 'Last $batPct%' : null;
+      batAccent = scheme.outline;
+    } else if (batMissing) {
+      batValue = '—';
       batDetail = 'No reading';
-    } else if (lowBat) {
-      batDetail = 'Low — recharge soon';
+      batAccent = scheme.error;
     } else {
-      batDetail = 'OK';
+      batValue = '$batPct%';
+      batDetail = lowBat ? 'Recharge soon' : null;
+      batAccent = lowBat ? scheme.error : accent;
     }
-    final batAccent = (batUnknown || lowBat) ? scheme.error : accent;
+    final rssi = session.tankRssiDbm;
 
     return _HeroFrame(
       accent: accent,
@@ -595,7 +619,7 @@ class _TankHero extends StatelessWidget {
                       icon: Icons.signal_cellular_alt_rounded,
                       label: 'Signal',
                       value: offline ? 'Offline' : session.tankSignalLabel,
-                      detail: offline ? '—' : session.tankAgeLabel,
+                      detail: offline || rssi == null ? null : '$rssi dBm',
                       progress: offline ? 0 : session.tankSignalQuality,
                       accent: offline ? scheme.error : accent,
                       compact: tight,
@@ -606,10 +630,11 @@ class _TankHero extends StatelessWidget {
                     child: _MetricTile(
                       icon: Icons.battery_std_rounded,
                       label: 'Battery',
-                      value: batUnknown ? '—' : '$batPct%',
+                      value: batValue,
                       detail: batDetail,
-                      progress:
-                          batUnknown ? 0 : (batPct / 100).clamp(0.0, 1.0),
+                      progress: offline || batMissing
+                          ? 0
+                          : (batPct / 100).clamp(0.0, 1.0),
                       accent: batAccent,
                       compact: tight,
                     ),
@@ -638,12 +663,12 @@ class _TankHero extends StatelessWidget {
                   ),
                 ],
               ),
-              if (offline || lowBat || batUnknown) ...[
+              if (offline || lowBat || batMissing) ...[
                 SizedBox(height: tight ? 6 : 12),
                 Text(
                   offline
                       ? 'Check tank power, antenna, and range.'
-                      : batUnknown
+                      : batMissing
                           ? 'Battery reading missing — check the tank ADC wiring.'
                           : 'Tank battery is getting low.',
                   textAlign: TextAlign.center,
@@ -762,6 +787,45 @@ class _FillInterruptedBanner extends StatelessWidget {
               icon: Icon(
                 Icons.close_rounded,
                 color: scheme.onTertiaryContainer,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The pump and app speak different protocol majors. Control is off; the
+/// firmware update banner above still works.
+class _ProtocolMismatchBanner extends StatelessWidget {
+  const _ProtocolMismatchBanner({required this.session});
+
+  final PumpSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return Material(
+      color: scheme.errorContainer.withValues(alpha: 0.85),
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.system_update_rounded, color: scheme.onErrorContainer),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                session.pumpNeedsNewerApp
+                    ? 'This pump runs newer firmware than this app understands. Update the app to control it.'
+                    : 'This pump runs older firmware. Update the pump to control it.',
+                style: text.bodyMedium?.copyWith(
+                  color: scheme.onErrorContainer,
+                  height: 1.3,
+                ),
               ),
             ),
           ],
@@ -969,20 +1033,15 @@ class _MetricTile extends StatelessWidget {
 }
 
 class _HeroFrame extends StatelessWidget {
-  const _HeroFrame({
-    required this.child,
-    required this.accent,
-    this.onTap,
-  });
+  const _HeroFrame({required this.child, required this.accent});
 
   final Widget child;
   final Color accent;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final content = Container(
+    return Container(
       width: double.infinity,
       height: double.infinity,
       padding: const EdgeInsets.fromLTRB(22, 16, 22, 16),
@@ -1000,15 +1059,6 @@ class _HeroFrame extends StatelessWidget {
         ),
       ),
       child: child,
-    );
-    if (onTap == null) return content;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(28),
-        child: content,
-      ),
     );
   }
 }

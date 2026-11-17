@@ -9,9 +9,14 @@ extern "C" {
 /** Tank ↔ pump LoRa packet (packed, little-endian seq). */
 #define TANKLINK_LORA_MAGIC0 0x54u /* 'T' */
 #define TANKLINK_LORA_MAGIC1 0x4Cu /* 'L' */
-/** VER 4: same body as v3, but float bits are raw sensor pins (not full/empty). */
-#define TANKLINK_LORA_VER 4
-#define TANKLINK_LORA_VER_MIN 4
+/**
+ * LoRa protocol major version. A receiver drops packets with a different
+ * major. Within one major, fields are only ever appended: a receiver reads
+ * the fields it knows and ignores trailing bytes, so a newer tank still
+ * talks to an older pump of the same major (and the other way round).
+ * Bump the major only for a change that cannot be expressed that way.
+ */
+#define TANKLINK_LORA_VER 5
 #define TANKLINK_LORA_TYPE_STATUS 0x01
 #define TANKLINK_LORA_TYPE_PAIR 0x02
 #define TANKLINK_LORA_TYPE_ACK 0x03
@@ -37,9 +42,13 @@ typedef struct __attribute__((packed)) {
     uint8_t fw_major;
     uint8_t fw_minor;
     uint8_t fw_patch;
+    uint8_t hw_rev; /* tank board revision (CONFIG_TANK_HW_REV); 0 in ACK */
 } tanklink_lora_status_t;
 
-/** PAIR (VER≥3) on-air size = sizeof(status) + ble_token[16]. STATUS stays 16 bytes. */
+/**
+ * PAIR = status + ble_token[16]. New fields for a later minor go after the
+ * token in PAIR and after the status body in STATUS/ACK.
+ */
 #define TANKLINK_LORA_PAIR_LEN \
     (sizeof(tanklink_lora_status_t) + TANKLINK_LORA_BLE_TOKEN_LEN)
 

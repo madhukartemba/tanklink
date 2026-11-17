@@ -7,8 +7,7 @@ import '../ble/tanklink_uuids.dart';
 import '../update/app_self_update.dart';
 import '../update/app_update_flow.dart';
 import '../update/firmware_update_flow.dart';
-import '../update/pump_firmware_update.dart';
-import '../update/tank_firmware_update.dart';
+import '../update/firmware_update.dart';
 import '../update/tank_firmware_update_flow.dart';
 import 'error_codes_screen.dart';
 import 'schedules_screen.dart';
@@ -99,24 +98,37 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
   static const int _minMinutes = 1;
   static const int _maxMinutes = 240;
 
-  late int _draftMinutes;
-  late bool _autoEnabled;
-  bool _hydrated = false;
+  int _draftMinutes = 30;
+  bool _autoEnabled = false;
+
+  /// The tank whose auto-off is being edited; null until the tank list loads.
+  int? _editSlot;
 
   void _hydrateFromSession(PumpSession session) {
-    if (_hydrated) return;
-    final v = session.autoOffMin.clamp(0, _maxMinutes);
+    if (session.tanks.isEmpty) return;
+    if (_editSlot != null && session.slotAt(_editSlot!) != null) return;
+    _loadSlot(session, session.activeSlot);
+  }
+
+  void _loadSlot(PumpSession session, int slot) {
+    final v = session.autoOffMinFor(slot).clamp(0, _maxMinutes);
+    _editSlot = slot;
     _autoEnabled = v > 0;
     _draftMinutes = v > 0 ? v : 30;
-    _hydrated = true;
   }
 
   Future<void> _commitAuto(int minutes) async {
-    if (!mounted) return;
+    if (!mounted || _editSlot == null) return;
     final session = context.read<PumpSession>();
-    if (!(session.authed && session.connected)) return;
-    // Fire-and-forget so +/- / slider don't disable/rebuild on release.
-    await session.setAutoOffMinutes(minutes);
+    if (!session.ready) return;
+    try {
+      await session.setAutoOffMinutes(_editSlot!, minutes);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('StateError: ', ''))),
+      );
+    }
   }
 
   Future<void> _setAutoEnabled(bool on) async {
@@ -149,7 +161,7 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
 
     _hydrateFromSession(session);
 
-    final ready = session.authed && session.connected;
+    final ready = session.ready;
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
 
     return Padding(
@@ -161,9 +173,8 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
           children: [
             Text(
               pump.displayTitle,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
@@ -172,7 +183,8 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
             ),
             const SizedBox(height: 20),
             const _AppUpdateTile(),
-            _FirmwareTile(ready: ready),
+            // Firmware updates also work when the protocol versions differ.
+            _FirmwareTile(ready: session.authed && session.connected),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.badge_outlined),
@@ -248,9 +260,9 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Auto-off',
-                        style: TextStyle(
+                      Text(
+                        session.twoTankMode ? 'Auto-off per tank' : 'Auto-off',
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
                         ),
@@ -258,9 +270,11 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                       Text(
                         !ready
                             ? 'Connect to change'
+                            : _editSlot == null
+                            ? 'Loading…'
                             : _autoEnabled
-                                ? 'Stops after ${_formatAutoOff(_draftMinutes)}'
-                                : 'Disabled',
+                            ? 'Stops after ${_formatAutoOff(_draftMinutes)}'
+                            : 'Disabled',
                         style: TextStyle(
                           color: scheme.onSurfaceVariant,
                           fontSize: 13,
@@ -271,11 +285,37 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 ),
                 Switch(
                   value: _autoEnabled,
-                  onChanged: !ready ? null : _setAutoEnabled,
+                  onChanged: !ready || _editSlot == null
+                      ? null
+                      : _setAutoEnabled,
                 ),
               ],
             ),
-            if (ready && _autoEnabled) ...[
+            if (ready && session.twoTankMode && _editSlot != null) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 40),
+                child: SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  segments: [
+                    for (final t in session.tanks)
+                      ButtonSegment(
+                        value: t.index,
+                        label: Text(
+                          t.name.isEmpty
+                              ? session.tankNameFor(t.index)
+                              : t.name,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  selected: {_editSlot!},
+                  onSelectionChanged: (s) =>
+                      setState(() => _loadSlot(session, s.first)),
+                ),
+              ),
+            ],
+            if (ready && _autoEnabled && _editSlot != null) ...[
               const SizedBox(height: 8),
               // Indent to match title text (icon 24 + gap 16).
               Padding(
@@ -293,9 +333,7 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                           child: Text(
                             _formatAutoOff(_draftMinutes),
                             textAlign: TextAlign.center,
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineSmall
+                            style: Theme.of(context).textTheme.headlineSmall
                                 ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                         ),
@@ -324,14 +362,20 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('1 min',
-                              style: TextStyle(
-                                  color: scheme.onSurfaceVariant,
-                                  fontSize: 12)),
-                          Text('4 h',
-                              style: TextStyle(
-                                  color: scheme.onSurfaceVariant,
-                                  fontSize: 12)),
+                          Text(
+                            '1 min',
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                          Text(
+                            '4 h',
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -347,11 +391,9 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
               subtitle: Text(
                 !ready
                     ? 'Connect to change'
-                    : !session.schedulesSupported
-                        ? 'Needs a pump firmware update'
-                        : session.schedules.isEmpty
-                            ? 'No daily fill times'
-                            : '${session.schedules.where((s) => s.enabled).length} active · every day',
+                    : session.schedules.isEmpty
+                    ? 'No daily fill times'
+                    : '${session.schedules.where((s) => s.enabled).length} active · every day',
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
               enabled: ready,
@@ -404,12 +446,12 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 !ready
                     ? 'Connect to manage the tank sensor'
                     : !session.tankBound
-                        ? 'Not paired'
-                        : session.twoTankMode
-                            ? 'Two tanks · ${session.activeTankName}'
-                            : session.emptyFloatConnected
-                                ? 'Almost-empty sensor on'
-                                : 'Second float off',
+                    ? 'Not paired'
+                    : session.twoTankMode
+                    ? 'Two tanks · ${session.activeTankName}'
+                    : session.emptyFloatConnected
+                    ? 'Almost-empty sensor on'
+                    : 'Second float off',
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
               enabled: ready,
@@ -437,13 +479,15 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 final ok = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: Text(ready
-                        ? 'Unpair and remove ${pump.name}?'
-                        : 'Remove ${pump.name}?'),
+                    title: Text(
+                      ready
+                          ? 'Unpair and remove ${pump.name}?'
+                          : 'Remove ${pump.name}?',
+                    ),
                     content: Text(
                       ready
                           ? 'This frees the pump so anyone nearby can pair it, '
-                              'and removes it from this phone.'
+                                'and removes it from this phone.'
                           : 'This removes it from this phone only.',
                     ),
                     actions: [
@@ -474,9 +518,9 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 await session.forgetPump(pump);
                 if (context.mounted) Navigator.pop(context);
               },
-              child: Text(ready
-                  ? 'Unpair and remove from phone'
-                  : 'Remove from phone'),
+              child: Text(
+                ready ? 'Unpair and remove from phone' : 'Remove from phone',
+              ),
             ),
             if (ready) ...[
               const Divider(height: 28),
@@ -606,8 +650,11 @@ class TankSensorScreen extends StatelessWidget {
       final times = doomed.isEmpty
           ? 'No schedules use $second.'
           : doomed
-              .map((s) => TimeOfDay(hour: s.hour, minute: s.minute).format(context))
-              .join(', ');
+                .map(
+                  (s) =>
+                      TimeOfDay(hour: s.hour, minute: s.minute).format(context),
+                )
+                .join(', ');
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -634,9 +681,8 @@ class TankSensorScreen extends StatelessWidget {
       await session.setSensorMode(mode);
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not change mode: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not change mode: $e')));
     }
   }
 
@@ -704,13 +750,17 @@ class TankSensorScreen extends StatelessWidget {
                 RadioListTile<int>(
                   contentPadding: EdgeInsets.zero,
                   title: Text('Almost empty'),
-                  subtitle: Text('Second float means the tank is almost empty.'),
+                  subtitle: Text(
+                    'Second float means the tank is almost empty.',
+                  ),
                   value: TankLinkUuids.sensorModeEmpty,
                 ),
                 RadioListTile<int>(
                   contentPadding: EdgeInsets.zero,
                   title: Text('Two tanks'),
-                  subtitle: Text('Each float is the full sensor for its own tank.'),
+                  subtitle: Text(
+                    'Each float is the full sensor for its own tank.',
+                  ),
                   value: TankLinkUuids.sensorModeTwo,
                 ),
               ],
@@ -723,13 +773,17 @@ class TankSensorScreen extends StatelessWidget {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 enabled: !session.pumpOn || slot.index == session.activeSlot,
-                title: Text(slot.name.isEmpty ? session.tankNameFor(slot.index) : slot.name),
+                title: Text(
+                  slot.name.isEmpty
+                      ? session.tankNameFor(slot.index)
+                      : slot.name,
+                ),
                 subtitle: Text(
                   !session.tankOnline
                       ? 'Offline'
                       : session.slotIsFull(slot)
-                          ? 'Full'
-                          : 'Not full',
+                      ? 'Full'
+                      : 'Not full',
                 ),
                 selected: slot.index == session.activeSlot,
                 onTap: session.pumpOn && slot.index != session.activeSlot
@@ -739,10 +793,12 @@ class TankSensorScreen extends StatelessWidget {
                           await session.selectTank(slot.index);
                         } catch (e) {
                           if (!context.mounted) return;
-                          final msg = e.toString().replaceFirst('StateError: ', '');
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(msg)),
+                          final msg = e.toString().replaceFirst(
+                            'StateError: ',
+                            '',
                           );
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(content: Text(msg)));
                         }
                       },
                 trailing: IconButton(
@@ -762,7 +818,9 @@ class TankSensorScreen extends StatelessWidget {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(
-                session.tankOnline ? Icons.sensors : Icons.signal_wifi_off_rounded,
+                session.tankOnline
+                    ? Icons.sensors
+                    : Icons.signal_wifi_off_rounded,
                 color: session.tankOnline ? scheme.primary : scheme.error,
               ),
               title: Text(
@@ -831,7 +889,9 @@ class TankSensorScreen extends StatelessWidget {
           ] else ...[
             ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(session.tankPairing ? 'Waiting for tank…' : 'Not paired'),
+              title: Text(
+                session.tankPairing ? 'Waiting for tank…' : 'Not paired',
+              ),
               subtitle: const Text(
                 'Hold the tank button 3 seconds while pairing is open.',
               ),
@@ -857,7 +917,9 @@ class TankSensorScreen extends StatelessWidget {
                       }
                     },
               icon: const Icon(Icons.sensors),
-              label: Text(session.tankPairing ? 'Listening…' : 'Pair tank sensor'),
+              label: Text(
+                session.tankPairing ? 'Listening…' : 'Pair tank sensor',
+              ),
             ),
           ],
         ],
@@ -954,9 +1016,7 @@ class _LedBrightnessTileState extends State<_LedBrightnessTile> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                   ),
                   Text(
-                    !widget.ready
-                        ? 'Connect to change'
-                        : '$_draft%',
+                    !widget.ready ? 'Connect to change' : '$_draft%',
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
                       fontSize: 13,
@@ -1013,9 +1073,8 @@ class _BuzzerSettingsSheet extends StatelessWidget {
           children: [
             Text(
               'Buzzer',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             SwitchListTile(
@@ -1040,32 +1099,29 @@ class _BuzzerSettingsSheet extends StatelessWidget {
                       title: const Text('On button press'),
                       subtitle: const Text('Short press on the pump'),
                       value: session.buzzOnButton,
-                      onChanged: (v) =>
-                          session.setBuzzerSettings(onButton: v),
+                      onChanged: (v) => session.setBuzzerSettings(onButton: v),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('On pump on/off'),
-                      subtitle:
-                          const Text('When started or stopped from the app'),
+                      subtitle: const Text(
+                        'When started or stopped from the app',
+                      ),
                       value: session.buzzOnPump,
                       onChanged: (v) => session.setBuzzerSettings(onPump: v),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('On auto-off'),
-                      subtitle:
-                          const Text('When the timer stops the pump'),
+                      subtitle: const Text('When the timer stops the pump'),
                       value: session.buzzOnAutoOff,
-                      onChanged: (v) =>
-                          session.setBuzzerSettings(onAutoOff: v),
+                      onChanged: (v) => session.setBuzzerSettings(onAutoOff: v),
                     ),
                     const SizedBox(height: 12),
                     Text(
                       'Tone',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
+                      style: Theme.of(context).textTheme.titleSmall
+                          ?.copyWith(color: scheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 8),
                     for (final t in _tones)
@@ -1074,8 +1130,9 @@ class _BuzzerSettingsSheet extends StatelessWidget {
                         child: Material(
                           color: session.buzzerTone == t.$1
                               ? scheme.primaryContainer.withValues(alpha: 0.55)
-                              : scheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.45),
+                              : scheme.surfaceContainerHighest.withValues(
+                                  alpha: 0.45,
+                                ),
                           borderRadius: BorderRadius.circular(14),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(14),
@@ -1157,7 +1214,8 @@ class _TankFirmwareTile extends StatelessWidget {
     final session = context.watch<PumpSession>();
     final fw = context.watch<TankFirmwareUpdate>();
     final device = session.tankFw.isEmpty ? '—' : session.tankFw;
-    final available = ready &&
+    final available =
+        ready &&
         session.tankOnline &&
         session.tankOtaReady &&
         fw.updateAvailableFor(session.tankFw);
@@ -1176,8 +1234,8 @@ class _TankFirmwareTile extends StatelessWidget {
           !session.tankOtaReady
               ? '$device · pair again to allow updates'
               : available
-                  ? '$device → ${fw.latestVersion}'
-                  : device,
+              ? '$device → ${fw.latestVersion}'
+              : device,
         ),
         trailing: available
             ? FilledButton.tonal(
@@ -1224,9 +1282,7 @@ class _AppUpdateTile extends StatelessWidget {
           ),
           title: const Text('TankLink app'),
           subtitle: Text(
-            available
-                ? '$current → ${app.latestVersion}'
-                : current,
+            available ? '$current → ${app.latestVersion}' : current,
           ),
           trailing: available
               ? FilledButton.tonal(
@@ -1287,8 +1343,8 @@ class _FirmwareTile extends StatelessWidget {
             available
                 ? '$device → ${fw.latestVersion}'
                 : ready
-                    ? device
-                    : 'Connect to check',
+                ? device
+                : 'Connect to check',
           ),
           trailing: available
               ? FilledButton.tonal(

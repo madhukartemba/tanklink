@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PUMP_CONFIG_MAGIC 0x50554D53u /* 'PUMS' — v5 starter + pulse ms */
+#define PUMP_CONFIG_MAGIC 0x50554D54u /* 'PUMT': auto-off moved to tank slots */
 
 #define PUMP_BUZZ_FLAG_ENABLED   (1u << 0)
 #define PUMP_BUZZ_FLAG_ON_BUTTON (1u << 1)
@@ -28,13 +28,12 @@ typedef struct {
     uint16_t dist_low_cm;
     uint16_t dist_high_cm;
     int64_t time_unix;
-    uint8_t auto_off_min;
     uint8_t buzzer_flags; /* PUMP_BUZZ_FLAG_* */
     uint8_t buzzer_tone;  /* buzzer_tone_t */
     uint8_t led_brightness; /* 1-100; 0 treated as default on load */
     uint8_t starter_type;   /* pump_starter_type_t */
     uint8_t empty_float;    /* sensor mode: 0 off, 1 almost-empty, 2 two tanks */
-    uint8_t reserved_u8[2];
+    uint8_t reserved_u8[3];
     uint32_t relay_pulse_ms; /* 50-2000; 0 = default on load */
     uint32_t reserved;
 } pump_config_t;
@@ -45,8 +44,6 @@ esp_err_t pump_config_set(const pump_config_t *cfg);
 /** Restore factory defaults and persist. */
 esp_err_t pump_config_reset_defaults(void);
 esp_err_t pump_config_set_time_unix(int64_t unix_sec);
-esp_err_t pump_config_set_auto_off_min(uint8_t minutes);
-uint8_t pump_config_auto_off_min(void);
 
 uint8_t pump_config_buzzer_flags(void);
 uint8_t pump_config_buzzer_tone(void);

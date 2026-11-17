@@ -1,5 +1,16 @@
 menu "TankLink Tank Node"
 
+    config TANK_HW_REV
+        int "Tank board revision"
+        range 1 255
+        default 1
+        help
+            Hardware revision of the tank board this firmware is built for.
+            Sent to the pump in every LoRa packet and shown in BLE Info.
+            Bump it when the board changes in a way that needs different
+            firmware, and list the revisions a release supports in its
+            firmware manifest.
+
     config TANK_FLOAT_FULL_GPIO
         int "Float FULL GPIO (pulled up, raw level)"
         range 0 21

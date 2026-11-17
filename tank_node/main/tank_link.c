@@ -102,7 +102,7 @@ static bool packet_is_ack_for(const uint8_t *buf, size_t len, uint16_t seq)
     if (ack->magic0 != TANKLINK_LORA_MAGIC0 || ack->magic1 != TANKLINK_LORA_MAGIC1) {
         return false;
     }
-    if (ack->ver < TANKLINK_LORA_VER_MIN || ack->ver > TANKLINK_LORA_VER ||
+    if (ack->ver != TANKLINK_LORA_VER ||
         ack->type != TANKLINK_LORA_TYPE_ACK) {
         return false;
     }
@@ -149,6 +149,7 @@ static void fill_status(tanklink_lora_status_t *pkt, const tank_inputs_t *in,
     pkt->fw_major = TANK_FW_MAJOR;
     pkt->fw_minor = TANK_FW_MINOR;
     pkt->fw_patch = TANK_FW_PATCH;
+    pkt->hw_rev = TANK_HW_REV;
     if (in) {
         if (in->sensor1) {
             pkt->flags |= TANKLINK_LORA_FLAG_SENSOR1;

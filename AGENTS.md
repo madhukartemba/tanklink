@@ -36,18 +36,25 @@ These values are duplicated by hand. There is no codegen. If you change one, cha
 | BLE UUIDs, Cmd opcodes, OTA opcodes/status, payload lengths | `pump_node/main/tanklink_uuid.h` | `tank_node/main/tanklink_ble_uuid.h` | `tanklink_app/lib/ble/tanklink_uuids.dart` |
 | LoRa packet format | `components/tanklink_lora/include/tanklink_lora_proto.h` (shared) | same | — |
 | BLE payload parsing | `pump_node/main/gatt_svr.c` | `tank_node/main/tank_gatt.c` | `tanklink_app/lib/ble/pump_session.dart` |
+| Protocol versions | `TANKLINK_PROTO_MAJOR/MINOR` in `tanklink_uuid.h` | same names in `tanklink_ble_uuid.h` | `TankLinkUuids.protoMajor` |
 
-Compatibility rule: BLE payloads only grow at the end. Never reorder or resize existing fields. Older apps ignore extra bytes, and the pump accepts shorter Settings writes (see `PROTOCOL.md`). Bump `TANKLINK_LORA_VER` for any LoRa layout change, and say in the release notes that pump and tank must be updated together.
+Versioning rule (details in [`docs/PROTOCOL.md`](docs/PROTOCOL.md#versioning)):
+
+- **Adding** a field, opcode or characteristic: append at the end of the payload, bump `TANKLINK_PROTO_MINOR`. Readers ignore bytes they don't know and accept writes longer than they need.
+- **Moving, resizing or removing** anything: bump `TANKLINK_PROTO_MAJOR` in the firmware *and* `TankLinkUuids.protoMajor` in the app. The app then refuses to control a board on another major and only offers a firmware update.
+- **Never change** the service UUID, the Info layouts, Pair, Auth or the OTA characteristics. They are how any app updates any board.
+- LoRa follows the same append-only rule. Bump `TANKLINK_LORA_VER` only for a breaking layout change, and say in the release notes that pump and tank must be updated together.
+- A board change that needs different firmware bumps `PUMP_HW_REV` / `TANK_HW_REV`. The manifest's `hw_revs` decides which boards are offered a binary.
 
 ## Versions
 
 | Component | Where | Tag |
 | --- | --- | --- |
-| Pump | `TANKLINK_FW_VERSION` in `pump_node/main/tanklink_uuid.h` | `pump-vX.Y.Z` |
-| Tank | `TANK_FW_*` in `tank_node/main/tank_version.h` (all four defines) | `tank-vX.Y.Z` |
+| Pump | `TANKLINK_FW_MAJOR/MINOR/PATCH` in `pump_node/main/tanklink_uuid.h` (the string is built from them) | `pump-vX.Y.Z` |
+| Tank | `TANK_FW_MAJOR/MINOR/PATCH` in `tank_node/main/tank_version.h` (same) | `tank-vX.Y.Z` |
 | App | `version: X.Y.Z+N` in `tanklink_app/pubspec.yaml`; `N` (Android versionCode) must go up every release | `app-vX.Y.Z` |
 
-The app finds updates by listing GitHub releases and picking the **highest semver** per tag prefix, not the newest by date. It verifies the `sha256` in each release's manifest JSON before installing or flashing.
+The app finds updates by listing GitHub releases and picking the **highest semver** per tag prefix, not the newest by date. For firmware it skips any release whose manifest `proto_major` differs from the app's or whose `hw_revs` doesn't list the connected board. It verifies the `sha256` in each release's manifest JSON before installing or flashing.
 
 ## Building
 
@@ -78,7 +85,7 @@ flutter test            # one smoke test; see the note below
 flutter build apk --release
 ```
 
-**Signing:** without `tanklink_app/android/key.properties`, Gradle signs release builds with the machine's debug key (`~/.android/debug.keystore`). Every `app-v*` release so far (through 1.0.9) was signed that way, with certificate SHA-256 `4eaeb0bf…afa381`. Android refuses an update signed by a different key, so a build from another machine, or a switch to a real upload key, makes existing installs uninstall first. Check before publishing:
+**Signing:** release builds need `tanklink_app/android/key.properties` and the upload keystore (both gitignored), and fail without them. Releases through app 1.0.11 were signed with a machine's debug key (certificate SHA-256 `4eaeb0bf…afa381`), so the first upload-key release needs a one-time uninstall on each phone. For a local test build: `flutter build apk --release --android-project-arg=allowDebugSigning=true` (never publish it). Check the signer before publishing:
 
 ```bash
 apksigner verify --print-certs tanklink_app/build/app/outputs/flutter-apk/app-release.apk | grep SHA-256

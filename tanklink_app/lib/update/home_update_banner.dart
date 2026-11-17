@@ -5,8 +5,7 @@ import '../ble/pump_session.dart';
 import 'app_self_update.dart';
 import 'app_update_flow.dart';
 import 'firmware_update_flow.dart';
-import 'pump_firmware_update.dart';
-import 'tank_firmware_update.dart';
+import 'firmware_update.dart';
 import 'tank_firmware_update_flow.dart';
 
 /// Vertical gap between stacked home update cards (after header).
@@ -172,7 +171,7 @@ class HomeUpdateBannerSection extends StatelessWidget {
   List<Widget> _tankCard(BuildContext context) {
     final session = context.watch<PumpSession>();
     final fw = context.watch<TankFirmwareUpdate>();
-    if (!(session.authed && session.connected && session.tankBound)) {
+    if (!(session.ready && session.tankBound)) {
       return const [];
     }
     if (!session.tankOnline || !session.tankOtaReady) {

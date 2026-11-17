@@ -41,6 +41,8 @@ uint8_t lora_link_tank_battery_pct(void);
 uint8_t lora_link_tank_fw_major(void);
 uint8_t lora_link_tank_fw_minor(void);
 uint8_t lora_link_tank_fw_patch(void);
+/** Tank board revision from its last packet (0 = unknown). */
+uint8_t lora_link_tank_hw_rev(void);
 
 #ifdef __cplusplus
 }

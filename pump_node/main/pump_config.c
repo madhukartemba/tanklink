@@ -11,7 +11,6 @@
 #define TAG "PUMP_CFG"
 #define NVS_NAMESPACE "pump"
 #define NVS_KEY "cfg"
-#define DEFAULT_AUTO_OFF_MIN 30
 #define DEFAULT_BUZZ_FLAGS \
     (PUMP_BUZZ_FLAG_ENABLED | PUMP_BUZZ_FLAG_ON_BUTTON | PUMP_BUZZ_FLAG_ON_PUMP | \
      PUMP_BUZZ_FLAG_ON_AUTO)
@@ -27,7 +26,6 @@ static void load_defaults(pump_config_t *cfg)
     cfg->dist_low_cm = 100;
     cfg->dist_high_cm = 30;
     cfg->time_unix = 0;
-    cfg->auto_off_min = DEFAULT_AUTO_OFF_MIN;
     cfg->buzzer_flags = DEFAULT_BUZZ_FLAGS;
     cfg->buzzer_tone = BUZZER_TONE_CLICK;
     cfg->led_brightness = PUMP_LED_BRIGHTNESS_DEFAULT;
@@ -97,9 +95,8 @@ esp_err_t pump_config_init(void)
         return err;
     }
 
-    /* Old blobs used this byte as reserved (0) — promote to default. */
+    /* Keep values in range if the blob holds something unexpected. */
     s_cfg.led_brightness = clamp_led_bri(s_cfg.led_brightness);
-    /* Older blobs left relay_pulse_ms as 0 (former reserved dword). */
     s_cfg.relay_pulse_ms = clamp_pulse_ms(s_cfg.relay_pulse_ms);
 
     pump_config_apply_buzzer();
@@ -152,20 +149,6 @@ esp_err_t pump_config_set_time_unix(int64_t unix_sec)
 {
     s_cfg.time_unix = unix_sec;
     return pump_config_set(&s_cfg);
-}
-
-esp_err_t pump_config_set_auto_off_min(uint8_t minutes)
-{
-    if (minutes > 240) {
-        minutes = 240;
-    }
-    s_cfg.auto_off_min = minutes;
-    return pump_config_set(&s_cfg);
-}
-
-uint8_t pump_config_auto_off_min(void)
-{
-    return s_cfg.auto_off_min;
 }
 
 uint8_t pump_config_buzzer_flags(void)
@@ -281,8 +264,8 @@ esp_err_t pump_config_set_sensor_mode(uint8_t mode)
 void pump_config_log(void)
 {
     ESP_LOGI(TAG,
-             "empty=%ucm full=%ucm auto_off=%umin buzz_flags=0x%02x tone=%u led=%u starter=%u pulse=%ums empty_float=%u",
-             s_cfg.dist_empty_cm, s_cfg.dist_full_cm, s_cfg.auto_off_min,
+             "empty=%ucm full=%ucm buzz_flags=0x%02x tone=%u led=%u starter=%u pulse=%ums empty_float=%u",
+             s_cfg.dist_empty_cm, s_cfg.dist_full_cm,
              s_cfg.buzzer_flags, s_cfg.buzzer_tone, s_cfg.led_brightness,
              s_cfg.starter_type, (unsigned)pump_config_relay_pulse_ms(),
              s_cfg.empty_float);

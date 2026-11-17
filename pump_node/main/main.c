@@ -265,7 +265,8 @@ void app_main(void)
 {
     /* Relays idle before anything else (pins float from reset until here). */
     relay_control_early_safe();
-    ESP_LOGI(TAG, "TankLink pump starting…");
+    ESP_LOGI(TAG, "TankLink pump fw=%s hw_rev=%d proto=%d.%d", TANKLINK_FW_VERSION,
+             TANKLINK_HW_REV, TANKLINK_PROTO_MAJOR, TANKLINK_PROTO_MINOR);
 
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {

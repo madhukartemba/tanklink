@@ -25,10 +25,10 @@ class SavedPump {
     required this.token,
     String? name,
     String? serial,
-  })  : serial = (serial != null && serial.isNotEmpty)
-            ? serial.toUpperCase()
-            : serialFromDeviceId(deviceIdHex),
-        name = _resolveName(name, serial ?? serialFromDeviceId(deviceIdHex));
+  }) : serial = (serial != null && serial.isNotEmpty)
+           ? serial.toUpperCase()
+           : serialFromDeviceId(deviceIdHex),
+       name = _resolveName(name, serial ?? serialFromDeviceId(deviceIdHex));
 
   final String remoteId;
   final String deviceIdHex;
@@ -64,12 +64,12 @@ class SavedPump {
   }
 
   Map<String, dynamic> toJson() => {
-        'remoteId': remoteId,
-        'deviceIdHex': deviceIdHex,
-        'token': base64Encode(token),
-        'name': name,
-        'serial': serial,
-      };
+    'remoteId': remoteId,
+    'deviceIdHex': deviceIdHex,
+    'token': base64Encode(token),
+    'name': name,
+    'serial': serial,
+  };
 
   static SavedPump? fromJson(Map<String, dynamic>? json) {
     if (json == null) return null;
@@ -117,11 +117,19 @@ class FillSchedule {
 
 /// One logical tank stored on the pump.
 class TankSlot {
-  TankSlot({required this.index, required this.sensor, required this.name});
+  TankSlot({
+    required this.index,
+    required this.sensor,
+    required this.name,
+    required this.autoOffMin,
+  });
 
   final int index;
   final int sensor;
   final String name;
+
+  /// Stop a fill into this tank after this many minutes. 0 = off.
+  final int autoOffMin;
 }
 
 /// A fill the pump was running when it lost power or restarted.
@@ -158,8 +166,8 @@ class FillInterruption {
 
   /// Parses the trailing fields of the Tank status payload, or null if none.
   static FillInterruption? fromTankStatus(List<int> b) {
-    const o = TankLinkUuids.tankStatusWithTokenLen;
-    if (b.length < TankLinkUuids.tankStatusWithInterruptLen) return null;
+    const o = TankLinkUuids.tankStatusInterruptAt;
+    if (b.length < TankLinkUuids.tankStatusLen) return null;
     final reason = b[o];
     if (reason == TankLinkUuids.interruptNone) return null;
     return FillInterruption(
@@ -178,9 +186,17 @@ class PumpSession extends ChangeNotifier {
 
   String status = 'Starting…';
   String firmware = '';
-  int autoOffMin = 30;
+
+  /// From Info. 0 until the pump has been read.
+  int pumpProtoMajor = 0;
+  int pumpProtoMinor = 0;
+  int pumpHwRev = 0;
+
+  /// Tank board revision, relayed by the pump. 0 = unknown.
+  int tankHwRev = 0;
   int runSeconds = 0;
-  int buzzerFlags = TankLinkUuids.buzzEnabled |
+  int buzzerFlags =
+      TankLinkUuids.buzzEnabled |
       TankLinkUuids.buzzOnButton |
       TankLinkUuids.buzzOnPump |
       TankLinkUuids.buzzOnAutoOff;
@@ -188,11 +204,11 @@ class PumpSession extends ChangeNotifier {
   int ledBrightness = 70; // 1-100
   int starterType = TankLinkUuids.starterNone;
   int relayPulseMs = TankLinkUuids.relayPulseMsDefault;
+
   /// 0 off, 1 almost-empty, 2 two tanks. Stored on the pump.
   int sensorMode = 0;
   int activeSlot = 0;
   int tankRawFlags = 0;
-  bool tanksSupported = false;
   List<TankSlot> tanks = [];
   bool connecting = false;
   bool connectFailed = false;
@@ -208,20 +224,23 @@ class PumpSession extends ChangeNotifier {
   Uint8List? tankBleToken;
   int tankFlags = 0;
   int tankBatteryPct = 0;
+
   /// Wall-clock estimate of last LoRa RX (from GATT age_sec snapshots).
   DateTime? _tankLastHeardAt;
+
   /// Last LoRa packet RSSI (dBm); null if unknown.
   int? tankRssiDbm;
+
   /// Last LoRa packet SNR (dB); null if unknown.
   int? tankSnrDb;
+
   /// Last pump NeoPixel / start-deny error (0 = none).
   int pumpLastError = 0;
 
   /// Set when a fill was cut short by a power cut or restart, until dismissed.
   FillInterruption? fillInterruption;
-  /// False on pumps older than the schedule characteristic.
-  bool schedulesSupported = false;
   bool pumpClockValid = false;
+
   /// The DS3231 holds a trusted time, so schedules survive a restart.
   bool pumpRtcOk = false;
   int pumpClockHour = 0;
@@ -230,6 +249,7 @@ class PumpSession extends ChangeNotifier {
   final List<ScanResult> scanResults = [];
 
   BluetoothDevice? _device;
+  BluetoothCharacteristic? _info;
   BluetoothCharacteristic? _pair;
   BluetoothCharacteristic? _auth;
   BluetoothCharacteristic? _state;
@@ -253,14 +273,24 @@ class PumpSession extends ChangeNotifier {
   Timer? _ageTicker;
   Timer? _clockSyncTimer;
 
+  /// The pump speaks a BLE protocol major this app does not. Only a firmware
+  /// update is possible until the pump or the app is updated.
+  bool get protocolMismatch =>
+      pumpProtoMajor != 0 && pumpProtoMajor != TankLinkUuids.protoMajor;
+
+  /// True when the app needs updating rather than the pump.
+  bool get pumpNeedsNewerApp => pumpProtoMajor > TankLinkUuids.protoMajor;
+
+  /// Connected, signed in, and speaking the same protocol: safe to control.
+  bool get ready => authed && connected && !protocolMismatch;
+
   bool get tankOtaReady =>
       tankBound &&
       tankBleToken != null &&
       tankBleToken!.length == TankLinkUuids.tokenLen &&
       tankBleToken!.any((b) => b != 0);
 
-  bool get emptyFloatConnected =>
-      sensorMode == TankLinkUuids.sensorModeEmpty;
+  bool get emptyFloatConnected => sensorMode == TankLinkUuids.sensorModeEmpty;
   bool get twoTankMode => sensorMode == TankLinkUuids.sensorModeTwo;
 
   bool get tankFull => (tankFlags & TankLinkUuids.tankFlagFull) != 0;
@@ -269,6 +299,7 @@ class PumpSession extends ChangeNotifier {
       (tankFlags & TankLinkUuids.tankFlagEmpty) != 0;
   bool get tankBatteryLow =>
       tankBound &&
+      tankOnline &&
       tankBatteryPct > 0 &&
       tankBatteryPct <= TankLinkUuids.tankBatteryLowPct;
 
@@ -292,6 +323,18 @@ class PumpSession extends ChangeNotifier {
   }
 
   String get activeTankName => tankNameFor(activeSlot);
+
+  TankSlot? slotAt(int index) {
+    for (final t in tanks) {
+      if (t.index == index) return t;
+    }
+    return null;
+  }
+
+  /// Auto-off of the tank a fill would go to now. 0 = off.
+  int get autoOffMin => autoOffMinFor(activeSlot);
+
+  int autoOffMinFor(int slot) => slotAt(slot)?.autoOffMin ?? 0;
 
   bool slotIsFull(TankSlot slot) {
     if (!tankBound || !tankOnline) return false;
@@ -407,7 +450,6 @@ class PumpSession extends ChangeNotifier {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final legacy = prefs.getString('saved_pump');
     final listRaw = prefs.getString('saved_pumps');
     if (listRaw != null) {
       final list = (jsonDecode(listRaw) as List)
@@ -418,13 +460,6 @@ class PumpSession extends ChangeNotifier {
       pumps
         ..clear()
         ..addAll(list);
-    } else if (legacy != null) {
-      final one = SavedPump.fromJson(jsonDecode(legacy) as Map<String, dynamic>);
-      if (one != null) {
-        pumps.add(one);
-        await prefs.setString('saved_pumps', jsonEncode([one.toJson()]));
-        await prefs.remove('saved_pump');
-      }
     }
 
     selectedRemoteId =
@@ -546,19 +581,10 @@ class PumpSession extends ChangeNotifier {
         return;
       }
       authed = true;
-      await _state!.setNotifyValue(true);
-      await _bindSchedules();
-      await _bindTanks();
-      final stateVal = await _state!.read();
-      if (stateVal.isNotEmpty) {
-        _applyPumpOn(stateVal[0] != 0);
-      }
-      await _refreshInfoAndSettings();
+      await _startSession();
       connecting = false;
       connectFailed = false;
-      status = 'Connected';
       notifyListeners();
-      // Soft trigger for firmware check (listener may also call this).
     } catch (e) {
       debugPrint('connectSelected failed: $e');
       await disconnect();
@@ -634,84 +660,46 @@ class PumpSession extends ChangeNotifier {
     if (serial.isEmpty || serial == '----') {
       return false;
     }
-    final hasSvc = r.advertisementData.serviceUuids
-        .any((u) => u == TankLinkUuids.service);
-    final looksLikeUs = name.startsWith(TankLinkUuids.deviceNamePrefix) ||
-        name.contains('TankLink') ||
-        hasSvc;
-    if (!looksLikeUs) {
+    final hasSvc = r.advertisementData.serviceUuids.any(
+      (u) => u == TankLinkUuids.service,
+    );
+    if (!name.startsWith(TankLinkUuids.deviceNamePrefix) && !hasSvc) {
       return false;
     }
-    final upper = name.toUpperCase();
-    return upper.endsWith(serial) ||
-        upper.contains('-$serial') ||
-        upper.contains('#$serial') ||
-        upper.contains(serial);
+    return name.toUpperCase().endsWith('-$serial');
   }
 
-  Future<void> _refreshInfoAndSettings() async {
-    try {
-      final infoChr = (await _device!.discoverServices())
-          .firstWhere((s) => s.uuid == TankLinkUuids.service)
-          .characteristics
-          .firstWhere((c) => c.uuid == TankLinkUuids.info);
-      final bytes = await infoChr.read();
-      final parsed = _parseInfo(bytes);
-      firmware = parsed.fw;
-      autoOffMin = parsed.autoOffMin;
-      if (parsed.runSeconds > 0) {
-        runSeconds = parsed.runSeconds;
-      }
-      final cur = selected;
-      if (cur != null &&
-          (cur.deviceIdHex != parsed.deviceIdHex ||
-              cur.serial != parsed.serial)) {
-        await _upsertPump(
-          cur.copyWith(
-            deviceIdHex: parsed.deviceIdHex,
-            serial: parsed.serial,
-          ),
-        );
-      }
-    } catch (_) {}
-
-    if (_settings != null) {
-      try {
-        final bytes = await _settings!.read();
-        if (bytes.isNotEmpty) {
-          autoOffMin = bytes[0];
-        }
-        if (bytes.length >= 5) {
-          runSeconds = bytes[1] |
-              (bytes[2] << 8) |
-              (bytes[3] << 16) |
-              (bytes[4] << 24);
-        }
-        // auto(1)+run(4)+serial(5)=10, then flags + tone [+ led bri]
-        if (bytes.length >= 12) {
-          buzzerFlags = bytes[10];
-          buzzerTone = bytes[11].clamp(0, 3);
-        }
-        if (bytes.length >= 13) {
-          ledBrightness = bytes[12].clamp(1, 100);
-        }
-        if (bytes.length >= 14) {
-          starterType = bytes[13];
-        }
-        if (bytes.length >= 16) {
-          final ms = bytes[14] | (bytes[15] << 8);
-          relayPulseMs = ms
-              .clamp(
-                TankLinkUuids.relayPulseMsMin,
-                TankLinkUuids.relayPulseMsMax,
-              )
-              .toInt();
-        }
-        if (bytes.length >= 17) {
-          sensorMode = bytes[16].clamp(0, TankLinkUuids.sensorModeTwo);
-        }
-      } catch (_) {}
+  Future<void> _refreshInfo() async {
+    final parsed = _parseInfo(await _info!.read());
+    pumpProtoMajor = parsed.protoMajor;
+    pumpProtoMinor = parsed.protoMinor;
+    pumpHwRev = parsed.hwRev;
+    firmware = parsed.fw;
+    if (parsed.runSeconds > 0) {
+      runSeconds = parsed.runSeconds;
     }
+    final cur = selected;
+    if (cur != null &&
+        parsed.deviceIdHex.isNotEmpty &&
+        (cur.deviceIdHex != parsed.deviceIdHex || cur.serial != parsed.serial)) {
+      await _upsertPump(
+        cur.copyWith(deviceIdHex: parsed.deviceIdHex, serial: parsed.serial),
+      );
+    }
+  }
+
+  /// run(4) serial(5) buzzer_flags tone led starter pulse_ms(2) sensor_mode.
+  void _applySettings(List<int> b) {
+    if (b.length < 16) return;
+    runSeconds = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24);
+    buzzerFlags = b[9];
+    buzzerTone = b[10].clamp(0, 3);
+    ledBrightness = b[11].clamp(1, 100);
+    starterType = b[12];
+    relayPulseMs = (b[13] | (b[14] << 8))
+        .clamp(TankLinkUuids.relayPulseMsMin, TankLinkUuids.relayPulseMsMax)
+        .toInt();
+    sensorMode = b[15].clamp(0, TankLinkUuids.sensorModeTwo);
   }
 
   bool get buzzerEnabled => (buzzerFlags & TankLinkUuids.buzzEnabled) != 0;
@@ -719,56 +707,39 @@ class PumpSession extends ChangeNotifier {
   bool get buzzOnPump => (buzzerFlags & TankLinkUuids.buzzOnPump) != 0;
   bool get buzzOnAutoOff => (buzzerFlags & TankLinkUuids.buzzOnAutoOff) != 0;
 
+  /// See [TankLinkUuids.infoLen]. A pump of another protocol major still
+  /// sends this layout, so the result is safe to show and use for updates.
   ({
+    int protoMajor,
+    int protoMinor,
+    int hwRev,
     bool paired,
     String deviceIdHex,
     String serial,
     String fw,
-    int autoOffMin,
     int runSeconds,
-  }) _parseInfo(List<int> bytes) {
-    if (bytes.length < 7) {
-      throw StateError('Info too short');
+  })
+  _parseInfo(List<int> b) {
+    if (b.length < TankLinkUuids.infoLen) {
+      throw StateError('Pump firmware is too old. Update it over USB.');
     }
-    final paired = bytes[0] != 0;
-    final id = bytes.sublist(1, 7);
-    final hex = id.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    final serial = serialFromDeviceId(hex);
-    var i = 7;
-    final fwChars = <int>[];
-    while (i < bytes.length && bytes[i] != 0) {
-      fwChars.add(bytes[i]);
-      i++;
-    }
-    if (i < bytes.length && bytes[i] == 0) i++;
-    final fw = utf8.decode(fwChars);
-    var autoOff = 30;
-    var run = 0;
-    if (i < bytes.length) {
-      autoOff = bytes[i];
-      i++;
-    }
-    if (i < bytes.length) {
-      i++; // flags
-    }
-    if (i + 3 < bytes.length) {
-      run = bytes[i] |
-          (bytes[i + 1] << 8) |
-          (bytes[i + 2] << 16) |
-          (bytes[i + 3] << 24);
-    }
+    final hex = b
+        .sublist(5, 11)
+        .map((v) => v.toRadixString(16).padLeft(2, '0'))
+        .join();
     return (
-      paired: paired,
+      protoMajor: b[0],
+      protoMinor: b[1],
+      hwRev: b[2],
+      paired: b[3] != 0,
       deviceIdHex: hex,
-      serial: serial,
-      fw: fw,
-      autoOffMin: autoOff,
-      runSeconds: run,
+      serial: serialFromDeviceId(hex),
+      fw: '${b[11]}.${b[12]}.${b[13]}',
+      runSeconds: b[14] | (b[15] << 8) | (b[16] << 16) | (b[17] << 24),
     );
   }
 
   Future<void> _writeSettings({
-    int? minutes,
     int? flags,
     int? tone,
     int? brightness,
@@ -781,7 +752,6 @@ class PumpSession extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final m = (minutes ?? autoOffMin).clamp(0, 240);
     final f = flags ?? buzzerFlags;
     final t = (tone ?? buzzerTone).clamp(0, 3);
     final b = (brightness ?? ledBrightness).clamp(1, 100);
@@ -791,11 +761,15 @@ class PumpSession extends ChangeNotifier {
       TankLinkUuids.relayPulseMsMax,
     );
     final modeByte = (mode ?? sensorMode).clamp(0, TankLinkUuids.sensorModeTwo);
-    await _settings!.write(
-      [m, f, t, b, s, p & 0xff, (p >> 8) & 0xff, modeByte],
-      withoutResponse: false,
-    );
-    autoOffMin = m;
+    await _settings!.write([
+      f,
+      t,
+      b,
+      s,
+      p & 0xff,
+      (p >> 8) & 0xff,
+      modeByte,
+    ], withoutResponse: false);
     buzzerFlags = f;
     buzzerTone = t;
     ledBrightness = b;
@@ -805,9 +779,30 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setAutoOffMinutes(int minutes) async {
-    await _writeSettings(minutes: minutes);
-    // Keep status quiet — avoids UI churn while dragging the slider.
+  /// Set one tank's auto-off. The pump notifies the new tank list.
+  Future<void> setAutoOffMinutes(int slot, int minutes) async {
+    final chr = _cmd;
+    if (chr == null || !authed) {
+      throw StateError('Connect to the pump first');
+    }
+    final m = minutes.clamp(0, TankLinkUuids.autoOffMaxMin);
+    await chr.write([
+      TankLinkUuids.cmdTankAutoOff,
+      slot,
+      m,
+    ], withoutResponse: false);
+    tanks = [
+      for (final t in tanks)
+        t.index == slot
+            ? TankSlot(
+                index: t.index,
+                sensor: t.sensor,
+                name: t.name,
+                autoOffMin: m,
+              )
+            : t,
+    ];
+    notifyListeners();
   }
 
   Future<void> setLedBrightness(int percent) async {
@@ -833,7 +828,10 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setStarterConfig({required int type, required int pulseMs}) async {
+  Future<void> setStarterConfig({
+    required int type,
+    required int pulseMs,
+  }) async {
     await _writeSettings(
       starter: type.clamp(0, 1),
       pulseMs: pulseMs.clamp(
@@ -875,7 +873,7 @@ class PumpSession extends ChangeNotifier {
   }
 
   void _applyTankStatus(List<int> bytes) {
-    if (bytes.length < 13) return;
+    if (bytes.length < TankLinkUuids.tankStatusLen) return;
     tankBound = bytes[0] != 0;
     tankPairing = bytes[1] != 0;
     tankIdHex = bytes
@@ -889,36 +887,21 @@ class PumpSession extends ChangeNotifier {
     tankFw = (maj == 0 && min == 0 && pat == 0) ? '' : '$maj.$min.$pat';
     tankFlags = bytes[11];
     tankBatteryPct = bytes[12].clamp(0, 100);
-    if (bytes.length >= 16) {
-      tankOnline = bytes[13] != 0;
-      final age = bytes[14] | (bytes[15] << 8);
-      if (age == 0xFFFF) {
-        _tankLastHeardAt = null;
-      } else {
-        _tankLastHeardAt =
-            DateTime.now().subtract(Duration(seconds: age.clamp(0, 0xFFFE)));
-      }
-    } else {
-      tankOnline = tankBound;
-      _tankLastHeardAt = null;
-    }
-    if (bytes.length >= 18) {
-      tankRssiDbm = bytes[16] > 127 ? bytes[16] - 256 : bytes[16];
-      tankSnrDb = bytes[17] > 127 ? bytes[17] - 256 : bytes[17];
-    } else {
-      tankRssiDbm = null;
-      tankSnrDb = null;
-    }
-    pumpLastError = bytes.length >= 19 ? bytes[18] : 0;
+    tankOnline = bytes[13] != 0;
+    final age = bytes[14] | (bytes[15] << 8);
+    _tankLastHeardAt = age == 0xFFFF
+        ? null
+        : DateTime.now().subtract(Duration(seconds: age.clamp(0, 0xFFFE)));
+    tankRssiDbm = bytes[16] > 127 ? bytes[16] - 256 : bytes[16];
+    tankSnrDb = bytes[17] > 127 ? bytes[17] - 256 : bytes[17];
+    pumpLastError = bytes[18];
+    tankHwRev = bytes[TankLinkUuids.tankStatusHwRevAt];
     fillInterruption = FillInterruption.fromTankStatus(bytes);
-    if (bytes.length >= TankLinkUuids.tankStatusWithTokenLen) {
-      final tok = Uint8List.fromList(
-        bytes.sublist(19, 19 + TankLinkUuids.tokenLen),
-      );
-      tankBleToken = tok.any((b) => b != 0) ? tok : null;
-    } else {
-      tankBleToken = null;
-    }
+    const t = TankLinkUuids.tankStatusTokenAt;
+    final tok = Uint8List.fromList(
+      bytes.sublist(t, t + TankLinkUuids.tokenLen),
+    );
+    tankBleToken = tok.any((b) => b != 0) ? tok : null;
     if (!tankBound) {
       tankOnline = false;
       _tankLastHeardAt = null;
@@ -1008,10 +991,9 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
     if (_cmd == null || !authed) return;
     try {
-      await _cmd!.write(
-        [TankLinkUuids.cmdDismissInterrupt],
-        withoutResponse: false,
-      );
+      await _cmd!.write([
+        TankLinkUuids.cmdDismissInterrupt,
+      ], withoutResponse: false);
     } catch (_) {
       /* Local dismiss already applied; the pump shows it again next connect. */
     }
@@ -1039,12 +1021,10 @@ class PumpSession extends ChangeNotifier {
     _scanSub = FlutterBluePlus.scanResults.listen((results) {
       for (final r in results) {
         final name = r.advertisementData.advName;
-        final hasSvc = r.advertisementData.serviceUuids
-            .any((u) => u == TankLinkUuids.service);
-        final match = name == TankLinkUuids.deviceName ||
-            name.startsWith(TankLinkUuids.deviceNamePrefix) ||
-            name.contains('TankLink') ||
-            hasSvc;
+        final hasSvc = r.advertisementData.serviceUuids.any(
+          (u) => u == TankLinkUuids.service,
+        );
+        final match = name.startsWith(TankLinkUuids.deviceNamePrefix) || hasSvc;
         if (!match) continue;
         final i = scanResults.indexWhere(
           (e) => e.device.remoteId == r.device.remoteId,
@@ -1098,7 +1078,10 @@ class PumpSession extends ChangeNotifier {
 
     await _pair!.write([0x01], withoutResponse: false);
     final token = await completer.future.timeout(const Duration(seconds: 8));
-    final info = _parseInfo(await _readInfoBytes());
+    final info = _parseInfo(await _info!.read());
+    if (info.deviceIdHex.isEmpty) {
+      throw StateError('Couldn’t read the pump');
+    }
     final pump = SavedPump(
       remoteId: device.remoteId.str,
       deviceIdHex: info.deviceIdHex,
@@ -1111,27 +1094,32 @@ class PumpSession extends ChangeNotifier {
     authed = true;
     connecting = false;
     connectFailed = false;
-    firmware = info.fw;
-    autoOffMin = info.autoOffMin;
-    await _state!.setNotifyValue(true);
-    await _bindSchedules();
-    await _bindTanks();
-    // Refresh tank bind status after claim (char may already be subscribed).
-    try {
-      if (_tank != null) {
-        _applyTankStatus(await _tank!.read());
-      }
-    } catch (_) {}
-    status = 'Connected';
+    await _startSession();
     notifyListeners();
   }
 
-  Future<List<int>> _readInfoBytes() async {
-    final infoChr = (await _device!.discoverServices())
-        .firstWhere((s) => s.uuid == TankLinkUuids.service)
-        .characteristics
-        .firstWhere((c) => c.uuid == TankLinkUuids.info);
-    return infoChr.read();
+  /// After auth: read Info, then bind everything if the protocol matches.
+  Future<void> _startSession() async {
+    await _refreshInfo();
+    if (protocolMismatch) {
+      status = pumpNeedsNewerApp
+          ? 'Update the TankLink app to use this pump'
+          : 'Update the pump firmware to use this app';
+      return;
+    }
+    await _bindControlCharacteristics();
+    await _bindSchedules();
+    await _bindTanks();
+    final stateVal = await _state!.read();
+    if (stateVal.isNotEmpty) {
+      _applyPumpOn(stateVal[0] != 0);
+    }
+    try {
+      _applySettings(await _settings!.read());
+    } catch (e) {
+      debugPrint('settings read failed: $e');
+    }
+    status = 'Connected';
   }
 
   void _applyPumpOn(bool on) {
@@ -1191,27 +1179,19 @@ class PumpSession extends ChangeNotifier {
     final sub = FlutterBluePlus.scanResults.listen((results) {
       for (final r in results) {
         final name = r.advertisementData.advName;
-        if (!name.startsWith(TankLinkUuids.tankAdvNamePrefix) &&
-            !name.startsWith('TL-Tank')) {
-          // Still allow mfg-data match without name.
-        }
-        final mfg = r.advertisementData.manufacturerData;
-        for (final entry in mfg.entries) {
-          final data = entry.value;
-          // FBP: key = company ID, value = payload after company bytes.
-          if (data.length < 6) continue;
-          final idBytes = data.length >= 8
-              ? data.sublist(data.length - 6)
-              : data.sublist(0, 6);
-          final hex = idBytes
-              .map((b) => b.toRadixString(16).padLeft(2, '0'))
-              .join();
+        // Manufacturer data: company 0xFFFF, then the 6-byte tank id.
+        final id = r
+            .advertisementData
+            .manufacturerData[TankLinkUuids.tankMfgCompanyId];
+        if (id != null && id.length == 6) {
+          final hex = id.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
           if (hex == wantId) {
             tankDevice = r.device;
             return;
           }
         }
-        // Fallback: serial suffix in name TL-Tank-XXXX
+        // The tank drops manufacturer data if the advert is too big, so
+        // also match the TL-Tank-XXXX name suffix.
         if (name.startsWith(TankLinkUuids.tankAdvNamePrefix) &&
             wantId.length >= 4) {
           final suffix = wantId.substring(wantId.length - 4).toUpperCase();
@@ -1330,7 +1310,9 @@ class PumpSession extends ChangeNotifier {
         }
 
         onVerifying?.call();
-        await otaCtrl.write([TankLinkUuids.otaOpFinish], withoutResponse: false);
+        await otaCtrl.write([
+          TankLinkUuids.otaOpFinish,
+        ], withoutResponse: false);
         await waitStatus(
           match: (st, err) =>
               (st == TankLinkUuids.otaStVerifyOk ||
@@ -1342,7 +1324,9 @@ class PumpSession extends ChangeNotifier {
         await Future<void>.delayed(const Duration(seconds: 2));
       } catch (e) {
         try {
-          await otaCtrl.write([TankLinkUuids.otaOpAbort], withoutResponse: false);
+          await otaCtrl.write([
+            TankLinkUuids.otaOpAbort,
+          ], withoutResponse: false);
         } catch (_) {}
         rethrow;
       } finally {
@@ -1372,9 +1356,6 @@ class PumpSession extends ChangeNotifier {
     }
     if (pumpOn) {
       throw StateError('Stop the pump before updating');
-    }
-    if (_otaCtrl == null || _otaData == null || _otaStatus == null) {
-      throw StateError('This pump firmware cannot be updated from the app yet');
     }
 
     final digest = sha256.convert(image);
@@ -1411,7 +1392,8 @@ class PumpSession extends ChangeNotifier {
       await _otaCtrl!.write(start.toBytes(), withoutResponse: false);
       await waitStatus(
         match: (st, err) =>
-            (st == TankLinkUuids.otaStReady || st == TankLinkUuids.otaStWriting) &&
+            (st == TankLinkUuids.otaStReady ||
+                st == TankLinkUuids.otaStWriting) &&
             err == 0,
       );
 
@@ -1436,8 +1418,9 @@ class PumpSession extends ChangeNotifier {
       }
 
       onVerifying?.call();
-      await _otaCtrl!
-          .write([TankLinkUuids.otaOpFinish], withoutResponse: false);
+      await _otaCtrl!.write([
+        TankLinkUuids.otaOpFinish,
+      ], withoutResponse: false);
       await waitStatus(
         match: (st, err) =>
             (st == TankLinkUuids.otaStVerifyOk ||
@@ -1461,8 +1444,9 @@ class PumpSession extends ChangeNotifier {
       throw StateError('Updated, but couldn’t reconnect — try Connect');
     } catch (e) {
       try {
-        await _otaCtrl
-            ?.write([TankLinkUuids.otaOpAbort], withoutResponse: false);
+        await _otaCtrl?.write([
+          TankLinkUuids.otaOpAbort,
+        ], withoutResponse: false);
       } catch (_) {}
       rethrow;
     } finally {
@@ -1497,13 +1481,13 @@ class PumpSession extends ChangeNotifier {
       await _device?.disconnect();
     } catch (_) {}
     _device = null;
+    _service = null;
+    _info = null;
     _pair = _auth = _state = _cmd = _settings = null;
     _otaCtrl = _otaData = _otaStatus = _tank = _sched = _tanks = null;
-    schedulesSupported = false;
     pumpClockValid = false;
     pumpRtcOk = false;
     schedules = [];
-    tanksSupported = false;
     sensorMode = 0;
     activeSlot = 0;
     tankRawFlags = 0;
@@ -1526,6 +1510,10 @@ class PumpSession extends ChangeNotifier {
     tankSnrDb = null;
     pumpLastError = 0;
     fillInterruption = null;
+    pumpProtoMajor = 0;
+    pumpProtoMinor = 0;
+    pumpHwRev = 0;
+    tankHwRev = 0;
     notifyListeners();
   }
 
@@ -1548,11 +1536,11 @@ class PumpSession extends ChangeNotifier {
     await _connSub?.cancel();
     _connSub = device.connectionState.listen((s) {
       connected = s == BluetoothConnectionState.connected;
-        if (!connected) {
-          authed = false;
-          _clockSyncTimer?.cancel();
-          _clockSyncTimer = null;
-          _applyPumpOn(false);
+      if (!connected) {
+        authed = false;
+        _clockSyncTimer?.cancel();
+        _clockSyncTimer = null;
+        _applyPumpOn(false);
         if (!connecting) {
           status = 'Disconnected';
           connectFailed = true;
@@ -1566,52 +1554,38 @@ class PumpSession extends ChangeNotifier {
       (s) => s.uuid == TankLinkUuids.service,
       orElse: () => throw StateError('TankLink service missing'),
     );
-    _pair =
-        svc.characteristics.firstWhere((c) => c.uuid == TankLinkUuids.pair);
-    _auth =
-        svc.characteristics.firstWhere((c) => c.uuid == TankLinkUuids.auth);
-    _state =
-        svc.characteristics.firstWhere((c) => c.uuid == TankLinkUuids.state);
-    _cmd = svc.characteristics.firstWhere((c) => c.uuid == TankLinkUuids.cmd);
-    try {
-      _settings = svc.characteristics
-          .firstWhere((c) => c.uuid == TankLinkUuids.settings);
-    } catch (_) {
-      _settings = null;
-    }
-    try {
-      _otaCtrl = svc.characteristics
-          .firstWhere((c) => c.uuid == TankLinkUuids.otaCtrl);
-      _otaData = svc.characteristics
-          .firstWhere((c) => c.uuid == TankLinkUuids.otaData);
-      _otaStatus = svc.characteristics
-          .firstWhere((c) => c.uuid == TankLinkUuids.otaStatus);
-    } catch (_) {
-      _otaCtrl = _otaData = _otaStatus = null;
-    }
-    try {
-      _tank =
-          svc.characteristics.firstWhere((c) => c.uuid == TankLinkUuids.tank);
-    } catch (_) {
-      _tank = null;
-    }
-    try {
-      _sched = svc.characteristics
-          .firstWhere((c) => c.uuid == TankLinkUuids.sched);
-    } catch (_) {
-      _sched = null;
-    }
-    try {
-      _tanks = svc.characteristics
-          .firstWhere((c) => c.uuid == TankLinkUuids.tanks);
-    } catch (_) {
-      _tanks = null;
-    }
+    _service = svc;
+    // The frozen set (see docs/PROTOCOL.md): present on every protocol major.
+    _info = _chr(TankLinkUuids.info);
+    _pair = _chr(TankLinkUuids.pair);
+    _auth = _chr(TankLinkUuids.auth);
+    _otaCtrl = _chr(TankLinkUuids.otaCtrl);
+    _otaData = _chr(TankLinkUuids.otaData);
+    _otaStatus = _chr(TankLinkUuids.otaStatus);
 
     try {
       await device.requestMtu(512);
     } catch (_) {}
+  }
 
+  BluetoothService? _service;
+
+  BluetoothCharacteristic _chr(Guid uuid) => _service!.characteristics
+      .firstWhere(
+        (c) => c.uuid == uuid,
+        orElse: () => throw StateError('Pump is missing a characteristic'),
+      );
+
+  /// Only called once the protocol major matches.
+  Future<void> _bindControlCharacteristics() async {
+    _state = _chr(TankLinkUuids.state);
+    _cmd = _chr(TankLinkUuids.cmd);
+    _settings = _chr(TankLinkUuids.settings);
+    _tank = _chr(TankLinkUuids.tank);
+    _sched = _chr(TankLinkUuids.sched);
+    _tanks = _chr(TankLinkUuids.tanks);
+
+    await _state!.setNotifyValue(true);
     await _stateNotifySub?.cancel();
     _stateNotifySub = _state!.onValueReceived.listen((value) {
       if (value.isNotEmpty) {
@@ -1621,17 +1595,14 @@ class PumpSession extends ChangeNotifier {
     });
 
     await _tankNotifySub?.cancel();
-    if (_tank != null) {
-      await _tank!.setNotifyValue(true);
-      _tankNotifySub = _tank!.onValueReceived.listen((value) {
-        _applyTankStatus(value);
-        notifyListeners();
-      });
-      try {
-        final v = await _tank!.read();
-        _applyTankStatus(v);
-      } catch (_) {}
-    }
+    await _tank!.setNotifyValue(true);
+    _tankNotifySub = _tank!.onValueReceived.listen((value) {
+      _applyTankStatus(value);
+      notifyListeners();
+    });
+    try {
+      _applyTankStatus(await _tank!.read());
+    } catch (_) {}
   }
 
   /// Push the phone's local civil time. Schedules do not run until this lands.
@@ -1642,7 +1613,7 @@ class PumpSession extends ChangeNotifier {
     }
     final now = DateTime.now();
     final year = now.year;
-    final bytes = Uint8List(9);
+    final bytes = Uint8List(8);
     bytes[0] = TankLinkUuids.schedOpSetClock;
     bytes[1] = year & 0xff;
     bytes[2] = (year >> 8) & 0xff;
@@ -1651,7 +1622,6 @@ class PumpSession extends ChangeNotifier {
     bytes[5] = now.hour;
     bytes[6] = now.minute;
     bytes[7] = now.second;
-    bytes[8] = now.weekday % 7;
     await chr.write(bytes, withoutResponse: false);
     try {
       _applySchedulePayload(await chr.read());
@@ -1695,14 +1665,7 @@ class PumpSession extends ChangeNotifier {
   }
 
   Future<void> _bindSchedules() async {
-    final chr = _sched;
-    if (chr == null) {
-      schedulesSupported = false;
-      pumpClockValid = false;
-      schedules = [];
-      return;
-    }
-    schedulesSupported = true;
+    final chr = _sched!;
     await _schedNotifySub?.cancel();
     await chr.setNotifyValue(true);
     _schedNotifySub = chr.onValueReceived.listen((value) {
@@ -1719,31 +1682,31 @@ class PumpSession extends ChangeNotifier {
   }
 
   void _applySchedulePayload(List<int> value) {
-    if (value.length < 4) {
+    if (value.length < 5) {
       return;
     }
     pumpClockValid = value[0] != 0;
     pumpClockHour = value[1];
     pumpClockMinute = value[2];
     final count = value[3];
-    if (count > TankLinkUuids.schedMax || value.length < 4 + count * 4) {
+    if (count > TankLinkUuids.schedMax || value.length < 5 + count * 4) {
       return;
     }
     final next = <FillSchedule>[];
     for (var i = 0; i < count; i++) {
       final o = 4 + i * 4;
-      next.add(FillSchedule(
-        enabled: value[o] != 0,
-        hour: value[o + 1],
-        minute: value[o + 2],
-        slot: value[o + 3],
-      ));
+      next.add(
+        FillSchedule(
+          enabled: value[o] != 0,
+          hour: value[o + 1],
+          minute: value[o + 2],
+          slot: value[o + 3],
+        ),
+      );
     }
     schedules = next;
-    // Optional trailing clock-flags byte (pump 0.10.0+).
-    final flagsAt = 4 + count * 4;
-    final clockFlags = value.length > flagsAt ? value[flagsAt] : 0;
-    pumpRtcOk = (clockFlags & 0x02) != 0;
+    // clock_flags: bit 0 DS3231 present, bit 1 it holds a trusted time.
+    pumpRtcOk = (value[4 + count * 4] & 0x02) != 0;
   }
 
   Future<void> selectTank(int slot) async {
@@ -1754,10 +1717,10 @@ class PumpSession extends ChangeNotifier {
     if (pumpOn && slot != activeSlot) {
       throw StateError('Stop the pump before switching tanks');
     }
-    await chr.write(
-      [TankLinkUuids.cmdTankSelect, slot],
-      withoutResponse: false,
-    );
+    await chr.write([
+      TankLinkUuids.cmdTankSelect,
+      slot,
+    ], withoutResponse: false);
     activeSlot = slot;
     notifyListeners();
   }
@@ -1778,19 +1741,15 @@ class PumpSession extends ChangeNotifier {
     if (bytes.length >= TankLinkUuids.tankNameLen) {
       throw StateError('Name is too long');
     }
-    await chr.write(
-      [TankLinkUuids.cmdTankRename, slot, ...bytes],
-      withoutResponse: false,
-    );
+    await chr.write([
+      TankLinkUuids.cmdTankRename,
+      slot,
+      ...bytes,
+    ], withoutResponse: false);
   }
 
   Future<void> _bindTanks() async {
-    final chr = _tanks;
-    if (chr == null) {
-      tanksSupported = false;
-      return;
-    }
-    tanksSupported = true;
+    final chr = _tanks!;
     await _tanksNotifySub?.cancel();
     await chr.setNotifyValue(true);
     _tanksNotifySub = chr.onValueReceived.listen((value) {
@@ -1811,12 +1770,21 @@ class PumpSession extends ChangeNotifier {
     final next = <TankSlot>[];
     var o = 4;
     for (var i = 0; i < count; i++) {
-      if (o + 2 + TankLinkUuids.tankNameLen > value.length) break;
-      final raw = value.sublist(o + 2, o + 2 + TankLinkUuids.tankNameLen);
+      if (o + TankLinkUuids.tanksEntryLen > value.length) break;
+      final raw = value.sublist(o + 3, o + TankLinkUuids.tanksEntryLen);
       final end = raw.indexOf(0);
-      final name = String.fromCharCodes(raw.sublist(0, end < 0 ? raw.length : end));
-      next.add(TankSlot(index: value[o], sensor: value[o + 1], name: name));
-      o += 2 + TankLinkUuids.tankNameLen;
+      final name = String.fromCharCodes(
+        raw.sublist(0, end < 0 ? raw.length : end),
+      );
+      next.add(
+        TankSlot(
+          index: value[o],
+          sensor: value[o + 1],
+          autoOffMin: value[o + 2],
+          name: name,
+        ),
+      );
+      o += TankLinkUuids.tanksEntryLen;
     }
     tanks = next;
   }

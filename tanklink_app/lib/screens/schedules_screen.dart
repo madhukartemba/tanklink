@@ -19,7 +19,7 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final session = context.read<PumpSession>();
-      if (session.authed && session.schedulesSupported) {
+      if (session.authed) {
         session.syncPumpClock();
       }
     });
@@ -56,7 +56,9 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(ctx, tank.index),
                 child: Text(
-                  tank.name.isEmpty ? session.tankNameFor(tank.index) : tank.name,
+                  tank.name.isEmpty
+                      ? session.tankNameFor(tank.index)
+                      : tank.name,
                 ),
               ),
           ],
@@ -81,9 +83,6 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
   }
 
   String _clockLine(PumpSession session) {
-    if (!session.schedulesSupported) {
-      return 'This pump firmware does not support schedules yet.';
-    }
     if (!session.pumpClockValid) {
       return 'Connect to set the pump clock';
     }
@@ -98,31 +97,35 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
     return 'Phone time sent · $clock';
   }
 
+  static String _minutes(int m) =>
+      m < 60 ? '$m min' : '${m ~/ 60}h${m % 60 == 0 ? '' : ' ${m % 60}m'}';
+
   String _stopLine(PumpSession session) {
-    if (session.autoOffMin <= 0) {
-      final base =
-          'Auto-off is off. A scheduled fill stops when the tank is full or you stop the pump.';
-      if (!session.twoTankMode) return base;
-      return '$base Set the lever to that tank before the time. A fill does not switch tanks if the pump is already running.';
+    final String stop;
+    if (!session.twoTankMode) {
+      final m = session.autoOffMin;
+      stop = m <= 0
+          ? 'A fill stops when the tank is full or you stop the pump.'
+          : 'A fill stops when the tank is full or after ${_minutes(m)}.';
+      return 'Runs every day at these times. $stop';
     }
-    final m = session.autoOffMin;
-    final label = m < 60
-        ? '$m min'
-        : '${m ~/ 60}h${m % 60 == 0 ? '' : ' ${m % 60}m'}';
-    final base = 'Runs every day at these times. Stops when the tank is full or after $label.';
-    if (!session.twoTankMode) return base;
-    return '$base Set the lever to that tank before the time. A fill does not switch tanks if the pump is already running.';
+    final limits = [
+      for (final t in session.tanks)
+        '${t.name.isEmpty ? session.tankNameFor(t.index) : t.name}: '
+            '${t.autoOffMin <= 0 ? 'no limit' : _minutes(t.autoOffMin)}',
+    ].join(', ');
+    return 'Runs every day at these times. A fill stops when that tank is full '
+        'or after its auto-off ($limits). Set the lever to that tank before the '
+        'time. A fill does not switch tanks if the pump is already running.';
   }
 
   @override
   Widget build(BuildContext context) {
     final session = context.watch<PumpSession>();
     final scheme = Theme.of(context).colorScheme;
-    final ready = session.authed && session.connected;
-    final canAdd = ready &&
-        session.schedulesSupported &&
-        session.schedules.length < TankLinkUuids.schedMax &&
-        !_busy;
+    final ready = session.ready;
+    final canAdd =
+        ready && session.schedules.length < TankLinkUuids.schedMax && !_busy;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Schedules')),
@@ -131,30 +134,24 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
         children: [
           Text(
             _clockLine(session),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
+            style: Theme.of(context).textTheme.bodyMedium
+                ?.copyWith(color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 8),
           Text(
             _stopLine(session),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  height: 1.35,
-                ),
+            style: Theme.of(context).textTheme.bodyMedium
+                ?.copyWith(color: scheme.onSurfaceVariant, height: 1.35),
           ),
           const SizedBox(height: 16),
-          if (!session.schedulesSupported)
-            const SizedBox.shrink()
-          else if (session.schedules.isEmpty)
+          if (session.schedules.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 28),
               child: Text(
                 'No fill times yet. Add a time and the pump will start at that time every day.',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
+                style: Theme.of(context).textTheme.bodyLarge
+                    ?.copyWith(color: scheme.onSurfaceVariant),
               ),
             )
           else
@@ -170,23 +167,23 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
                   next[i] = next[i].copyWith(enabled: on);
                   _save(next);
                 },
-                onEdit: () => _pickTime(existing: session.schedules[i], index: i),
+                onEdit: () =>
+                    _pickTime(existing: session.schedules[i], index: i),
                 onDelete: () {
                   final next = [...session.schedules]..removeAt(i);
                   _save(next);
                 },
               ),
           const SizedBox(height: 12),
-          if (session.schedulesSupported)
-            FilledButton.icon(
-              onPressed: canAdd ? () => _pickTime() : null,
-              icon: const Icon(Icons.add_rounded),
-              label: Text(
-                session.schedules.length >= TankLinkUuids.schedMax
-                    ? 'Four times is the limit'
-                    : 'Add fill time',
-              ),
+          FilledButton.icon(
+            onPressed: canAdd ? () => _pickTime() : null,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(
+              session.schedules.length >= TankLinkUuids.schedMax
+                  ? 'Four times is the limit'
+                  : 'Add fill time',
             ),
+          ),
         ],
       ),
     );
@@ -222,9 +219,8 @@ class _ScheduleTile extends StatelessWidget {
       onTap: enabled ? onEdit : null,
       title: Text(
         label,
-        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+        style: Theme.of(context).textTheme.titleLarge
+            ?.copyWith(fontWeight: FontWeight.w700),
       ),
       subtitle: Text(
         tankName == null
@@ -234,10 +230,7 @@ class _ScheduleTile extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Switch(
-            value: schedule.enabled,
-            onChanged: enabled ? onToggle : null,
-          ),
+          Switch(value: schedule.enabled, onChanged: enabled ? onToggle : null),
           IconButton(
             tooltip: 'Remove',
             onPressed: enabled ? onDelete : null,

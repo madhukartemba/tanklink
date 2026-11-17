@@ -7,11 +7,17 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Release builds are signed with the upload key in android/key.properties
+// (gitignored; see key.properties.example). Android only installs an update
+// signed with the same key as the installed app, so keep that keystore and
+// its passwords backed up. On a machine without the key, a test build can
+// use the debug key: flutter build apk --android-project-arg=allowDebugSigning=true
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
+val allowDebugSigning = (project.findProperty("allowDebugSigning") as String?) == "true"
 
 android {
     namespace = "com.tanklink.tanklink"
@@ -24,16 +30,11 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // Never change: Android treats a new ID as a different app.
         applicationId = "com.tanklink.tanklink"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
-        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
-        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
-        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
-        // flag during build.
+        // From `version: X.Y.Z+N` in pubspec.yaml. N must grow every release.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -51,11 +52,17 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            signingConfig = when {
+                keystorePropertiesFile.exists() -> signingConfigs.getByName("release")
+                allowDebugSigning -> signingConfigs.getByName("debug")
+                else -> throw GradleException(
+                    "Missing android/key.properties. Create the upload key " +
+                        "(see android/key.properties.example), or pass " +
+                        "-PallowDebugSigning=true for a test build."
+                )
             }
+            isMinifyEnabled = true
+            isShrinkResources = true
         }
     }
 }

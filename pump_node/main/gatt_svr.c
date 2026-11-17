@@ -216,21 +216,9 @@ static void ota_status_notify(void)
 
 static int append_info(struct os_mbuf *om, uint16_t conn_handle)
 {
-    /* paired(1) + device_id(6) + fw\0 + auto_off_min(1) + flags(1) + run_secs(u32 LE) */
-    uint8_t paired = pump_pair_is_paired() ? 1 : 0;
-    int rc = os_mbuf_append(om, &paired, 1);
-    if (rc != 0) {
-        return rc;
-    }
-    rc = os_mbuf_append(om, pump_pair_device_id(), TANKLINK_DEVICE_ID_LEN);
-    if (rc != 0) {
-        return rc;
-    }
-    rc = os_mbuf_append(om, TANKLINK_FW_VERSION, strlen(TANKLINK_FW_VERSION) + 1);
-    if (rc != 0) {
-        return rc;
-    }
-    uint8_t auto_off = pump_config_auto_off_min();
+    /* proto_major proto_minor hw_rev paired flags device_id(6)
+     * fw_major fw_minor fw_patch run_secs(u32 LE). This layout is frozen
+     * across protocol majors; new fields go after it (see tanklink_uuid.h). */
     uint8_t flags = 0;
     if (pump_pair_pairing_active()) {
         flags |= 0x01;
@@ -238,22 +226,22 @@ static int append_info(struct os_mbuf *om, uint16_t conn_handle)
     if (gatt_svr_is_authed_conn(conn_handle)) {
         flags |= 0x02;
     }
-    rc = os_mbuf_append(om, &auto_off, 1);
-    if (rc != 0) {
-        return rc;
-    }
-    rc = os_mbuf_append(om, &flags, 1);
-    if (rc != 0) {
-        return rc;
-    }
-    uint32_t run = gatt_svr_run_seconds();
-    uint8_t run_le[4] = {
-        (uint8_t)(run & 0xff),
-        (uint8_t)((run >> 8) & 0xff),
-        (uint8_t)((run >> 16) & 0xff),
-        (uint8_t)((run >> 24) & 0xff),
-    };
-    return os_mbuf_append(om, run_le, 4);
+    const uint32_t run = gatt_svr_run_seconds();
+    uint8_t buf[TANKLINK_INFO_LEN];
+    buf[0] = TANKLINK_PROTO_MAJOR;
+    buf[1] = TANKLINK_PROTO_MINOR;
+    buf[2] = TANKLINK_HW_REV;
+    buf[3] = pump_pair_is_paired() ? 1 : 0;
+    buf[4] = flags;
+    memcpy(&buf[5], pump_pair_device_id(), TANKLINK_DEVICE_ID_LEN);
+    buf[11] = TANKLINK_FW_MAJOR;
+    buf[12] = TANKLINK_FW_MINOR;
+    buf[13] = TANKLINK_FW_PATCH;
+    buf[14] = (uint8_t)(run & 0xff);
+    buf[15] = (uint8_t)((run >> 8) & 0xff);
+    buf[16] = (uint8_t)((run >> 16) & 0xff);
+    buf[17] = (uint8_t)((run >> 24) & 0xff);
+    return os_mbuf_append(om, buf, sizeof(buf));
 }
 
 static void fill_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
@@ -297,6 +285,7 @@ static void fill_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
             o[4 + i * 4] = (uint8_t)((vals[i] >> 24) & 0xff);
         }
     }
+    out[TANKLINK_TANK_STATUS_HW_AT] = lora_link_tank_hw_rev();
 }
 
 static int append_tank_status(struct os_mbuf *om)
@@ -308,12 +297,7 @@ static int append_tank_status(struct os_mbuf *om)
 
 static int append_settings(struct os_mbuf *om)
 {
-    /* auto_off(1)+run(4)+serial(5)+buzz(1)+tone(1)+led(1)+starter(1)+pulse_ms(2 LE)+empty_float(1) */
-    uint8_t auto_off = pump_config_auto_off_min();
-    int rc = os_mbuf_append(om, &auto_off, 1);
-    if (rc != 0) {
-        return rc;
-    }
+    /* run(4)+serial(5)+buzz(1)+tone(1)+led(1)+starter(1)+pulse_ms(2 LE)+sensor_mode(1) */
     uint32_t run = gatt_svr_run_seconds();
     uint8_t run_le[4] = {
         (uint8_t)(run & 0xff),
@@ -321,7 +305,7 @@ static int append_settings(struct os_mbuf *om)
         (uint8_t)((run >> 16) & 0xff),
         (uint8_t)((run >> 24) & 0xff),
     };
-    rc = os_mbuf_append(om, run_le, 4);
+    int rc = os_mbuf_append(om, run_le, 4);
     if (rc != 0) {
         return rc;
     }
@@ -513,6 +497,16 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
             gatt_svr_notify_tank_if_subscribed();
             return 0;
         }
+        if (cmd == TANKLINK_CMD_TANK_AUTO_OFF) {
+            if (len < 3) {
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
+            if (pump_tanks_set_auto_off(body[1], body[2]) != ESP_OK) {
+                return BLE_ATT_ERR_UNLIKELY;
+            }
+            gatt_svr_notify_tanks_if_subscribed();
+            return 0;
+        }
         if (cmd == TANKLINK_CMD_TANK_SELECT || cmd == TANKLINK_CMD_TANK_RENAME) {
             if (len < 2) {
                 return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
@@ -528,8 +522,11 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
             gatt_svr_notify_tanks_if_subscribed();
             return 0;
         }
-        gatt_svr_set_pump_state(cmd ? 1 : 0);
-        return 0;
+        if (cmd == TANKLINK_CMD_OFF || cmd == TANKLINK_CMD_ON) {
+            gatt_svr_set_pump_state(cmd == TANKLINK_CMD_ON ? 1 : 0);
+            return 0;
+        }
+        return BLE_ATT_ERR_UNLIKELY;
     }
 
     if (ble_uuid_cmp(uuid, &uuid_tank.u) == 0) {
@@ -549,54 +546,34 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
         if (!gatt_svr_is_authed_conn(conn_handle)) {
             return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
         }
-        uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
-        if (len < 1) {
+        /* buzzer_flags(1) tone(1) led(1) starter(1) pulse_ms(u16) sensor_mode(1) */
+        /* Newer apps may append fields (protocol minor); ignore them. */
+        uint8_t buf[TANKLINK_SETTINGS_WRITE_LEN];
+        if (OS_MBUF_PKTLEN(ctxt->om) < sizeof(buf)) {
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
         }
-        uint8_t buf[8] = {0};
-        uint16_t copy = len > sizeof(buf) ? sizeof(buf) : len;
-        int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, copy, NULL);
+        int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof(buf), NULL);
         if (rc != 0) {
             return BLE_ATT_ERR_UNLIKELY;
         }
-        if (pump_config_set_auto_off_min(buf[0]) != ESP_OK) {
+        const uint16_t pulse = (uint16_t)buf[4] | ((uint16_t)buf[5] << 8);
+        if (pump_config_set_buzzer(buf[0], buf[1]) != ESP_OK ||
+            pump_config_set_led_brightness(buf[2]) != ESP_OK ||
+            pump_config_set_starter_type(buf[3]) != ESP_OK ||
+            pump_config_set_relay_pulse_ms(pulse) != ESP_OK) {
             return BLE_ATT_ERR_UNLIKELY;
         }
-        if (len >= 3) {
-            if (pump_config_set_buzzer(buf[1], buf[2]) != ESP_OK) {
+        const bool mode_changed = buf[6] != pump_tanks_mode();
+        if (mode_changed) {
+            if (pump_tanks_set_mode(buf[6], s_pump_on != 0) != ESP_OK) {
                 return BLE_ATT_ERR_UNLIKELY;
             }
-            ESP_LOGI(TAG, "buzzer flags=0x%02x tone=%u", buf[1], buf[2]);
-        }
-        if (len >= 4) {
-            if (pump_config_set_led_brightness(buf[3]) != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            ESP_LOGI(TAG, "led brightness=%u", buf[3]);
-        }
-        if (len >= 5) {
-            if (pump_config_set_starter_type(buf[4]) != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            ESP_LOGI(TAG, "starter type=%u", buf[4]);
-        }
-        if (len >= 7) {
-            uint16_t pulse = (uint16_t)buf[5] | ((uint16_t)buf[6] << 8);
-            if (pump_config_set_relay_pulse_ms(pulse) != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            ESP_LOGI(TAG, "relay pulse=%ums", (unsigned)pulse);
-        }
-        if (len >= 8) {
-            if (pump_tanks_set_mode(buf[7], s_pump_on != 0) != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            ESP_LOGI(TAG, "sensor mode %u", buf[7]);
             gatt_svr_notify_tank_if_subscribed();
             tanks_notify();
             sched_notify();
         }
-        ESP_LOGI(TAG, "auto-off set to %u min", buf[0]);
+        ESP_LOGI(TAG, "settings buzz=0x%02x tone=%u led=%u starter=%u pulse=%ums mode=%u",
+                 buf[0], buf[1], buf[2], buf[3], (unsigned)pulse, buf[6]);
         return 0;
     }
 
@@ -625,13 +602,13 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
             return BLE_ATT_ERR_UNLIKELY;
         }
         if (buf[0] == TANKLINK_SCHED_OP_SET_CLOCK) {
-            if (len != 9) {
+            if (len < 8) {
                 return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
             }
             const int year = (int)buf[1] | ((int)buf[2] << 8);
             int64_t before = 0;
             const bool had_time = pump_clock_unix_now(&before);
-            if (pump_clock_set(year, buf[3], buf[4], buf[5], buf[6], buf[7], buf[8]) != ESP_OK) {
+            if (pump_clock_set(year, buf[3], buf[4], buf[5], buf[6], buf[7]) != ESP_OK) {
                 return BLE_ATT_ERR_UNLIKELY;
             }
             /* The app re-syncs every 15 min. Keep "already fired today" marks
@@ -1016,10 +993,12 @@ static void sched_notify(void)
     }
 }
 
+_Static_assert(TANKLINK_TANKS_ENTRY_LEN == 3 + PUMP_TANK_NAME_LEN, "Tanks entry layout");
+
 static uint16_t pack_tanks(uint8_t *buf, uint16_t cap)
 {
     const unsigned count = pump_tanks_count();
-    const uint16_t need = (uint16_t)(4 + count * (2 + PUMP_TANK_NAME_LEN));
+    const uint16_t need = (uint16_t)(4 + count * TANKLINK_TANKS_ENTRY_LEN);
     if (cap < need) {
         return 0;
     }
@@ -1036,6 +1015,7 @@ static uint16_t pack_tanks(uint8_t *buf, uint16_t cap)
         }
         buf[o++] = index;
         buf[o++] = slot.sensor;
+        buf[o++] = slot.auto_off_min;
         memcpy(&buf[o], slot.name, PUMP_TANK_NAME_LEN);
         o = (uint16_t)(o + PUMP_TANK_NAME_LEN);
     }
@@ -1044,7 +1024,7 @@ static uint16_t pack_tanks(uint8_t *buf, uint16_t cap)
 
 static int append_tanks(struct os_mbuf *om)
 {
-    uint8_t buf[4 + PUMP_TANK_SLOT_MAX * (2 + PUMP_TANK_NAME_LEN)];
+    uint8_t buf[4 + PUMP_TANK_SLOT_MAX * TANKLINK_TANKS_ENTRY_LEN];
     const uint16_t len = pack_tanks(buf, sizeof(buf));
     if (len == 0) {
         return BLE_ATT_ERR_UNLIKELY;
@@ -1054,7 +1034,7 @@ static int append_tanks(struct os_mbuf *om)
 
 static void tanks_notify(void)
 {
-    uint8_t buf[4 + PUMP_TANK_SLOT_MAX * (2 + PUMP_TANK_NAME_LEN)];
+    uint8_t buf[4 + PUMP_TANK_SLOT_MAX * TANKLINK_TANKS_ENTRY_LEN];
     const uint16_t len = pack_tanks(buf, sizeof(buf));
     if (len == 0) {
         return;
@@ -1103,7 +1083,7 @@ void gatt_svr_poll(void)
     if (!s_pump_on) {
         return;
     }
-    uint8_t mins = pump_config_auto_off_min();
+    uint8_t mins = pump_tanks_active_auto_off_min();
     if (mins == 0) {
         return;
     }

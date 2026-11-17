@@ -134,17 +134,16 @@ static void ota_status_notify(void)
 
 static int append_info(struct os_mbuf *om)
 {
-    /* paired(1)=1 + tank_id(6) + fw\0 */
-    uint8_t paired = 1;
-    int rc = os_mbuf_append(om, &paired, 1);
-    if (rc != 0) {
-        return rc;
-    }
-    rc = os_mbuf_append(om, tank_link_tank_id(), TANKLINK_DEVICE_ID_LEN);
-    if (rc != 0) {
-        return rc;
-    }
-    return os_mbuf_append(om, TANK_FW_VERSION_STR, strlen(TANK_FW_VERSION_STR) + 1);
+    uint8_t buf[TANKLINK_TANK_INFO_LEN];
+    buf[0] = TANKLINK_PROTO_MAJOR;
+    buf[1] = TANKLINK_PROTO_MINOR;
+    buf[2] = TANK_HW_REV;
+    buf[3] = 1; /* paired: the tank only advertises after LoRa pairing */
+    memcpy(&buf[4], tank_link_tank_id(), TANKLINK_DEVICE_ID_LEN);
+    buf[10] = TANK_FW_MAJOR;
+    buf[11] = TANK_FW_MINOR;
+    buf[12] = TANK_FW_PATCH;
+    return os_mbuf_append(om, buf, sizeof(buf));
 }
 
 static int chr_access(uint16_t conn_handle, uint16_t attr_handle,

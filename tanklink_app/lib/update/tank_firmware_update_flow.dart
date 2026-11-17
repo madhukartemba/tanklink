@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,8 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ble/pump_session.dart';
-import 'pump_firmware_update.dart' show FwUpdatePhase;
-import 'tank_firmware_update.dart';
+import 'firmware_update.dart';
 
 String _fmtBytes(int n) {
   if (n < 1024) return '$n B';
@@ -31,7 +29,7 @@ Future<void> showTankFirmwareConfirmSheet(BuildContext context) async {
   final latest = fw.latestVersion ?? '—';
   final current = session.tankFw.isEmpty ? '—' : session.tankFw;
   final size = fw.bytesTotal > 0 ? _fmtBytes(fw.bytesTotal) : '—';
-  final ready = session.authed && session.connected && session.tankOtaReady;
+  final ready = session.ready && session.tankOtaReady;
 
   final action = await showModalBottomSheet<String>(
     context: context,
@@ -174,7 +172,7 @@ Future<void> runTankFirmwareUpdate(BuildContext context) async {
   final session = context.read<PumpSession>();
   final fw = context.read<TankFirmwareUpdate>();
 
-  if (!(session.authed && session.connected)) {
+  if (!session.ready) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Connect to the pump first')),
     );

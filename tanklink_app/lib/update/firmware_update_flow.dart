@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ble/pump_session.dart';
-import 'pump_firmware_update.dart';
+import 'firmware_update.dart';
 
 String _fmtBytes(int n) {
   if (n < 1024) return '$n B';

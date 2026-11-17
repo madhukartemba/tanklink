@@ -35,13 +35,9 @@ bool pump_clock_rtc_ok(void);
 /** True once the time is known: from the RTC at boot, or a phone sync. */
 bool pump_clock_is_valid(void);
 
-/**
- * Set local civil time from the phone and write it to the RTC. Weekday is
- * accepted for protocol compatibility and ignored.
- */
+/** Set local civil time from the phone and write it to the RTC. */
 esp_err_t pump_clock_set(int year, unsigned month, unsigned day,
-                         unsigned hour, unsigned minute, unsigned second,
-                         unsigned wday);
+                         unsigned hour, unsigned minute, unsigned second);
 
 /** Current local civil time. False while the time is unknown. */
 bool pump_clock_now(pump_civil_time_t *out);

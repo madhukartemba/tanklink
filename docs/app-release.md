@@ -4,13 +4,25 @@ Android sideload + in-app update (no Play Store required). Firmware releases rem
 
 ## Signing (one-time)
 
-> **Current state:** no `key.properties` exists, so releases so far are signed with the build machine's **debug key** (cert SHA-256 `4eaeb0bf…afa381`). Keep building on that machine, or existing installs must uninstall before they can update. Setting up the upload key below changes the signer, so plan that switch as a one-time reinstall.
+Release builds must be signed with the upload key. `flutter build apk --release` fails without `android/key.properties`.
 
 ```bash
 cd tanklink_app/android
 keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
 cp key.properties.example key.properties
 # Edit key.properties — never commit key.properties or *.jks
+```
+
+Back up `upload-keystore.jks` and its passwords somewhere safe. Android only installs an update signed with the same key as the installed app, so losing the key means every phone has to uninstall and pair again.
+
+> Releases up to app 1.0.11 were signed with a build machine's debug key (cert SHA-256 `4eaeb0bf…afa381`). The first release signed with the upload key cannot update those installs: uninstall the old app once, install the new one, and pair the pump again.
+
+For a test build on a machine without the key: `flutter build apk --release --android-project-arg=allowDebugSigning=true`. Never publish that APK.
+
+Check the signer before publishing:
+
+```bash
+apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep SHA-256
 ```
 
 ## Build and manifest

@@ -179,7 +179,7 @@ flutter build apk --release # → build/app/outputs/flutter-apk/app-release.apk
 
 The app needs a real phone with Bluetooth. Emulators can't reach the pump. Minimum Android is 7.0 (API 24).
 
-**Signing:** there's no `android/key.properties` today, so release builds are signed with this machine's debug key (`~/.android/debug.keystore`). A phone only accepts an update signed with the same key as the installed app, so keep building on the same machine or move that keystore. Details are in [`app-release.md`](app-release.md).
+**Signing:** a release build needs `android/key.properties` and the upload keystore, and fails without them. For a local test build use `flutter build apk --release --android-project-arg=allowDebugSigning=true`. Details are in [`app-release.md`](app-release.md).
 
 ## Troubleshooting
 

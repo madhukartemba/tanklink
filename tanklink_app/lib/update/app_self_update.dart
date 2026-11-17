@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'github_release_util.dart';
-import 'pump_firmware_update.dart' show FwUpdatePhase;
+import 'firmware_update.dart' show FwUpdatePhase;
 import 'semver.dart';
 
 class AppReleaseInfo {
