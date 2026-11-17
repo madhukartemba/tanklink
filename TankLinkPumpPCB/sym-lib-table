@@ -1,0 +1,4 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "TankLinkPumpPCB") (type "KiCad") (uri "${KIPRJMOD}/TankLinkPumpPCB.kicad_sym") (options "") (descr "TankLink pump symbols"))
+)

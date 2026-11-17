@@ -60,3 +60,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# KiCad local files
+*-backups/
+*.kicad_prl
+.history/
+~*.lck
+fp-info-cache
