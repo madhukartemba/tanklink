@@ -6,6 +6,7 @@ idf_component_register(
         "status_led.cpp"
         "pump_config.c"
         "pump_clock.c"
+        "pump_rtc.c"
         "pump_sched.c"
         "pump_tanks.c"
         "pump_pair.c"
@@ -15,5 +16,5 @@ idf_component_register(
         "lora_link.c"
         "relay_control.c"
     INCLUDE_DIRS "."
-    REQUIRES nvs_flash bt led_strip driver esp_timer app_update PixelEngine tanklink_lora
+    REQUIRES nvs_flash bt led_strip driver esp_driver_i2c esp_timer app_update PixelEngine tanklink_lora
 )

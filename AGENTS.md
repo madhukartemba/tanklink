@@ -97,6 +97,10 @@ apksigner verify --print-certs tanklink_app/build/app/outputs/flutter-apk/app-re
    - app: `TankLink.apk`, `app-manifest.json`
 6. Release notes: a short `## Changes` list, then which pump / tank / app versions go with it. Call out wiring changes and anything that must be updated together.
 
+## Time on the pump
+
+The pump keeps **local** time (whatever the phone sends, not UTC) in `pump_clock.c`, anchored to the DS3231 (`pump_rtc.c`) at boot and re-read hourly. Only two things need wall-clock time: **fill schedules** and the **tank's last-seen time**, which `lora_link.c` saves to NVS (`tl_tank/last`) so a restart knows the real age. Everything else (auto-off, pairing windows, button holds) uses time since boot on purpose. Without a DS3231, or with its "oscillator stopped" flag set, the pump has no time until the app syncs.
+
 ## Hardware gotchas
 
 - ESP32-C3 GPIO18/19 are USB D−/D+. Don't put relays or buttons there.

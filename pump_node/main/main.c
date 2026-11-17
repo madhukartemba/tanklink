@@ -22,6 +22,7 @@
 #include "buzzer.h"
 #include "gatt_svr.h"
 #include "lora_link.h"
+#include "pump_clock.h"
 #include "pump_config.h"
 #include "pump_sched.h"
 #include "pump_tanks.h"
@@ -104,6 +105,7 @@ static void pair_poll_task(void *arg)
     (void)arg;
     while (1) {
         pump_pair_poll();
+        pump_clock_poll();
         gatt_svr_poll();
         vTaskDelay(pdMS_TO_TICKS(500));
     }
@@ -276,7 +278,15 @@ void app_main(void)
         ESP_LOGW(TAG, "buzzer init failed — continuing");
     }
     ESP_ERROR_CHECK(pump_config_init());
+    /* Clock before schedules and LoRa: both need the time from the RTC. */
+    pump_clock_init();
     ESP_ERROR_CHECK(pump_sched_init());
+    {
+        pump_civil_time_t now;
+        if (pump_clock_now(&now)) {
+            pump_sched_skip_minute(&now);
+        }
+    }
     ESP_ERROR_CHECK(pump_tanks_init());
     if (relay_control_init() != ESP_OK) {
         ESP_LOGW(TAG, "relay init failed — continuing");

@@ -27,13 +27,15 @@ SuperMini header pins: GPIO 0–10, 20, 21 — all 13 used.
 | --- | --- | --- |
 | Relay START (IN1) | 0 | Not a strap pin; floats at reset → relay off during boot |
 | Relay STOP (IN2) | 1 | Same |
-| I2C SDA (DS3231) | 6 | |
-| I2C SCL (DS3231) | 7 | |
+| I2C SCL (DS3231) | 6 | 100 kHz. Most modules have 4.7 kΩ pull-ups; the ESP32 internal pull-ups are on too |
+| I2C SDA (DS3231) | 7 | Address 0x68. If it isn't found, the boot log scans the bus and says whether SDA/SCL look swapped |
 | Button (single) | 9 | Active-low to GND, parallel with onboard BOOT. Holding at power-up = download mode |
 | NeoPixel | 20 | |
 | Buzzer | 21 | UART0 TX — may chirp during ROM boot log |
 
 **Button:** running → press = OFF · off → hold ~1 s, release = ON · hold ~5 s = BLE pair · keep holding ~10 s more = factory reset.
+
+**DS3231 battery:** many modules charge the coin cell through a resistor + diode. Use an LIR2032, or remove that resistor if you fit a plain CR2032.
 
 **Don't use** GPIO18/19 (USB D−/D+, not on headers) or GPIO9 for relays (pulled HIGH at boot).
 

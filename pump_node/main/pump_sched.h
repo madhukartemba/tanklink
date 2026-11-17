@@ -30,6 +30,14 @@ esp_err_t pump_sched_set(const pump_sched_entry_t *entries, unsigned count);
 /** Drop "already fired today" marks. Call after a new clock sync. */
 void pump_sched_clear_fired(void);
 
+/**
+ * Mark entries due in [now]'s minute as already fired today. Call at boot when
+ * the clock came from the RTC, so a restart inside a schedule's minute does
+ * not start the pump a second time. Fills missed while powered off are not
+ * made up.
+ */
+void pump_sched_skip_minute(const pump_civil_time_t *now);
+
 /** Remove every entry that targets [slot]. */
 esp_err_t pump_sched_drop_slot(uint8_t slot);
 

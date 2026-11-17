@@ -384,7 +384,7 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
             return BLE_ATT_ERR_UNLIKELY;
         }
         if (!pump_pair_is_claimable()) {
-            ESP_LOGW(TAG, "Claim rejected — hold Start+Stop 5s to enter pairing");
+            ESP_LOGW(TAG, "Claim rejected — hold the button 5s to enter pairing");
             return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
         }
         uint8_t token[TANKLINK_TOKEN_LEN];
@@ -610,10 +610,20 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
                 return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
             }
             const int year = (int)buf[1] | ((int)buf[2] << 8);
+            int64_t before = 0;
+            const bool had_time = pump_clock_unix_now(&before);
             if (pump_clock_set(year, buf[3], buf[4], buf[5], buf[6], buf[7], buf[8]) != ESP_OK) {
                 return BLE_ATT_ERR_UNLIKELY;
             }
-            pump_sched_clear_fired();
+            /* The app re-syncs every 15 min. Keep "already fired today" marks
+             * across small corrections, or a sync inside a schedule's minute
+             * would start the pump again. Clear them on a real jump. */
+            int64_t after = 0;
+            (void)pump_clock_unix_now(&after);
+            const int64_t delta = after - before;
+            if (!had_time || delta > 300 || delta < -300) {
+                pump_sched_clear_fired();
+            }
             ESP_LOGI(TAG, "clock set %04d-%02u-%02u %02u:%02u:%02u",
                      year, buf[3], buf[4], buf[5], buf[6], buf[7]);
             sched_notify();
@@ -928,40 +938,12 @@ void gatt_svr_toggle_pump(void)
     gatt_svr_set_pump_state_silent(s_pump_on ? 0 : 1);
 }
 
-static int append_sched(struct os_mbuf *om)
-{
-    pump_civil_time_t now;
-    const bool valid = pump_clock_now(&now);
-    uint8_t hdr[4] = {
-        valid ? 1 : 0,
-        valid ? (uint8_t)now.hour : 0,
-        valid ? (uint8_t)now.minute : 0,
-        (uint8_t)pump_sched_count(),
-    };
-    int rc = os_mbuf_append(om, hdr, sizeof(hdr));
-    if (rc != 0) {
-        return rc;
-    }
-    const unsigned count = pump_sched_count();
-    const pump_sched_entry_t *entries = pump_sched_entries();
-    for (unsigned i = 0; i < count; i++) {
-        uint8_t rec[4] = {
-            entries[i].enabled ? 1 : 0,
-            entries[i].hour,
-            entries[i].minute,
-            entries[i].slot,
-        };
-        rc = os_mbuf_append(om, rec, sizeof(rec));
-        if (rc != 0) {
-            return rc;
-        }
-    }
-    return 0;
-}
+/* clock_valid hour minute count, count x (enabled hour minute slot), then
+ * clock_flags: bit 0 = RTC present, bit 1 = RTC holds a trusted time. */
+#define SCHED_PAYLOAD_MAX (4 + PUMP_SCHED_MAX * 4 + 1)
 
-static void sched_notify(void)
+static uint16_t pack_sched(uint8_t *buf)
 {
-    uint8_t buf[4 + PUMP_SCHED_MAX * 4];
     pump_civil_time_t now;
     const bool valid = pump_clock_now(&now);
     const unsigned count = pump_sched_count();
@@ -976,7 +958,28 @@ static void sched_notify(void)
         buf[4 + i * 4 + 2] = entries[i].minute;
         buf[4 + i * 4 + 3] = entries[i].slot;
     }
-    const uint16_t len = (uint16_t)(4 + count * 4);
+    uint8_t clock_flags = 0;
+    if (pump_clock_rtc_present()) {
+        clock_flags |= 0x01;
+    }
+    if (pump_clock_rtc_ok()) {
+        clock_flags |= 0x02;
+    }
+    buf[4 + count * 4] = clock_flags;
+    return (uint16_t)(4 + count * 4 + 1);
+}
+
+static int append_sched(struct os_mbuf *om)
+{
+    uint8_t buf[SCHED_PAYLOAD_MAX];
+    const uint16_t len = pack_sched(buf);
+    return os_mbuf_append(om, buf, len);
+}
+
+static void sched_notify(void)
+{
+    uint8_t buf[SCHED_PAYLOAD_MAX];
+    const uint16_t len = pack_sched(buf);
     for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
         if (!s_conns[i].in_use || !s_conns[i].sched_notify) {
             continue;

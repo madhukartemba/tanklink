@@ -67,7 +67,7 @@ First flash after the OTA partition change must be over **USB**. Later updates u
 - [x] Pump LoRa RX + tank auto-pair (app → BLE → LoRa PAIR)
 - [x] Daily fill schedules (clock set from the phone)
 - [x] Second float: almost-empty sensor or a second tank
-- [ ] Optional DS3231 RTC so schedules survive a reboot without the phone
+- [x] DS3231 RTC: schedules and the tank's last-seen time survive a restart
 - [ ] Tank solar (small panel + CN3065 + LiPo)
 
 ## License

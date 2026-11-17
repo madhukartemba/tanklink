@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 #include "gatt_svr.h"
 #include "nvs.h"
+#include "pump_clock.h"
 #include "pump_config.h"
 #include "pump_tanks.h"
 #include "pump_errors.h"
@@ -22,6 +23,11 @@
 #define NVS_KEY_BOUND "bound"
 #define NVS_KEY_ID "id"
 #define NVS_KEY_BLE_TOKEN "ble_tok"
+/* Last packet from the bound tank, so a restart knows how long ago it was heard. */
+#define NVS_KEY_LAST "last"
+#define LAST_REC_VER 1
+/* Save at most once a minute unless the float flags changed. */
+#define LAST_SAVE_MIN_US (60LL * 1000000)
 
 #ifndef CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS
 #define CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS 60000
@@ -139,6 +145,21 @@ static uint8_t s_fw_pat;
 static int16_t s_rssi_dbm;
 static int8_t s_snr_db;
 static uint16_t s_last_seq = 0xFFFF;
+static bool s_last_pending;
+static int64_t s_last_saved_us;
+static bool s_last_saved_once;
+static uint8_t s_last_saved_flags;
+
+typedef struct {
+    uint8_t ver;
+    uint8_t tank_id[TANKLINK_LORA_TANK_ID_LEN];
+    uint8_t flags;
+    uint8_t bat;
+    uint8_t fw[3];
+    int8_t snr_db;
+    int16_t rssi_dbm;
+    int64_t rx_local_unix; /* pump clock (local time) when the packet arrived */
+} tank_last_rec_t;
 
 static bool token_nonzero(const uint8_t *tok)
 {
@@ -206,6 +227,132 @@ static void load_bind(void)
     nvs_close(h);
 }
 
+static uint16_t tank_age_sec_now(void);
+static bool tank_online_now(void);
+
+/* Needs a known time: the age is stored as the packet's clock time. */
+static void save_last(void)
+{
+    int64_t now_unix = 0;
+    if (!s_bound || !s_heard || !pump_clock_unix_now(&now_unix)) {
+        return;
+    }
+    const int64_t age_s = (esp_timer_get_time() - s_last_rx_us) / 1000000LL;
+    tank_last_rec_t rec = {
+        .ver = LAST_REC_VER,
+        .flags = s_flags,
+        .bat = s_bat,
+        .fw = {s_fw_maj, s_fw_min, s_fw_pat},
+        .snr_db = s_snr_db,
+        .rssi_dbm = s_rssi_dbm,
+        .rx_local_unix = now_unix - (age_s > 0 ? age_s : 0),
+    };
+    memcpy(rec.tank_id, s_tank_id, sizeof(rec.tank_id));
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    esp_err_t err = nvs_set_blob(h, NVS_KEY_LAST, &rec, sizeof(rec));
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
+    }
+    nvs_close(h);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "save last-seen failed: %s", esp_err_to_name(err));
+        return;
+    }
+    s_last_pending = false;
+    s_last_saved_us = esp_timer_get_time();
+    s_last_saved_once = true;
+    s_last_saved_flags = s_flags;
+}
+
+/* After each packet: save now if the floats changed, otherwise rate-limit. */
+static void note_last_changed(void)
+{
+    const bool flags_changed = !s_last_saved_once || s_flags != s_last_saved_flags;
+    if (flags_changed || esp_timer_get_time() - s_last_saved_us >= LAST_SAVE_MIN_US) {
+        save_last();
+    } else {
+        s_last_pending = true;
+    }
+}
+
+static void poll_last_save(void)
+{
+    if (s_last_pending && esp_timer_get_time() - s_last_saved_us >= LAST_SAVE_MIN_US) {
+        save_last();
+    }
+}
+
+static void erase_last(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_erase_key(h, NVS_KEY_LAST);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    s_last_pending = false;
+    s_last_saved_once = false;
+}
+
+/*
+ * Restore the last packet so a restart does not show the tank as never heard.
+ * Only when the clock is known (RTC). The saved "full" flag is honoured while
+ * the record is inside the stale window, so the pump still refuses to start
+ * into a full tank right after a restart.
+ */
+static void restore_last(void)
+{
+    if (!s_bound) {
+        return;
+    }
+    int64_t now_unix = 0;
+    if (!pump_clock_unix_now(&now_unix)) {
+        ESP_LOGI(TAG, "last-seen not restored: clock unknown");
+        return;
+    }
+    tank_last_rec_t rec;
+    size_t len = sizeof(rec);
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    esp_err_t err = nvs_get_blob(h, NVS_KEY_LAST, &rec, &len);
+    nvs_close(h);
+    if (err != ESP_OK || len != sizeof(rec) || rec.ver != LAST_REC_VER ||
+        memcmp(rec.tank_id, s_tank_id, sizeof(s_tank_id)) != 0) {
+        return;
+    }
+    int64_t age = now_unix - rec.rx_local_unix;
+    if (age < -120) {
+        /* Clock went backwards by more than a little: the record is unusable. */
+        ESP_LOGW(TAG, "last-seen in the future (%lld s); ignoring", (long long)-age);
+        return;
+    }
+    if (age < 0) {
+        age = 0;
+    }
+    s_heard = true;
+    s_last_rx_us = esp_timer_get_time() - age * 1000000LL;
+    s_flags = rec.flags;
+    s_bat = rec.bat;
+    s_fw_maj = rec.fw[0];
+    s_fw_min = rec.fw[1];
+    s_fw_pat = rec.fw[2];
+    s_rssi_dbm = rec.rssi_dbm;
+    s_snr_db = rec.snr_db;
+    s_last_saved_once = true;
+    s_last_saved_flags = rec.flags;
+    s_was_online = tank_online_now();
+    if (s_was_online) {
+        status_led_set_tank_full(pump_tanks_active_is_full(s_flags));
+    }
+    ESP_LOGI(TAG, "tank last heard %lld s ago (restored, %s) flags=0x%02x", (long long)age,
+             s_was_online ? "online" : "stale", s_flags);
+}
+
 static void send_ack(const tanklink_lora_status_t *pkt)
 {
     tanklink_lora_status_t ack;
@@ -269,6 +416,7 @@ static void apply_tank_packet(const tanklink_lora_status_t *pkt, int16_t rssi_db
              "rssi=%d snr=%d",
              pkt->type, pkt->flags, pkt->battery_pct, pkt->seq, pkt->fw_major,
              pkt->fw_minor, pkt->fw_patch, (int)full, (int)rssi_dbm, (int)snr_db);
+    note_last_changed();
     gatt_svr_notify_tank_if_subscribed();
     gatt_svr_notify_tanks_if_subscribed();
 }
@@ -310,6 +458,7 @@ static void lora_task(void *arg)
     uint8_t buf[64];
     while (true) {
         (void)pairing_window_open();
+        poll_last_save();
         /* Notify app when a bound tank drops out of range. */
         const bool online = tank_online_now();
         if (s_bound && s_was_online && !online) {
@@ -394,6 +543,7 @@ esp_err_t lora_link_init(void)
     load_bind();
     if (s_bound) {
         pump_tanks_on_node_bound(s_tank_id);
+        restore_last();
     }
     sx1278_config_t cfg = {
         .pin_sck = CONFIG_PUMP_LORA_SCK_GPIO,
@@ -485,6 +635,7 @@ esp_err_t lora_link_unpair_tank(void)
         nvs_commit(h);
         nvs_close(h);
     }
+    erase_last();
     pump_tanks_on_node_unpaired();
     ESP_LOGI(TAG, "tank unpaired");
     gatt_svr_notify_tank_if_subscribed();

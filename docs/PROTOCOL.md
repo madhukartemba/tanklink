@@ -91,7 +91,7 @@ Write: a prefix of `auto_off_min(1) buzzer_flags(1) buzzer_tone(1) led_brightnes
 | 11 | 1 | flags (LoRa flags, see below) |
 | 12 | 1 | battery % |
 | 13 | 1 | online (bound and heard within the stale window) |
-| 14 | 2 | seconds since last packet (`0xFFFF` = never) |
+| 14 | 2 | seconds since last packet (`0xFFFF` = never). From pump 0.10.0 this survives a restart when the DS3231 holds the time |
 | 16 | 1 | RSSI dBm (int8) |
 | 17 | 1 | SNR dB (int8) |
 | 18 | 1 | pump last error code (see `ERROR_CODES.md`) |
@@ -101,11 +101,11 @@ The app uses the token at offset 19 to authenticate to the tank directly for tan
 
 ### Schedule (read/write/notify, authed)
 
-Read and notify: `clock_valid(1) hour(1) minute(1) count(1)` followed by `count` × `enabled(1) hour(1) minute(1) slot(1)`.
+Read and notify: `clock_valid(1) hour(1) minute(1) count(1)` followed by `count` × `enabled(1) hour(1) minute(1) slot(1)`, then `clock_flags(1)` (pump 0.10.0+): bit 0 = DS3231 present, bit 1 = DS3231 holds a trusted time.
 
 Write:
 
-- `0x01 year(u16) month(1) day(1) hour(1) minute(1) second(1) weekday(1)`: 9 bytes (weekday is ignored). Sets the pump clock from the phone. The pump has no RTC, so the clock is lost on reboot until the app sets it again.
+- `0x01 year(u16) month(1) day(1) hour(1) minute(1) second(1) weekday(1)`: 9 bytes (weekday is ignored). Sets the pump clock from the phone and writes it to the DS3231. Without a DS3231 (or with its battery flat), the clock is lost on reboot until the app sets it again. "Already started today" marks are kept when a sync moves the clock by 5 minutes or less, so the app's 15-minute re-sync can't start a schedule twice.
 - `0x02 count(1)` followed by `count` × `enabled hour minute slot`: replaces the whole list. Maximum 4 entries.
 
 ### Tanks (read + notify, authed)

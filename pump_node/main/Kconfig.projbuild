@@ -103,6 +103,25 @@ menu "Pump Board"
             Two-button starter STOP (relay COM+NC in series with starter Stop button).
             GPIO1: not a strap pin, floats at reset → relay stays off during boot.
 
+    config PUMP_ENABLE_RTC
+        bool "Enable DS3231 real-time clock (I2C)"
+        default y
+        help
+            Keeps schedule time and the tank's last-seen time across restarts.
+            Soft-fails if the chip is not wired.
+
+    config PUMP_RTC_SDA_GPIO
+        int "DS3231 SDA GPIO"
+        depends on PUMP_ENABLE_RTC
+        range 0 21
+        default 7
+
+    config PUMP_RTC_SCL_GPIO
+        int "DS3231 SCL GPIO"
+        depends on PUMP_ENABLE_RTC
+        range 0 21
+        default 6
+
     config PUMP_ENABLE_LORA
         bool "Enable RA-02 LoRa (tank link)"
         default y

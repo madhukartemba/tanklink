@@ -146,6 +146,22 @@ esp_err_t pump_sched_drop_slot(uint8_t slot)
     return save_blob();
 }
 
+void pump_sched_skip_minute(const pump_civil_time_t *now)
+{
+    if (!now) {
+        return;
+    }
+    for (unsigned i = 0; i < s_blob.count; i++) {
+        const pump_sched_entry_t *e = &s_blob.entries[i];
+        if (e->hour == now->hour && e->minute == now->minute) {
+            s_fired_year[i] = now->year;
+            s_fired_month[i] = now->month;
+            s_fired_day[i] = now->day;
+            ESP_LOGI(TAG, "skip %02u:%02u after restart", e->hour, e->minute);
+        }
+    }
+}
+
 int pump_sched_take_due(const pump_civil_time_t *now)
 {
     if (!now) {
