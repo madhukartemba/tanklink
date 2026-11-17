@@ -130,7 +130,7 @@ apksigner verify --print-certs tanklink_app/build/app/outputs/flutter-apk/app-re
 5. Push the commit, then `gh release create <tag> --target <full 40-char sha>` (a short SHA fails with *target_commitish is invalid*) with exactly the asset names the app expects:
    - pump: `pump_node.bin`, `firmware-manifest.json`
    - tank: `tank_node.bin`, `firmware-manifest.json`
-   - app: `TankLink.apk`, `app-manifest.json`
+   - app: `TankLink.apk`, `app-manifest.json`, then `gh release upload app-latest TankLink.apk --clobber` so the stable QR link stays on the new APK (`docs/app-release.md`)
 6. Release notes: a short `## Changes` list, then which pump / tank / app versions go with it. Call out wiring changes and anything that must be updated together.
 
 ## Time on the pump

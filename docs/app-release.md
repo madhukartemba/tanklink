@@ -42,6 +42,15 @@ cp tanklink_app/build/app/outputs/flutter-apk/app-release.apk /tmp/TankLink.apk
    - **`TankLink.apk`** (release-signed APK)
    - **`app-manifest.json`** from `tanklink_app/build/app-manifest.json`
 3. Mark as **latest** production release (not draft/prerelease).
+4. Replace the APK on the fixed **`app-latest`** release so the QR download stays current. Do not mark that release as Latest (`--latest=false` is already set). The in-app updater only reads `app-v*` tags, so this tag is ignored there.
+
+```bash
+gh release upload app-latest /tmp/TankLink.apk --clobber
+```
+
+QR and direct download (always the file last uploaded to `app-latest`):
+
+`https://github.com/madhukartemba/tanklink/releases/download/app-latest/TankLink.apk`
 
 The app lists releases via the GitHub API, picks the newest `app-v*` tag, verifies `app-manifest.json` **sha256**, downloads **TankLink.apk**, and opens the system install UI.
 
