@@ -124,6 +124,54 @@ class TankSlot {
   final String name;
 }
 
+/// A fill the pump was running when it lost power or restarted.
+class FillInterruption {
+  FillInterruption({
+    required this.reason,
+    this.startedAt,
+    this.lastSeenRunningAt,
+    this.backAt,
+    required this.ranSec,
+  });
+
+  /// One of [TankLinkUuids.interruptPowerLost] / `interruptBrownout` /
+  /// `interruptRestarted`.
+  final int reason;
+  final DateTime? startedAt;
+
+  /// About when it stopped (last time the pump saw itself running, ±1 min).
+  final DateTime? lastSeenRunningAt;
+
+  /// When the pump came back.
+  final DateTime? backAt;
+  final int ranSec;
+
+  /// Pump times are local wall-clock seconds since 1970 (not UTC), 0 = unknown.
+  static DateTime? _pumpLocal(int sec) {
+    if (sec <= 0) return null;
+    final u = DateTime.fromMillisecondsSinceEpoch(sec * 1000, isUtc: true);
+    return DateTime(u.year, u.month, u.day, u.hour, u.minute, u.second);
+  }
+
+  static int _u32(List<int> b, int o) =>
+      b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24);
+
+  /// Parses the trailing fields of the Tank status payload, or null if none.
+  static FillInterruption? fromTankStatus(List<int> b) {
+    const o = TankLinkUuids.tankStatusWithTokenLen;
+    if (b.length < TankLinkUuids.tankStatusWithInterruptLen) return null;
+    final reason = b[o];
+    if (reason == TankLinkUuids.interruptNone) return null;
+    return FillInterruption(
+      reason: reason,
+      startedAt: _pumpLocal(_u32(b, o + 1)),
+      lastSeenRunningAt: _pumpLocal(_u32(b, o + 5)),
+      backAt: _pumpLocal(_u32(b, o + 9)),
+      ranSec: _u32(b, o + 13),
+    );
+  }
+}
+
 class PumpSession extends ChangeNotifier {
   final List<SavedPump> pumps = [];
   String? selectedRemoteId;
@@ -168,6 +216,9 @@ class PumpSession extends ChangeNotifier {
   int? tankSnrDb;
   /// Last pump NeoPixel / start-deny error (0 = none).
   int pumpLastError = 0;
+
+  /// Set when a fill was cut short by a power cut or restart, until dismissed.
+  FillInterruption? fillInterruption;
   /// False on pumps older than the schedule characteristic.
   bool schedulesSupported = false;
   bool pumpClockValid = false;
@@ -859,6 +910,7 @@ class PumpSession extends ChangeNotifier {
       tankSnrDb = null;
     }
     pumpLastError = bytes.length >= 19 ? bytes[18] : 0;
+    fillInterruption = FillInterruption.fromTankStatus(bytes);
     if (bytes.length >= TankLinkUuids.tankStatusWithTokenLen) {
       final tok = Uint8List.fromList(
         bytes.sublist(19, 19 + TankLinkUuids.tokenLen),
@@ -948,6 +1000,20 @@ class PumpSession extends ChangeNotifier {
       await _cmd!.write([TankLinkUuids.cmdClearError], withoutResponse: false);
     } catch (_) {
       /* Local clear already applied. */
+    }
+  }
+
+  Future<void> dismissFillInterruption() async {
+    fillInterruption = null;
+    notifyListeners();
+    if (_cmd == null || !authed) return;
+    try {
+      await _cmd!.write(
+        [TankLinkUuids.cmdDismissInterrupt],
+        withoutResponse: false,
+      );
+    } catch (_) {
+      /* Local dismiss already applied; the pump shows it again next connect. */
     }
   }
 
@@ -1459,6 +1525,7 @@ class PumpSession extends ChangeNotifier {
     tankRssiDbm = null;
     tankSnrDb = null;
     pumpLastError = 0;
+    fillInterruption = null;
     notifyListeners();
   }
 

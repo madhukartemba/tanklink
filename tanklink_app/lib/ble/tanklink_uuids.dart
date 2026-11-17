@@ -25,6 +25,8 @@ class TankLinkUuids {
   static const cmdUnpair = 0xF0;
   static const cmdFactoryReset = 0xF1;
   static const cmdClearError = 0xE0;
+  /// Dismiss the interrupted-fill notice (pump 0.11.0+).
+  static const cmdDismissInterrupt = 0xE1;
   static const cmdTestBeep = 0xB1;
   static const cmdTankPair = 0xA1;
   static const cmdTankUnpair = 0xA2;
@@ -56,6 +58,13 @@ class TankLinkUuids {
   /** Base tank char length (bound…snr…last_error). Token may follow. */
   static const tankStatusLen = 19;
   static const tankStatusWithTokenLen = 35;
+  /// Tank status with the interrupted-fill fields (pump 0.11.0+).
+  static const tankStatusWithInterruptLen = 52;
+
+  static const interruptNone = 0;
+  static const interruptPowerLost = 1;
+  static const interruptBrownout = 2;
+  static const interruptRestarted = 3;
   /** Warn when tank reports battery at or below this %. */
   static const tankBatteryLowPct = 20;
   /** Match pump CONFIG_PUMP_TANK_STALE_SEC — used for live last-seen / online. */
@@ -81,7 +90,7 @@ class TankLinkUuids {
   static const starterNone = 0;
   static const starterTwoButton = 1;
 
-  static const relayPulseMsDefault = 400;
+  static const relayPulseMsDefault = 1000;
   static const relayPulseMsMin = 50;
   static const relayPulseMsMax = 2000;
 }
