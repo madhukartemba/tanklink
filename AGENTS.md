@@ -22,7 +22,8 @@ Flow: the tank wakes on a float change or a 10-minute heartbeat, sends a LoRa ST
 | BLE GATT + LoRa byte layouts | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) |
 | Pin maps (both boards) | [`docs/PINMAPS.md`](docs/PINMAPS.md), [`pump_node/WIRING.md`](pump_node/WIRING.md), [`tank_node/WIRING.md`](tank_node/WIRING.md) |
 | LED / error codes | [`docs/ERROR_CODES.md`](docs/ERROR_CODES.md) |
-| New-machine firmware setup | [`docs/firmware-build-setup.md`](docs/firmware-build-setup.md) |
+| Build and flash (firmware + app), serial log, troubleshooting | [`docs/firmware-build-setup.md`](docs/firmware-build-setup.md) |
+| Build options, app-set runtime settings, NVS layout, values that must match | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) |
 | Firmware releases (`pump-v*`, `tank-v*`) | [`docs/firmware-release.md`](docs/firmware-release.md) |
 | App releases (`app-v*`) | [`docs/app-release.md`](docs/app-release.md) |
 

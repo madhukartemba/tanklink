@@ -15,6 +15,8 @@ Local rooftop **tank ↔ pump** control — no cloud required.
 
 **Pin maps (both boards):** [`docs/PINMAPS.md`](docs/PINMAPS.md)  
 **BLE + LoRa byte layouts:** [`docs/PROTOCOL.md`](docs/PROTOCOL.md)  
+**Build and flash:** [`docs/firmware-build-setup.md`](docs/firmware-build-setup.md)  
+**Settings and pins to change:** [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)  
 **Working on this repo with an agent:** [`AGENTS.md`](AGENTS.md)  
 **Tank LED error codes:** [`docs/ERROR_CODES.md`](docs/ERROR_CODES.md)
 
@@ -22,7 +24,7 @@ Local rooftop **tank ↔ pump** control — no cloud required.
 
 ### Firmware (ESP-IDF)
 
-Built with **ESP-IDF v6.1.0** (tag [`v6.1`](https://github.com/espressif/esp-idf/releases/tag/v6.1), commit `fff9895c`). New computer? Follow [`docs/firmware-build-setup.md`](docs/firmware-build-setup.md).
+Built with **ESP-IDF v6.1.0** (tag [`v6.1`](https://github.com/espressif/esp-idf/releases/tag/v6.1), commit `fff9895c`). New computer? Follow [`docs/firmware-build-setup.md`](docs/firmware-build-setup.md). To change pins or timings, see [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
 
 ```bash
 . "$HOME/esp/esp-idf/export.sh"
@@ -34,11 +36,15 @@ idf.py -p /dev/cu.usbmodemXXXX flash monitor
 
 Hold the pump **button** ~5 s to enter BLE pairing. Advertise name is `TankLink-XXXX` (MAC suffix).
 
+After adding the pump in the app, set **Starter → two-button**. A new or factory-reset pump defaults to "none" and won't pulse the relays.
+
 `idf.py erase-flash` clears NVS pairing.
 
 See [`pump_node/README.md`](pump_node/README.md) for GATT notes.
 
 ### App (Flutter)
+
+Flutter 3.50, JDK 17, Android SDK. See [`docs/firmware-build-setup.md`](docs/firmware-build-setup.md#8-build-the-app).
 
 ```bash
 cd tanklink_app
