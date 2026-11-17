@@ -219,10 +219,9 @@ class FirmwareUpdate extends ChangeNotifier {
     await prefs.setString(_key('latest_sha256'), release.sha256);
     await prefs.setString(_key('latest_bin_url'), release.binUrl);
     await prefs.setString(_key('latest_tag'), release.tag);
-    await prefs.setStringList(
-      _key('latest_hw_revs'),
-      [for (final r in release.hwRevs) '$r'],
-    );
+    await prefs.setStringList(_key('latest_hw_revs'), [
+      for (final r in release.hwRevs) '$r',
+    ]);
     await prefs.setInt(_key('latest_size'), release.sizeBytes);
     await prefs.setInt(
       _key('checked_at_ms'),
@@ -242,7 +241,9 @@ class FirmwareUpdate extends ChangeNotifier {
 
   Future<Uint8List> ensureBinaryDownloaded() async {
     if (latestSha256 == null || latestBinUrl == null) {
-      throw StateError('No ${channel.label} release found. Check for updates first.');
+      throw StateError(
+        'No ${channel.label} release found. Check for updates first.',
+      );
     }
     if (cachedBinPath != null) {
       final f = File(cachedBinPath!);
@@ -262,7 +263,9 @@ class FirmwareUpdate extends ChangeNotifier {
 
     final client = http.Client();
     try {
-      final res = await client.send(http.Request('GET', Uri.parse(latestBinUrl!)));
+      final res = await client.send(
+        http.Request('GET', Uri.parse(latestBinUrl!)),
+      );
       if (res.statusCode != 200) {
         throw StateError('Download failed (${res.statusCode})');
       }
@@ -283,7 +286,9 @@ class FirmwareUpdate extends ChangeNotifier {
       }
       final bytes = chunks.takeBytes();
       if (sha256.convert(bytes).toString() != latestSha256) {
-        throw StateError('The ${channel.label} update download was damaged. Try again.');
+        throw StateError(
+          'The ${channel.label} update download was damaged. Try again.',
+        );
       }
       final out = await _binFile();
       await out.parent.create(recursive: true);
@@ -406,21 +411,25 @@ class FirmwareUpdate extends ChangeNotifier {
 /// Pump firmware: `pump-vX.Y.Z` releases with `pump_node.bin`.
 class PumpFirmwareUpdate extends FirmwareUpdate {
   PumpFirmwareUpdate()
-      : super(const FirmwareChannel(
+    : super(
+        const FirmwareChannel(
           tagPrefix: 'pump-v',
           binAsset: 'pump_node.bin',
           prefsPrefix: 'fw_',
           label: 'pump',
-        ));
+        ),
+      );
 }
 
 /// Tank firmware: `tank-vX.Y.Z` releases with `tank_node.bin`.
 class TankFirmwareUpdate extends FirmwareUpdate {
   TankFirmwareUpdate()
-      : super(const FirmwareChannel(
+    : super(
+        const FirmwareChannel(
           tagPrefix: 'tank-v',
           binAsset: 'tank_node.bin',
           prefsPrefix: 'tank_fw_',
           label: 'tank',
-        ));
+        ),
+      );
 }

@@ -1,154 +1,69 @@
+/*
+ * The pump's BLE GATT service: the characteristic table, one access handler
+ * per characteristic, the connection table, and notifications.
+ *
+ * Byte layouts live in gatt_payloads.c and pump behaviour in pump_control.c;
+ * this file only moves bytes between them and NimBLE. docs/PROTOCOL.md
+ * describes every characteristic.
+ */
 #include "gatt_svr.h"
 
 #include <string.h>
 
 #include "esp_log.h"
-#include "esp_timer.h"
-#include "sdkconfig.h"
 #include "host/ble_gap.h"
 #include "host/ble_hs.h"
 #include "host/ble_uuid.h"
+#include "sdkconfig.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 
-#include "board.h"
 #include "buzzer.h"
+#include "gatt_payloads.h"
 #include "lora_link.h"
 #include "pump_clock.h"
 #include "pump_config.h"
-#include "pump_errors.h"
-#include "pump_sched.h"
-#include "pump_tanks.h"
+#include "pump_control.h"
 #include "pump_factory.h"
 #include "pump_ota.h"
 #include "pump_pair.h"
 #include "pump_runlog.h"
-#include "relay_control.h"
+#include "pump_sched.h"
+#include "pump_tanks.h"
 #include "status_led.h"
-#include "tanklink_lora_proto.h"
 #include "tanklink_uuid.h"
 
 #define TAG "GATT_SVR"
+
+#ifndef CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS
+#define CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS 60000
+#endif
+
+/* ---------------------------------------------------------------------------
+ * Connections
+ * ------------------------------------------------------------------------- */
+
+/** Which notifications a connection subscribed to. */
+typedef enum {
+    SUB_STATE,
+    SUB_OTA_STATUS,
+    SUB_TANK,
+    SUB_SCHED,
+    SUB_TANKS,
+    SUB_COUNT,
+} sub_t;
 
 typedef struct {
     uint16_t conn_handle;
     bool in_use;
     bool authed;
-    bool state_notify;
-    bool ota_status_notify;
-    bool tank_notify;
-    bool sched_notify;
-    bool tanks_notify;
+    bool subscribed[SUB_COUNT];
 } conn_slot_t;
 
-static const ble_uuid128_t uuid_svc = TANKLINK_SVC_UUID_INIT;
-static const ble_uuid128_t uuid_info = TANKLINK_CHR_INFO_INIT;
-static const ble_uuid128_t uuid_pair = TANKLINK_CHR_PAIR_INIT;
-static const ble_uuid128_t uuid_auth = TANKLINK_CHR_AUTH_INIT;
-static const ble_uuid128_t uuid_state = TANKLINK_CHR_STATE_INIT;
-static const ble_uuid128_t uuid_cmd = TANKLINK_CHR_CMD_INIT;
-static const ble_uuid128_t uuid_settings = TANKLINK_CHR_SETTINGS_INIT;
-static const ble_uuid128_t uuid_ota_ctrl = TANKLINK_CHR_OTA_CTRL_INIT;
-static const ble_uuid128_t uuid_ota_data = TANKLINK_CHR_OTA_DATA_INIT;
-static const ble_uuid128_t uuid_ota_status = TANKLINK_CHR_OTA_STATUS_INIT;
-static const ble_uuid128_t uuid_tank = TANKLINK_CHR_TANK_INIT;
-static const ble_uuid128_t uuid_sched = TANKLINK_CHR_SCHED_INIT;
-static const ble_uuid128_t uuid_tanks = TANKLINK_CHR_TANKS_INIT;
-
 static conn_slot_t s_conns[TANKLINK_MAX_BLE_CONN];
+
 static uint16_t s_pair_val_handle;
-static uint16_t s_state_val_handle;
-static uint16_t s_ota_status_val_handle;
-static uint16_t s_tank_val_handle;
-static uint16_t s_sched_val_handle;
-static uint16_t s_tanks_val_handle;
-static uint8_t s_pump_on;
-static int64_t s_pump_on_since_us;
-static uint8_t s_last_error;
-
-static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
-                      struct ble_gatt_access_ctxt *ctxt, void *arg);
-static void sched_notify(void);
-static int append_sched(struct os_mbuf *om);
-static void tanks_notify(void);
-static int append_tanks(struct os_mbuf *om);
-
-static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
-    {
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = &uuid_svc.u,
-        .characteristics = (struct ble_gatt_chr_def[]) {
-            {
-                .uuid = &uuid_info.u,
-                .access_cb = chr_access,
-                .flags = BLE_GATT_CHR_F_READ,
-            },
-            {
-                .uuid = &uuid_pair.u,
-                .access_cb = chr_access,
-                .val_handle = &s_pair_val_handle,
-                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
-            },
-            {
-                .uuid = &uuid_auth.u,
-                .access_cb = chr_access,
-                .flags = BLE_GATT_CHR_F_WRITE,
-            },
-            {
-                .uuid = &uuid_state.u,
-                .access_cb = chr_access,
-                .val_handle = &s_state_val_handle,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-            },
-            {
-                .uuid = &uuid_cmd.u,
-                .access_cb = chr_access,
-                .flags = BLE_GATT_CHR_F_WRITE,
-            },
-            {
-                .uuid = &uuid_settings.u,
-                .access_cb = chr_access,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
-            },
-            {
-                .uuid = &uuid_ota_ctrl.u,
-                .access_cb = chr_access,
-                .flags = BLE_GATT_CHR_F_WRITE,
-            },
-            {
-                .uuid = &uuid_ota_data.u,
-                .access_cb = chr_access,
-                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
-            },
-            {
-                .uuid = &uuid_ota_status.u,
-                .access_cb = chr_access,
-                .val_handle = &s_ota_status_val_handle,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-            },
-            {
-                .uuid = &uuid_tank.u,
-                .access_cb = chr_access,
-                .val_handle = &s_tank_val_handle,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-            },
-            {
-                .uuid = &uuid_sched.u,
-                .access_cb = chr_access,
-                .val_handle = &s_sched_val_handle,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
-            },
-            {
-                .uuid = &uuid_tanks.u,
-                .access_cb = chr_access,
-                .val_handle = &s_tanks_val_handle,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-            },
-            { 0 },
-        },
-    },
-    { 0 },
-};
+static uint16_t s_val_handle[SUB_COUNT];
 
 static conn_slot_t *slot_find(uint16_t conn_handle)
 {
@@ -184,569 +99,536 @@ static void clear_all_auth(void)
     }
 }
 
-static void append_ota_status(uint8_t *out6)
+/** Send [buf] to every connection subscribed to [sub]. */
+static void notify_all(sub_t sub, const uint8_t *buf, size_t len)
 {
-    uint32_t off = pump_ota_offset();
-    out6[0] = pump_ota_state();
-    out6[1] = pump_ota_last_error();
-    out6[2] = (uint8_t)(off & 0xff);
-    out6[3] = (uint8_t)((off >> 8) & 0xff);
-    out6[4] = (uint8_t)((off >> 16) & 0xff);
-    out6[5] = (uint8_t)((off >> 24) & 0xff);
-}
-
-static void ota_status_notify(void)
-{
-    uint8_t buf[6];
-    append_ota_status(buf);
     for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
-        if (!s_conns[i].in_use || !s_conns[i].ota_status_notify) {
+        if (!s_conns[i].in_use || !s_conns[i].subscribed[sub]) {
             continue;
         }
-        struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, sizeof(buf));
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, len);
         if (!om) {
             continue;
         }
-        int rc = ble_gatts_notify_custom(s_conns[i].conn_handle, s_ota_status_val_handle, om);
+        const int rc = ble_gatts_notify_custom(s_conns[i].conn_handle, s_val_handle[sub], om);
         if (rc != 0) {
-            ESP_LOGW(TAG, "ota status notify conn=%u rc=%d", s_conns[i].conn_handle, rc);
+            ESP_LOGW(TAG, "notify %d conn=%u rc=%d", sub, s_conns[i].conn_handle, rc);
         }
     }
 }
 
-static int append_info(struct os_mbuf *om, uint16_t conn_handle)
+/* ---------------------------------------------------------------------------
+ * Notifications
+ * ------------------------------------------------------------------------- */
+
+void gatt_svr_notify_state(void)
 {
-    /* proto_major proto_minor hw_rev paired flags device_id(6)
-     * fw_major fw_minor fw_patch run_secs(u32 LE). This layout is frozen
-     * across protocol majors; new fields go after it (see tanklink_uuid.h). */
-    uint8_t flags = 0;
-    if (pump_pair_pairing_active()) {
-        flags |= 0x01;
-    }
-    if (gatt_svr_is_authed_conn(conn_handle)) {
-        flags |= 0x02;
-    }
-    const uint32_t run = gatt_svr_run_seconds();
-    uint8_t buf[TANKLINK_INFO_LEN];
-    buf[0] = TANKLINK_PROTO_MAJOR;
-    buf[1] = TANKLINK_PROTO_MINOR;
-    buf[2] = TANKLINK_HW_REV;
-    buf[3] = pump_pair_is_paired() ? 1 : 0;
-    buf[4] = flags;
-    memcpy(&buf[5], pump_pair_device_id(), TANKLINK_DEVICE_ID_LEN);
-    buf[11] = TANKLINK_FW_MAJOR;
-    buf[12] = TANKLINK_FW_MINOR;
-    buf[13] = TANKLINK_FW_PATCH;
-    buf[14] = (uint8_t)(run & 0xff);
-    buf[15] = (uint8_t)((run >> 8) & 0xff);
-    buf[16] = (uint8_t)((run >> 16) & 0xff);
-    buf[17] = (uint8_t)((run >> 24) & 0xff);
-    return os_mbuf_append(om, buf, sizeof(buf));
+    const uint8_t on = pump_control_is_on() ? 1 : 0;
+    notify_all(SUB_STATE, &on, 1);
 }
 
-static void fill_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
-{
-    memset(out, 0, TANKLINK_TANK_STATUS_LEN);
-    out[0] = lora_link_tank_bound() ? 1 : 0;
-    out[1] = lora_link_tank_pairing_active() ? 1 : 0;
-    memcpy(&out[2], lora_link_tank_id(), TANKLINK_DEVICE_ID_LEN);
-    out[8] = lora_link_tank_fw_major();
-    out[9] = lora_link_tank_fw_minor();
-    out[10] = lora_link_tank_fw_patch();
-    out[11] = lora_link_tank_flags();
-    out[12] = lora_link_tank_battery_pct();
-    out[13] = lora_link_tank_online() ? 1 : 0;
-    uint16_t age = lora_link_tank_age_sec();
-    out[14] = (uint8_t)(age & 0xff);
-    out[15] = (uint8_t)((age >> 8) & 0xff);
-    int16_t rssi = lora_link_tank_rssi_dbm();
-    if (rssi < -128) {
-        rssi = -128;
-    }
-    if (rssi > 127) {
-        rssi = 127;
-    }
-    out[16] = (uint8_t)(int8_t)rssi;
-    out[17] = (uint8_t)lora_link_tank_snr_db();
-    out[18] = s_last_error;
-    if (lora_link_tank_has_ble_token()) {
-        memcpy(&out[19], lora_link_tank_ble_token(), TANKLINK_TOKEN_LEN);
-    }
-    const pump_runlog_event_t *ev = pump_runlog_event();
-    if (ev) {
-        uint8_t *o = &out[TANKLINK_TANK_STATUS_TOKEN_LEN];
-        o[0] = ev->reason;
-        const uint32_t vals[4] = {ev->started_local, ev->last_seen_local, ev->back_local,
-                                  ev->ran_sec};
-        for (int i = 0; i < 4; i++) {
-            o[1 + i * 4] = (uint8_t)(vals[i] & 0xff);
-            o[2 + i * 4] = (uint8_t)((vals[i] >> 8) & 0xff);
-            o[3 + i * 4] = (uint8_t)((vals[i] >> 16) & 0xff);
-            o[4 + i * 4] = (uint8_t)((vals[i] >> 24) & 0xff);
-        }
-    }
-    out[TANKLINK_TANK_STATUS_HW_AT] = lora_link_tank_hw_rev();
-}
-
-static int append_tank_status(struct os_mbuf *om)
+void gatt_svr_notify_tank(void)
 {
     uint8_t buf[TANKLINK_TANK_STATUS_LEN];
-    fill_tank_status(buf);
-    return os_mbuf_append(om, buf, sizeof(buf));
+    notify_all(SUB_TANK, buf, gatt_payload_tank_status(buf));
 }
 
-static int append_settings(struct os_mbuf *om)
+void gatt_svr_notify_tanks(void)
 {
-    /* run(4)+serial(5)+buzz(1)+tone(1)+led(1)+starter(1)+pulse_ms(2 LE)+sensor_mode(1) */
-    uint32_t run = gatt_svr_run_seconds();
-    uint8_t run_le[4] = {
-        (uint8_t)(run & 0xff),
-        (uint8_t)((run >> 8) & 0xff),
-        (uint8_t)((run >> 16) & 0xff),
-        (uint8_t)((run >> 24) & 0xff),
-    };
-    int rc = os_mbuf_append(om, run_le, 4);
-    if (rc != 0) {
-        return rc;
-    }
-    rc = os_mbuf_append(om, pump_pair_serial(), TANKLINK_SERIAL_LEN + 1);
-    if (rc != 0) {
-        return rc;
-    }
-    uint8_t buzz_flags = pump_config_buzzer_flags();
-    uint8_t tone = pump_config_buzzer_tone();
-    uint8_t led_bri = pump_config_led_brightness();
-    uint8_t starter = pump_config_starter_type();
-    uint16_t pulse = pump_config_relay_pulse_ms();
-    uint8_t pulse_le[2] = {
-        (uint8_t)(pulse & 0xff),
-        (uint8_t)((pulse >> 8) & 0xff),
-    };
-    rc = os_mbuf_append(om, &buzz_flags, 1);
-    if (rc != 0) {
-        return rc;
-    }
-    rc = os_mbuf_append(om, &tone, 1);
-    if (rc != 0) {
-        return rc;
-    }
-    rc = os_mbuf_append(om, &led_bri, 1);
-    if (rc != 0) {
-        return rc;
-    }
-    rc = os_mbuf_append(om, &starter, 1);
-    if (rc != 0) {
-        return rc;
-    }
-    rc = os_mbuf_append(om, pulse_le, 2);
-    if (rc != 0) {
-        return rc;
-    }
-    uint8_t sensor_mode = pump_config_sensor_mode();
-    return os_mbuf_append(om, &sensor_mode, 1);
+    uint8_t buf[GATT_TANKS_MAX_LEN];
+    notify_all(SUB_TANKS, buf, gatt_payload_tanks(buf));
 }
 
-static void refresh_connected_led(void)
+void gatt_svr_notify_sched(void)
 {
-    status_led_mode_t mode = status_led_get_mode();
-    if (mode == STATUS_LED_HOLD_PROGRESS || mode == STATUS_LED_PAIRING ||
-        mode == STATUS_LED_TANK_PAIRING || mode == STATUS_LED_UNPAIRED ||
-        mode == STATUS_LED_PUMP_ON || mode == STATUS_LED_UPDATING ||
-        mode == STATUS_LED_UPDATE_OK || mode == STATUS_LED_UPDATE_ERR) {
-        return;
-    }
-    /* Standby always — tank-full color lives in the idle glow; no connected anim. */
-    if (!s_pump_on) {
-        status_led_set_mode(STATUS_LED_IDLE);
-    }
+    uint8_t buf[GATT_SCHED_MAX_LEN];
+    notify_all(SUB_SCHED, buf, gatt_payload_sched(buf));
 }
 
-static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
-                      struct ble_gatt_access_ctxt *ctxt, void *arg)
+static void notify_ota_status(void)
 {
-    (void)attr_handle;
-    (void)arg;
+    uint8_t buf[GATT_OTA_STATUS_LEN];
+    notify_all(SUB_OTA_STATUS, buf, gatt_payload_ota_status(buf));
+}
 
-    const ble_uuid_t *uuid = ctxt->chr->uuid;
-    conn_slot_t *slot = slot_find(conn_handle);
+/* ---------------------------------------------------------------------------
+ * Access helpers
+ * ------------------------------------------------------------------------- */
 
-    if (ble_uuid_cmp(uuid, &uuid_info.u) == 0) {
-        if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        return append_info(ctxt->om, conn_handle) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+static bool is_read(const struct ble_gatt_access_ctxt *ctxt)
+{
+    return ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR;
+}
+
+static bool is_write(const struct ble_gatt_access_ctxt *ctxt)
+{
+    return ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR;
+}
+
+static int reply(struct ble_gatt_access_ctxt *ctxt, const uint8_t *buf, size_t len)
+{
+    return os_mbuf_append(ctxt->om, buf, len) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+/**
+ * Copy a write into [buf]. Fails if it is shorter than [min_len] or longer
+ * than [cap]. Returns the length in *len.
+ */
+static int read_write(struct ble_gatt_access_ctxt *ctxt, uint8_t *buf, uint16_t cap,
+                      uint16_t min_len, uint16_t *len)
+{
+    const uint16_t n = OS_MBUF_PKTLEN(ctxt->om);
+    if (n < min_len || n > cap) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     }
-
-    if (ble_uuid_cmp(uuid, &uuid_pair.u) == 0) {
-        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        if (!pump_pair_is_claimable()) {
-            ESP_LOGW(TAG, "Claim rejected — hold the button 5s to enter pairing");
-            return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
-        }
-        uint8_t token[TANKLINK_TOKEN_LEN];
-        if (pump_pair_claim(token) != ESP_OK) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        if (slot) {
-            slot->authed = true; /* claimer is authenticated for this connection */
-        }
-        struct os_mbuf *om = ble_hs_mbuf_from_flat(token, sizeof(token));
-        if (!om) {
-            return BLE_ATT_ERR_INSUFFICIENT_RES;
-        }
-        int rc = ble_gatts_notify_custom(conn_handle, s_pair_val_handle, om);
-        if (rc != 0) {
-            ESP_LOGW(TAG, "pair notify failed rc=%d", rc);
-        }
-        return 0;
-    }
-
-    if (ble_uuid_cmp(uuid, &uuid_auth.u) == 0) {
-        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
-        if (len != TANKLINK_TOKEN_LEN) {
-            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        }
-        uint8_t token[TANKLINK_TOKEN_LEN];
-        int rc = ble_hs_mbuf_to_flat(ctxt->om, token, sizeof(token), NULL);
-        if (rc != 0) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        bool ok = pump_pair_check_token(token, sizeof(token));
-        if (slot) {
-            slot->authed = ok;
-        }
-        ESP_LOGI(TAG, "Auth %s conn=%u", ok ? "OK" : "FAILED", conn_handle);
-        return ok ? 0 : BLE_ATT_ERR_WRITE_NOT_PERMITTED;
-    }
-
-    if (ble_uuid_cmp(uuid, &uuid_state.u) == 0) {
-        if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        return os_mbuf_append(ctxt->om, &s_pump_on, 1) == 0 ? 0
-                                                            : BLE_ATT_ERR_INSUFFICIENT_RES;
-    }
-
-    if (ble_uuid_cmp(uuid, &uuid_cmd.u) == 0) {
-        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        if (!gatt_svr_is_authed_conn(conn_handle)) {
-            ESP_LOGW(TAG, "Cmd rejected — not authenticated conn=%u", conn_handle);
-            return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
-        }
-        uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
-        if (len < 1) {
-            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        }
-        /* Read the whole value. A 1-byte peek returns EMSGSIZE when the
-         * packet is longer, which was rejecting select and rename. */
-        uint8_t body[1 + 1 + PUMP_TANK_NAME_LEN];
-        if (len > sizeof(body)) {
-            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        }
-        int rc = ble_hs_mbuf_to_flat(ctxt->om, body, len, NULL);
-        if (rc != 0) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        const uint8_t cmd = body[0];
-        if (cmd == TANKLINK_CMD_UNPAIR) {
-            if (pump_pair_unpair() != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            clear_all_auth();
-            gatt_svr_set_pump_state(0);
-            return 0;
-        }
-        if (cmd == TANKLINK_CMD_TEST_BEEP) {
-            buzzer_play_user(true);
-            return 0;
-        }
-        if (cmd == TANKLINK_CMD_TANK_PAIR) {
-#ifndef CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS
-#define CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS 60000
-#endif
-            if (lora_link_start_tank_pair(CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS) != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            return 0;
-        }
-        if (cmd == TANKLINK_CMD_TANK_UNPAIR) {
-            if (lora_link_unpair_tank() != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            return 0;
-        }
-        if (cmd == TANKLINK_CMD_FACTORY_RESET) {
-            if (pump_factory_reset() != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            return 0;
-        }
-        if (cmd == TANKLINK_CMD_CLEAR_ERROR) {
-            gatt_svr_clear_last_error();
-            return 0;
-        }
-        if (cmd == TANKLINK_CMD_DISMISS_INTERRUPT) {
-            pump_runlog_clear_event();
-            gatt_svr_notify_tank_if_subscribed();
-            return 0;
-        }
-        if (cmd == TANKLINK_CMD_TANK_AUTO_OFF) {
-            if (len < 3) {
-                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-            }
-            if (pump_tanks_set_auto_off(body[1], body[2]) != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            gatt_svr_notify_tanks_if_subscribed();
-            return 0;
-        }
-        if (cmd == TANKLINK_CMD_TANK_SELECT || cmd == TANKLINK_CMD_TANK_RENAME) {
-            if (len < 2) {
-                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-            }
-            if (cmd == TANKLINK_CMD_TANK_SELECT) {
-                if (pump_tanks_select(body[1], s_pump_on != 0) != ESP_OK) {
-                    return BLE_ATT_ERR_UNLIKELY;
-                }
-            } else if (pump_tanks_rename(body[1], &body[2], len - 2) != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            gatt_svr_notify_tank_if_subscribed();
-            gatt_svr_notify_tanks_if_subscribed();
-            return 0;
-        }
-        if (cmd == TANKLINK_CMD_OFF || cmd == TANKLINK_CMD_ON) {
-            gatt_svr_set_pump_state(cmd == TANKLINK_CMD_ON ? 1 : 0);
-            return 0;
-        }
+    if (ble_hs_mbuf_to_flat(ctxt->om, buf, n, NULL) != 0) {
         return BLE_ATT_ERR_UNLIKELY;
     }
+    *len = n;
+    return 0;
+}
 
-    if (ble_uuid_cmp(uuid, &uuid_tank.u) == 0) {
-        if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        return append_tank_status(ctxt->om) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-    }
+static uint32_t get_u32(const uint8_t *b)
+{
+    return (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) |
+           ((uint32_t)b[3] << 24);
+}
 
-    if (ble_uuid_cmp(uuid, &uuid_settings.u) == 0) {
-        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-            return append_settings(ctxt->om) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-        }
-        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        if (!gatt_svr_is_authed_conn(conn_handle)) {
-            return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
-        }
-        /* buzzer_flags(1) tone(1) led(1) starter(1) pulse_ms(u16) sensor_mode(1) */
-        /* Newer apps may append fields (protocol minor); ignore them. */
-        uint8_t buf[TANKLINK_SETTINGS_WRITE_LEN];
-        if (OS_MBUF_PKTLEN(ctxt->om) < sizeof(buf)) {
-            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        }
-        int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof(buf), NULL);
-        if (rc != 0) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        const uint16_t pulse = (uint16_t)buf[4] | ((uint16_t)buf[5] << 8);
-        if (pump_config_set_buzzer(buf[0], buf[1]) != ESP_OK ||
-            pump_config_set_led_brightness(buf[2]) != ESP_OK ||
-            pump_config_set_starter_type(buf[3]) != ESP_OK ||
-            pump_config_set_relay_pulse_ms(pulse) != ESP_OK) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        const bool mode_changed = buf[6] != pump_tanks_mode();
-        if (mode_changed) {
-            if (pump_tanks_set_mode(buf[6], s_pump_on != 0) != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            gatt_svr_notify_tank_if_subscribed();
-            tanks_notify();
-            sched_notify();
-        }
-        ESP_LOGI(TAG, "settings buzz=0x%02x tone=%u led=%u starter=%u pulse=%ums mode=%u",
-                 buf[0], buf[1], buf[2], buf[3], (unsigned)pulse, buf[6]);
-        return 0;
-    }
+/* ---------------------------------------------------------------------------
+ * Characteristic handlers
+ * ------------------------------------------------------------------------- */
 
-    if (ble_uuid_cmp(uuid, &uuid_sched.u) == 0) {
-        if (!gatt_svr_is_authed_conn(conn_handle)) {
-            return ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR
-                       ? BLE_ATT_ERR_READ_NOT_PERMITTED
-                       : BLE_ATT_ERR_WRITE_NOT_PERMITTED;
-        }
-        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-            return append_sched(ctxt->om) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-        }
-        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
-        if (len < 1) {
-            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        }
-        uint8_t buf[1 + 1 + PUMP_SCHED_MAX * 4];
-        if (len > sizeof(buf)) {
-            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        }
-        int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, len, NULL);
-        if (rc != 0) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        if (buf[0] == TANKLINK_SCHED_OP_SET_CLOCK) {
-            if (len < 8) {
-                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-            }
-            const int year = (int)buf[1] | ((int)buf[2] << 8);
-            int64_t before = 0;
-            const bool had_time = pump_clock_unix_now(&before);
-            if (pump_clock_set(year, buf[3], buf[4], buf[5], buf[6], buf[7]) != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            /* The app re-syncs every 15 min. Keep "already fired today" marks
-             * across small corrections, or a sync inside a schedule's minute
-             * would start the pump again. Clear them on a real jump. */
-            int64_t after = 0;
-            (void)pump_clock_unix_now(&after);
-            const int64_t delta = after - before;
-            if (!had_time || delta > 300 || delta < -300) {
-                pump_sched_clear_fired();
-            }
-            ESP_LOGI(TAG, "clock set %04d-%02u-%02u %02u:%02u:%02u",
-                     year, buf[3], buf[4], buf[5], buf[6], buf[7]);
-            sched_notify();
-            return 0;
-        }
-        if (buf[0] == TANKLINK_SCHED_OP_SET_LIST) {
-            if (len < 2) {
-                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-            }
-            const unsigned count = buf[1];
-            if (count > PUMP_SCHED_MAX || len != 2 + count * 4) {
-                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-            }
-            pump_sched_entry_t entries[PUMP_SCHED_MAX];
-            memset(entries, 0, sizeof(entries));
-            for (unsigned i = 0; i < count; i++) {
-                entries[i].enabled = buf[2 + i * 4] ? 1 : 0;
-                entries[i].hour = buf[2 + i * 4 + 1];
-                entries[i].minute = buf[2 + i * 4 + 2];
-                entries[i].slot = buf[2 + i * 4 + 3];
-            }
-            if (pump_sched_set(entries, count) != ESP_OK) {
-                return BLE_ATT_ERR_UNLIKELY;
-            }
-            sched_notify();
-            return 0;
-        }
+static int on_info(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    if (!is_read(ctxt)) {
         return BLE_ATT_ERR_UNLIKELY;
     }
-
-    if (ble_uuid_cmp(uuid, &uuid_tanks.u) == 0) {
-        if (!gatt_svr_is_authed_conn(conn_handle)) {
-            return BLE_ATT_ERR_READ_NOT_PERMITTED;
-        }
-        if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        return append_tanks(ctxt->om) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-    }
-
-    if (ble_uuid_cmp(uuid, &uuid_ota_status.u) == 0) {
-        if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        uint8_t buf[6];
-        append_ota_status(buf);
-        return os_mbuf_append(ctxt->om, buf, sizeof(buf)) == 0 ? 0
-                                                               : BLE_ATT_ERR_INSUFFICIENT_RES;
-    }
-
-    if (ble_uuid_cmp(uuid, &uuid_ota_ctrl.u) == 0) {
-        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
-        if (len < 1) {
-            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        }
-        uint8_t buf[1 + 4 + 32];
-        if (len > sizeof(buf)) {
-            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        }
-        int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, len, NULL);
-        if (rc != 0) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        uint8_t op = buf[0];
-        uint8_t ota_err = TANKLINK_OTA_ERR_OK;
-        if (op == TANKLINK_OTA_OP_START) {
-            if (len != 1 + 4 + 32) {
-                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-            }
-            uint32_t size = (uint32_t)buf[1] | ((uint32_t)buf[2] << 8) |
-                            ((uint32_t)buf[3] << 16) | ((uint32_t)buf[4] << 24);
-            ota_err = pump_ota_start(conn_handle, size, &buf[5]);
-        } else if (op == TANKLINK_OTA_OP_ABORT) {
-            ota_err = pump_ota_abort_from(conn_handle);
-        } else if (op == TANKLINK_OTA_OP_FINISH) {
-            ota_err = pump_ota_finish(conn_handle);
-        } else {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        ota_status_notify();
-        return ota_err == TANKLINK_OTA_ERR_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
-    }
-
-    if (ble_uuid_cmp(uuid, &uuid_ota_data.u) == 0) {
-        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
-        if (len < 5) {
-            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        }
-        /* Stack-friendly cap: offset(4) + payload */
-        if (len > 512) {
-            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        }
-        uint8_t tmp[512];
-        int rc = ble_hs_mbuf_to_flat(ctxt->om, tmp, len, NULL);
-        if (rc != 0) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        uint32_t offset = (uint32_t)tmp[0] | ((uint32_t)tmp[1] << 8) |
-                          ((uint32_t)tmp[2] << 16) | ((uint32_t)tmp[3] << 24);
-        uint8_t ota_err = pump_ota_write(conn_handle, offset, &tmp[4], (uint16_t)(len - 4));
-        return ota_err == TANKLINK_OTA_ERR_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
-    }
-
-    return BLE_ATT_ERR_UNLIKELY;
+    uint8_t buf[TANKLINK_INFO_LEN];
+    return reply(ctxt, buf, gatt_payload_info(buf, gatt_svr_is_authed_conn(conn)));
 }
+
+/** Claim the pump while its pairing window is open; notifies the new token. */
+static int on_pair(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    if (!is_write(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    if (!pump_pair_is_claimable()) {
+        ESP_LOGW(TAG, "Claim rejected: hold the button 5 s to open pairing");
+        return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    }
+    uint8_t token[TANKLINK_TOKEN_LEN];
+    if (pump_pair_claim(token) != ESP_OK) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    conn_slot_t *slot = slot_find(conn);
+    if (slot) {
+        slot->authed = true; /* the claiming phone is signed in */
+    }
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(token, sizeof(token));
+    if (!om) {
+        return BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    const int rc = ble_gatts_notify_custom(conn, s_pair_val_handle, om);
+    if (rc != 0) {
+        ESP_LOGW(TAG, "pair notify failed rc=%d", rc);
+    }
+    return 0;
+}
+
+static int on_auth(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    if (!is_write(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t token[TANKLINK_TOKEN_LEN];
+    uint16_t len = 0;
+    const int rc = read_write(ctxt, token, sizeof(token), sizeof(token), &len);
+    if (rc != 0) {
+        return rc;
+    }
+    const bool ok = pump_pair_check_token(token, sizeof(token));
+    conn_slot_t *slot = slot_find(conn);
+    if (slot) {
+        slot->authed = ok;
+    }
+    ESP_LOGI(TAG, "Auth %s conn=%u", ok ? "OK" : "FAILED", conn);
+    return ok ? 0 : BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+}
+
+static int on_state(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    if (!is_read(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    const uint8_t on = pump_control_is_on() ? 1 : 0;
+    return reply(ctxt, &on, 1);
+}
+
+/** Runs one Cmd opcode. [body] is the whole write, [len] at least 1. */
+static int run_command(const uint8_t *body, uint16_t len)
+{
+    switch (body[0]) {
+    case TANKLINK_CMD_OFF:
+    case TANKLINK_CMD_ON:
+        pump_control_set(body[0] == TANKLINK_CMD_ON);
+        return 0;
+
+    case TANKLINK_CMD_UNPAIR:
+        if (pump_pair_unpair() != ESP_OK) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        clear_all_auth();
+        pump_control_set(false);
+        return 0;
+
+    case TANKLINK_CMD_TEST_BEEP:
+        buzzer_play_user(true);
+        return 0;
+
+    case TANKLINK_CMD_TANK_PAIR:
+        return lora_link_start_tank_pair(CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS) == ESP_OK
+                   ? 0
+                   : BLE_ATT_ERR_UNLIKELY;
+
+    case TANKLINK_CMD_TANK_UNPAIR:
+        return lora_link_unpair_tank() == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+
+    case TANKLINK_CMD_FACTORY_RESET:
+        return pump_factory_reset() == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+
+    case TANKLINK_CMD_CLEAR_ERROR:
+        pump_control_clear_error();
+        return 0;
+
+    case TANKLINK_CMD_DISMISS_INTERRUPT:
+        pump_runlog_clear_event();
+        gatt_svr_notify_tank();
+        return 0;
+
+    case TANKLINK_CMD_TANK_SELECT:
+        if (len < 2) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        if (pump_tanks_select(body[1], pump_control_is_on()) != ESP_OK) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        gatt_svr_notify_tank();
+        gatt_svr_notify_tanks();
+        return 0;
+
+    case TANKLINK_CMD_TANK_RENAME:
+        if (len < 3) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        if (pump_tanks_rename(body[1], &body[2], len - 2) != ESP_OK) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        gatt_svr_notify_tanks();
+        return 0;
+
+    case TANKLINK_CMD_TANK_AUTO_OFF:
+        if (len < 3) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        if (pump_tanks_set_auto_off(body[1], body[2]) != ESP_OK) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        gatt_svr_notify_tanks();
+        return 0;
+
+    default:
+        ESP_LOGW(TAG, "Unknown command 0x%02x", body[0]);
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+}
+
+static int on_cmd(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    if (!is_write(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    if (!gatt_svr_is_authed_conn(conn)) {
+        ESP_LOGW(TAG, "Cmd rejected: conn=%u not signed in", conn);
+        return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    }
+    /* Longest command: rename = opcode + slot + name. */
+    uint8_t body[1 + 1 + PUMP_TANK_NAME_LEN];
+    uint16_t len = 0;
+    const int rc = read_write(ctxt, body, sizeof(body), 1, &len);
+    return rc != 0 ? rc : run_command(body, len);
+}
+
+static int on_settings(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
+                       void *arg)
+{
+    if (is_read(ctxt)) {
+        uint8_t buf[GATT_SETTINGS_READ_LEN];
+        return reply(ctxt, buf, gatt_payload_settings(buf));
+    }
+    if (!is_write(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    if (!gatt_svr_is_authed_conn(conn)) {
+        return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    }
+    /* buzzer_flags tone led starter pulse_ms(u16) sensor_mode. A newer app
+     * may append fields (protocol minor); they are ignored. */
+    uint8_t buf[TANKLINK_SETTINGS_WRITE_LEN + 16];
+    uint16_t len = 0;
+    const int rc = read_write(ctxt, buf, sizeof(buf), TANKLINK_SETTINGS_WRITE_LEN, &len);
+    if (rc != 0) {
+        return rc;
+    }
+    const uint16_t pulse = (uint16_t)buf[4] | ((uint16_t)buf[5] << 8);
+    if (pump_config_set_buzzer(buf[0], buf[1]) != ESP_OK ||
+        pump_config_set_led_brightness(buf[2]) != ESP_OK ||
+        pump_config_set_starter_type(buf[3]) != ESP_OK ||
+        pump_config_set_relay_pulse_ms(pulse) != ESP_OK) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    if (buf[6] != pump_tanks_mode()) {
+        if (pump_tanks_set_mode(buf[6], pump_control_is_on()) != ESP_OK) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        gatt_svr_notify_tank();
+        gatt_svr_notify_tanks();
+        gatt_svr_notify_sched();
+    }
+    ESP_LOGI(TAG, "settings buzz=0x%02x tone=%u led=%u starter=%u pulse=%ums mode=%u", buf[0],
+             buf[1], buf[2], buf[3], (unsigned)pulse, buf[6]);
+    return 0;
+}
+
+static int on_tank(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    if (!is_read(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t buf[TANKLINK_TANK_STATUS_LEN];
+    return reply(ctxt, buf, gatt_payload_tank_status(buf));
+}
+
+/** Set-clock write: year(u16) month day hour minute second. */
+static int set_clock(const uint8_t *buf, uint16_t len)
+{
+    if (len < 8) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    const int year = (int)buf[1] | ((int)buf[2] << 8);
+    int64_t before = 0;
+    const bool had_time = pump_clock_unix_now(&before);
+    if (pump_clock_set(year, buf[3], buf[4], buf[5], buf[6], buf[7]) != ESP_OK) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    /* The app re-syncs every 15 min. Keep "already started today" marks
+     * across small corrections, or a sync inside a schedule's minute would
+     * start the pump again. Clear them on a real jump. */
+    int64_t after = 0;
+    (void)pump_clock_unix_now(&after);
+    const int64_t delta = after - before;
+    if (!had_time || delta > 300 || delta < -300) {
+        pump_sched_clear_fired();
+    }
+    ESP_LOGI(TAG, "clock set %04d-%02u-%02u %02u:%02u:%02u", year, buf[3], buf[4], buf[5],
+             buf[6], buf[7]);
+    return 0;
+}
+
+/** Replace-list write: count, then count × (enabled hour minute slot). */
+static int set_schedules(const uint8_t *buf, uint16_t len)
+{
+    if (len < 2) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    const unsigned count = buf[1];
+    if (count > PUMP_SCHED_MAX || len < 2 + count * 4) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    pump_sched_entry_t entries[PUMP_SCHED_MAX];
+    memset(entries, 0, sizeof(entries));
+    const uint8_t *e = &buf[2];
+    for (unsigned i = 0; i < count; i++, e += 4) {
+        entries[i].enabled = e[0] ? 1 : 0;
+        entries[i].hour = e[1];
+        entries[i].minute = e[2];
+        entries[i].slot = e[3];
+    }
+    return pump_sched_set(entries, count) == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+}
+
+static int on_sched(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    if (!gatt_svr_is_authed_conn(conn)) {
+        return is_read(ctxt) ? BLE_ATT_ERR_READ_NOT_PERMITTED : BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    }
+    if (is_read(ctxt)) {
+        uint8_t buf[GATT_SCHED_MAX_LEN];
+        return reply(ctxt, buf, gatt_payload_sched(buf));
+    }
+    if (!is_write(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t buf[2 + PUMP_SCHED_MAX * 4];
+    uint16_t len = 0;
+    int rc = read_write(ctxt, buf, sizeof(buf), 1, &len);
+    if (rc != 0) {
+        return rc;
+    }
+    switch (buf[0]) {
+    case TANKLINK_SCHED_OP_SET_CLOCK:
+        rc = set_clock(buf, len);
+        break;
+    case TANKLINK_SCHED_OP_SET_LIST:
+        rc = set_schedules(buf, len);
+        break;
+    default:
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    if (rc == 0) {
+        gatt_svr_notify_sched();
+    }
+    return rc;
+}
+
+static int on_tanks(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    if (!gatt_svr_is_authed_conn(conn)) {
+        return BLE_ATT_ERR_READ_NOT_PERMITTED;
+    }
+    if (!is_read(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t buf[GATT_TANKS_MAX_LEN];
+    return reply(ctxt, buf, gatt_payload_tanks(buf));
+}
+
+static int on_ota_status(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
+                         void *arg)
+{
+    if (!is_read(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t buf[GATT_OTA_STATUS_LEN];
+    return reply(ctxt, buf, gatt_payload_ota_status(buf));
+}
+
+/** OtaCtrl: start(size, sha256) / abort / finish. Frozen layout. */
+static int on_ota_ctrl(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
+                       void *arg)
+{
+    if (!is_write(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t buf[1 + 4 + 32];
+    uint16_t len = 0;
+    const int rc = read_write(ctxt, buf, sizeof(buf), 1, &len);
+    if (rc != 0) {
+        return rc;
+    }
+    uint8_t err;
+    switch (buf[0]) {
+    case TANKLINK_OTA_OP_START:
+        if (len != sizeof(buf)) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        err = pump_ota_start(conn, get_u32(&buf[1]), &buf[5]);
+        break;
+    case TANKLINK_OTA_OP_ABORT:
+        err = pump_ota_abort_from(conn);
+        break;
+    case TANKLINK_OTA_OP_FINISH:
+        err = pump_ota_finish(conn);
+        break;
+    default:
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    notify_ota_status();
+    return err == TANKLINK_OTA_ERR_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+}
+
+/** OtaData: offset(u32) + payload, 512 bytes at most. Frozen layout. */
+static int on_ota_data(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
+                       void *arg)
+{
+    if (!is_write(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    static uint8_t buf[512]; /* NimBLE host task only: not re-entered */
+    uint16_t len = 0;
+    const int rc = read_write(ctxt, buf, sizeof(buf), 5, &len);
+    if (rc != 0) {
+        return rc;
+    }
+    const uint8_t err = pump_ota_write(conn, get_u32(buf), &buf[4], (uint16_t)(len - 4));
+    return err == TANKLINK_OTA_ERR_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+}
+
+/* ---------------------------------------------------------------------------
+ * Service table
+ * ------------------------------------------------------------------------- */
+
+static const ble_uuid128_t uuid_svc = TANKLINK_SVC_UUID_INIT;
+static const ble_uuid128_t uuid_info = TANKLINK_CHR_INFO_INIT;
+static const ble_uuid128_t uuid_pair = TANKLINK_CHR_PAIR_INIT;
+static const ble_uuid128_t uuid_auth = TANKLINK_CHR_AUTH_INIT;
+static const ble_uuid128_t uuid_state = TANKLINK_CHR_STATE_INIT;
+static const ble_uuid128_t uuid_cmd = TANKLINK_CHR_CMD_INIT;
+static const ble_uuid128_t uuid_settings = TANKLINK_CHR_SETTINGS_INIT;
+static const ble_uuid128_t uuid_ota_ctrl = TANKLINK_CHR_OTA_CTRL_INIT;
+static const ble_uuid128_t uuid_ota_data = TANKLINK_CHR_OTA_DATA_INIT;
+static const ble_uuid128_t uuid_ota_status = TANKLINK_CHR_OTA_STATUS_INIT;
+static const ble_uuid128_t uuid_tank = TANKLINK_CHR_TANK_INIT;
+static const ble_uuid128_t uuid_sched = TANKLINK_CHR_SCHED_INIT;
+static const ble_uuid128_t uuid_tanks = TANKLINK_CHR_TANKS_INIT;
+
+#define F_R BLE_GATT_CHR_F_READ
+#define F_W BLE_GATT_CHR_F_WRITE
+#define F_N BLE_GATT_CHR_F_NOTIFY
+
+static const struct ble_gatt_svc_def s_services[] = {
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &uuid_svc.u,
+        .characteristics = (struct ble_gatt_chr_def[]) {
+            {.uuid = &uuid_info.u, .access_cb = on_info, .flags = F_R},
+            {.uuid = &uuid_pair.u, .access_cb = on_pair, .flags = F_W | F_N,
+             .val_handle = &s_pair_val_handle},
+            {.uuid = &uuid_auth.u, .access_cb = on_auth, .flags = F_W},
+            {.uuid = &uuid_state.u, .access_cb = on_state, .flags = F_R | F_N,
+             .val_handle = &s_val_handle[SUB_STATE]},
+            {.uuid = &uuid_cmd.u, .access_cb = on_cmd, .flags = F_W},
+            {.uuid = &uuid_settings.u, .access_cb = on_settings, .flags = F_R | F_W},
+            {.uuid = &uuid_ota_ctrl.u, .access_cb = on_ota_ctrl, .flags = F_W},
+            {.uuid = &uuid_ota_data.u, .access_cb = on_ota_data,
+             .flags = F_W | BLE_GATT_CHR_F_WRITE_NO_RSP},
+            {.uuid = &uuid_ota_status.u, .access_cb = on_ota_status, .flags = F_R | F_N,
+             .val_handle = &s_val_handle[SUB_OTA_STATUS]},
+            {.uuid = &uuid_tank.u, .access_cb = on_tank, .flags = F_R | F_N,
+             .val_handle = &s_val_handle[SUB_TANK]},
+            {.uuid = &uuid_sched.u, .access_cb = on_sched, .flags = F_R | F_W | F_N,
+             .val_handle = &s_val_handle[SUB_SCHED]},
+            {.uuid = &uuid_tanks.u, .access_cb = on_tanks, .flags = F_R | F_N,
+             .val_handle = &s_val_handle[SUB_TANKS]},
+            {0},
+        },
+    },
+    {0},
+};
+
+/* ---------------------------------------------------------------------------
+ * Public API
+ * ------------------------------------------------------------------------- */
 
 void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg)
 {
-    (void)arg;
     char buf[BLE_UUID_STR_LEN];
-    switch (ctxt->op) {
-    case BLE_GATT_REGISTER_OP_SVC:
-        ESP_LOGI(TAG, "svc %s handle=%d",
-                 ble_uuid_to_str(ctxt->svc.svc_def->uuid, buf), ctxt->svc.handle);
-        break;
-    case BLE_GATT_REGISTER_OP_CHR:
-        ESP_LOGI(TAG, "chr %s val_handle=%d",
-                 ble_uuid_to_str(ctxt->chr.chr_def->uuid, buf), ctxt->chr.val_handle);
-        break;
-    default:
-        break;
+    if (ctxt->op == BLE_GATT_REGISTER_OP_SVC) {
+        ESP_LOGI(TAG, "svc %s handle=%d", ble_uuid_to_str(ctxt->svc.svc_def->uuid, buf),
+                 ctxt->svc.handle);
+    } else if (ctxt->op == BLE_GATT_REGISTER_OP_CHR) {
+        ESP_LOGI(TAG, "chr %s val_handle=%d", ble_uuid_to_str(ctxt->chr.chr_def->uuid, buf),
+                 ctxt->chr.val_handle);
     }
 }
 
@@ -755,30 +637,25 @@ int gatt_svr_init(void)
     memset(s_conns, 0, sizeof(s_conns));
     ble_svc_gap_init();
     ble_svc_gatt_init();
-    pump_ota_set_status_cb(ota_status_notify);
-
-    int rc = ble_gatts_count_cfg(gatt_svr_svcs);
-    if (rc != 0) {
-        return rc;
-    }
-    return ble_gatts_add_svcs(gatt_svr_svcs);
+    pump_ota_set_status_cb(notify_ota_status);
+    const int rc = ble_gatts_count_cfg(s_services);
+    return rc != 0 ? rc : ble_gatts_add_svcs(s_services);
 }
 
 void gatt_svr_on_connect(uint16_t conn_handle)
 {
-    conn_slot_t *slot = slot_alloc(conn_handle);
-    if (!slot) {
-        ESP_LOGW(TAG, "conn table full — rejecting handle=%u", conn_handle);
+    if (!slot_alloc(conn_handle)) {
+        ESP_LOGW(TAG, "conn table full, rejecting handle=%u", conn_handle);
         ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
         return;
     }
     const int count = gatt_svr_conn_count();
     ESP_LOGI(TAG, "conn add handle=%u count=%d", conn_handle, count);
     if (count == 1) {
-        /* First phone link: short accent pulse on standby, then stay idle. */
+        /* First phone: a short accent pulse, then back to idle. */
         status_led_notify_ble_connect();
     }
-    refresh_connected_led();
+    pump_control_refresh_idle_led();
 }
 
 void gatt_svr_on_disconnect(uint16_t conn_handle)
@@ -789,358 +666,7 @@ void gatt_svr_on_disconnect(uint16_t conn_handle)
         memset(slot, 0, sizeof(*slot));
     }
     ESP_LOGI(TAG, "conn drop handle=%u count=%d", conn_handle, gatt_svr_conn_count());
-    refresh_connected_led();
-}
-
-int gatt_svr_conn_count(void)
-{
-    int n = 0;
-    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
-        if (s_conns[i].in_use) {
-            n++;
-        }
-    }
-    return n;
-}
-
-bool gatt_svr_is_authed_conn(uint16_t conn_handle)
-{
-    conn_slot_t *slot = slot_find(conn_handle);
-    return slot && slot->authed;
-}
-
-bool gatt_svr_is_authed(void)
-{
-    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
-        if (s_conns[i].in_use && s_conns[i].authed) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool gatt_svr_is_connected(void)
-{
-    return gatt_svr_conn_count() > 0;
-}
-
-uint8_t gatt_svr_pump_state(void)
-{
-    return s_pump_on;
-}
-
-uint32_t gatt_svr_run_seconds(void)
-{
-    if (!s_pump_on || s_pump_on_since_us == 0) {
-        return 0;
-    }
-    int64_t elapsed = (esp_timer_get_time() - s_pump_on_since_us) / 1000000LL;
-    if (elapsed < 0) {
-        return 0;
-    }
-    return (uint32_t)elapsed;
-}
-
-static void report_start_denied(uint8_t code)
-{
-    s_last_error = code;
-    status_led_show_error(code);
-    gatt_svr_notify_tank_if_subscribed();
-}
-
-static void set_pump_state_internal(uint8_t on, bool allow_pump_buzz)
-{
-    uint8_t next = on ? 1 : 0;
-    if (next && (relay_control_is_blocked() || pump_ota_is_active())) {
-        ESP_LOGW(TAG, "Pump ON denied — blocked/OTA");
-        report_start_denied(PUMP_ERR_BLOCKED);
-        return;
-    }
-    if (next && lora_link_tank_bound() && lora_link_tank_online() &&
-        ((lora_link_tank_flags() & TANKLINK_LORA_FLAG_SENSOR1) != 0 ||
-         status_led_get_tank_full())) {
-        ESP_LOGW(TAG, "Pump ON denied — tank full");
-        report_start_denied(PUMP_ERR_TANK_FULL);
-        return;
-    }
-    bool changed = next != s_pump_on;
-    if (next && !s_pump_on) {
-        s_pump_on_since_us = esp_timer_get_time();
-        s_last_error = PUMP_ERR_NONE;
-        pump_runlog_on_start();
-        gatt_svr_notify_tank_if_subscribed();
-    }
-    if (!next) {
-        s_pump_on_since_us = 0;
-        pump_runlog_on_stop();
-    }
-    s_pump_on = next;
-    board_set_pump_on(s_pump_on != 0);
-    if (s_pump_on) {
-        relay_control_set_running(true);
-    } else {
-        /* Prefer force_off so Stop is always pulsed for safety. */
-        relay_control_force_off();
-    }
-    ESP_LOGI(TAG, "Pump state -> %u", s_pump_on);
-    if (changed && allow_pump_buzz && pump_config_buzzer_on_pump()) {
-        buzzer_play(next ? BUZZER_TONE_SHARP : BUZZER_TONE_CLICK, false);
-    }
-    if (!s_pump_on) {
-        refresh_connected_led();
-    }
-    gatt_svr_notify_state_if_subscribed();
-}
-
-void gatt_svr_set_last_error(uint8_t code)
-{
-    s_last_error = code;
-    gatt_svr_notify_tank_if_subscribed();
-}
-
-void gatt_svr_clear_last_error(void)
-{
-    if (s_last_error == PUMP_ERR_NONE) {
-        return;
-    }
-    s_last_error = PUMP_ERR_NONE;
-    gatt_svr_notify_tank_if_subscribed();
-}
-
-uint8_t gatt_svr_last_error(void)
-{
-    return s_last_error;
-}
-
-void gatt_svr_set_pump_state(uint8_t on)
-{
-    set_pump_state_internal(on, true);
-}
-
-void gatt_svr_set_pump_state_silent(uint8_t on)
-{
-    set_pump_state_internal(on, false);
-}
-
-void gatt_svr_toggle_pump(void)
-{
-    if (pump_ota_is_active()) {
-        ESP_LOGW(TAG, "Toggle ignored — OTA in progress");
-        return;
-    }
-    if (!pump_pair_is_paired()) {
-        ESP_LOGW(TAG, "Toggle ignored — not paired");
-        return;
-    }
-    /* Button click sound is handled by the caller when configured. */
-    gatt_svr_set_pump_state_silent(s_pump_on ? 0 : 1);
-}
-
-/* clock_valid hour minute count, count x (enabled hour minute slot), then
- * clock_flags: bit 0 = RTC present, bit 1 = RTC holds a trusted time. */
-#define SCHED_PAYLOAD_MAX (4 + PUMP_SCHED_MAX * 4 + 1)
-
-static uint16_t pack_sched(uint8_t *buf)
-{
-    pump_civil_time_t now;
-    const bool valid = pump_clock_now(&now);
-    const unsigned count = pump_sched_count();
-    buf[0] = valid ? 1 : 0;
-    buf[1] = valid ? (uint8_t)now.hour : 0;
-    buf[2] = valid ? (uint8_t)now.minute : 0;
-    buf[3] = (uint8_t)count;
-    const pump_sched_entry_t *entries = pump_sched_entries();
-    for (unsigned i = 0; i < count; i++) {
-        buf[4 + i * 4] = entries[i].enabled ? 1 : 0;
-        buf[4 + i * 4 + 1] = entries[i].hour;
-        buf[4 + i * 4 + 2] = entries[i].minute;
-        buf[4 + i * 4 + 3] = entries[i].slot;
-    }
-    uint8_t clock_flags = 0;
-    if (pump_clock_rtc_present()) {
-        clock_flags |= 0x01;
-    }
-    if (pump_clock_rtc_ok()) {
-        clock_flags |= 0x02;
-    }
-    buf[4 + count * 4] = clock_flags;
-    return (uint16_t)(4 + count * 4 + 1);
-}
-
-static int append_sched(struct os_mbuf *om)
-{
-    uint8_t buf[SCHED_PAYLOAD_MAX];
-    const uint16_t len = pack_sched(buf);
-    return os_mbuf_append(om, buf, len);
-}
-
-static void sched_notify(void)
-{
-    uint8_t buf[SCHED_PAYLOAD_MAX];
-    const uint16_t len = pack_sched(buf);
-    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
-        if (!s_conns[i].in_use || !s_conns[i].sched_notify) {
-            continue;
-        }
-        struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, len);
-        if (!om) {
-            continue;
-        }
-        int rc = ble_gatts_notify_custom(s_conns[i].conn_handle, s_sched_val_handle, om);
-        if (rc != 0) {
-            ESP_LOGW(TAG, "sched notify conn=%u rc=%d", s_conns[i].conn_handle, rc);
-        }
-    }
-}
-
-_Static_assert(TANKLINK_TANKS_ENTRY_LEN == 3 + PUMP_TANK_NAME_LEN, "Tanks entry layout");
-
-static uint16_t pack_tanks(uint8_t *buf, uint16_t cap)
-{
-    const unsigned count = pump_tanks_count();
-    const uint16_t need = (uint16_t)(4 + count * TANKLINK_TANKS_ENTRY_LEN);
-    if (cap < need) {
-        return 0;
-    }
-    buf[0] = pump_tanks_mode();
-    buf[1] = pump_tanks_active();
-    buf[2] = lora_link_tank_raw_flags();
-    buf[3] = (uint8_t)count;
-    uint16_t o = 4;
-    for (unsigned i = 0; i < count; i++) {
-        uint8_t index = 0;
-        pump_tank_slot_t slot;
-        if (!pump_tanks_slot_at(i, &index, &slot)) {
-            break;
-        }
-        buf[o++] = index;
-        buf[o++] = slot.sensor;
-        buf[o++] = slot.auto_off_min;
-        memcpy(&buf[o], slot.name, PUMP_TANK_NAME_LEN);
-        o = (uint16_t)(o + PUMP_TANK_NAME_LEN);
-    }
-    return o;
-}
-
-static int append_tanks(struct os_mbuf *om)
-{
-    uint8_t buf[4 + PUMP_TANK_SLOT_MAX * TANKLINK_TANKS_ENTRY_LEN];
-    const uint16_t len = pack_tanks(buf, sizeof(buf));
-    if (len == 0) {
-        return BLE_ATT_ERR_UNLIKELY;
-    }
-    return os_mbuf_append(om, buf, len);
-}
-
-static void tanks_notify(void)
-{
-    uint8_t buf[4 + PUMP_TANK_SLOT_MAX * TANKLINK_TANKS_ENTRY_LEN];
-    const uint16_t len = pack_tanks(buf, sizeof(buf));
-    if (len == 0) {
-        return;
-    }
-    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
-        if (!s_conns[i].in_use || !s_conns[i].tanks_notify) {
-            continue;
-        }
-        struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, len);
-        if (!om) {
-            continue;
-        }
-        int rc = ble_gatts_notify_custom(s_conns[i].conn_handle, s_tanks_val_handle, om);
-        if (rc != 0) {
-            ESP_LOGW(TAG, "tanks notify conn=%u rc=%d", s_conns[i].conn_handle, rc);
-        }
-    }
-}
-
-void gatt_svr_notify_tanks_if_subscribed(void)
-{
-    tanks_notify();
-}
-
-void gatt_svr_poll(void)
-{
-    pump_runlog_poll(s_pump_on != 0, gatt_svr_run_seconds());
-    pump_civil_time_t now;
-    const int due_slot = pump_clock_now(&now) ? pump_sched_take_due(&now) : -1;
-    if (due_slot >= 0 && !s_pump_on) {
-        bool ready = true;
-        if (pump_tanks_mode() == PUMP_SENSOR_MODE_TWO) {
-            ready = pump_tanks_select((uint8_t)due_slot, false) == ESP_OK;
-            if (!ready) {
-                ESP_LOGW(TAG, "Schedule slot %d missing", due_slot);
-            } else {
-                tanks_notify();
-                gatt_svr_notify_tank_if_subscribed();
-            }
-        }
-        if (ready) {
-            ESP_LOGI(TAG, "Schedule start %02u:%02u slot %d", now.hour, now.minute, due_slot);
-            gatt_svr_set_pump_state(1);
-        }
-    }
-    if (!s_pump_on) {
-        return;
-    }
-    uint8_t mins = pump_tanks_active_auto_off_min();
-    if (mins == 0) {
-        return;
-    }
-    uint32_t limit = (uint32_t)mins * 60u;
-    if (gatt_svr_run_seconds() >= limit) {
-        ESP_LOGW(TAG, "Auto-off after %u min", mins);
-        gatt_svr_set_pump_state_silent(0);
-        if (pump_config_buzzer_on_auto()) {
-            buzzer_play(BUZZER_TONE_DOUBLE, false);
-        }
-    }
-}
-
-void gatt_svr_notify_state_if_subscribed(void)
-{
-    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
-        if (!s_conns[i].in_use || !s_conns[i].state_notify) {
-            continue;
-        }
-        struct os_mbuf *om = ble_hs_mbuf_from_flat(&s_pump_on, 1);
-        if (!om) {
-            continue;
-        }
-        int rc = ble_gatts_notify_custom(s_conns[i].conn_handle, s_state_val_handle, om);
-        if (rc != 0) {
-            ESP_LOGW(TAG, "state notify conn=%u rc=%d", s_conns[i].conn_handle, rc);
-        }
-    }
-}
-
-void gatt_svr_notify_tank_if_subscribed(void)
-{
-    uint8_t buf[TANKLINK_TANK_STATUS_LEN];
-    fill_tank_status(buf);
-    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
-        if (!s_conns[i].in_use || !s_conns[i].tank_notify) {
-            continue;
-        }
-        struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, sizeof(buf));
-        if (!om) {
-            continue;
-        }
-        int rc = ble_gatts_notify_custom(s_conns[i].conn_handle, s_tank_val_handle, om);
-        if (rc != 0) {
-            ESP_LOGW(TAG, "tank notify conn=%u rc=%d", s_conns[i].conn_handle, rc);
-        }
-    }
-}
-
-uint16_t gatt_svr_pair_val_handle(void)
-{
-    return s_pair_val_handle;
-}
-
-uint16_t gatt_svr_state_val_handle(void)
-{
-    return s_state_val_handle;
+    pump_control_refresh_idle_led();
 }
 
 void gatt_svr_on_subscribe(uint16_t conn_handle, uint16_t attr_handle, bool notify_enabled)
@@ -1149,19 +675,24 @@ void gatt_svr_on_subscribe(uint16_t conn_handle, uint16_t attr_handle, bool noti
     if (!slot) {
         return;
     }
-    if (attr_handle == s_state_val_handle) {
-        slot->state_notify = notify_enabled;
+    for (int s = 0; s < SUB_COUNT; s++) {
+        if (attr_handle == s_val_handle[s]) {
+            slot->subscribed[s] = notify_enabled;
+        }
     }
-    if (attr_handle == s_ota_status_val_handle) {
-        slot->ota_status_notify = notify_enabled;
+}
+
+int gatt_svr_conn_count(void)
+{
+    int n = 0;
+    for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
+        n += s_conns[i].in_use ? 1 : 0;
     }
-    if (attr_handle == s_tank_val_handle) {
-        slot->tank_notify = notify_enabled;
-    }
-    if (attr_handle == s_sched_val_handle) {
-        slot->sched_notify = notify_enabled;
-    }
-    if (attr_handle == s_tanks_val_handle) {
-        slot->tanks_notify = notify_enabled;
-    }
+    return n;
+}
+
+bool gatt_svr_is_authed_conn(uint16_t conn_handle)
+{
+    const conn_slot_t *slot = slot_find(conn_handle);
+    return slot && slot->authed;
 }

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -54,9 +53,8 @@ Future<void> showFirmwareConfirmSheet(BuildContext context) async {
           children: [
             Text(
               'Update pump firmware',
-              style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(ctx).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             Container(
@@ -115,7 +113,10 @@ Future<void> showFirmwareConfirmSheet(BuildContext context) async {
               ),
             ),
             const SizedBox(height: 16),
-            Text('Size · $size', style: TextStyle(color: scheme.onSurfaceVariant)),
+            Text(
+              'Size · $size',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
             const SizedBox(height: 12),
             _Bullet(
               icon: Icons.power_settings_new_rounded,
@@ -177,9 +178,9 @@ Future<void> runFirmwareUpdate(
   final fw = context.read<PumpFirmwareUpdate>();
 
   if (!(session.authed && session.connected)) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Connect to the pump first')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Connect to the pump first')));
     return;
   }
   if (session.pumpOn) {
@@ -192,10 +193,8 @@ Future<void> runFirmwareUpdate(
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (ctx) => _OtaProgressDialog(
-      fromRelease: fromRelease,
-      localBytes: localBytes,
-    ),
+    builder: (ctx) =>
+        _OtaProgressDialog(fromRelease: fromRelease, localBytes: localBytes),
   );
   fw.resetPhase();
 }
@@ -213,9 +212,9 @@ Future<void> pickAndInstallFirmware(BuildContext context) async {
   }
   if (bytes == null || bytes.isEmpty) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Couldn’t read that file')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Couldn’t read that file')));
     }
     return;
   }
@@ -247,10 +246,7 @@ class _Bullet extends StatelessWidget {
 }
 
 class _OtaProgressDialog extends StatefulWidget {
-  const _OtaProgressDialog({
-    required this.fromRelease,
-    this.localBytes,
-  });
+  const _OtaProgressDialog({required this.fromRelease, this.localBytes});
 
   final bool fromRelease;
   final Uint8List? localBytes;
@@ -337,7 +333,8 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
           children: [
             if (!failed && !done) ...[
               LinearProgressIndicator(
-                value: (fw.phase == FwUpdatePhase.verifying ||
+                value:
+                    (fw.phase == FwUpdatePhase.verifying ||
                         fw.phase == FwUpdatePhase.rebooting ||
                         fw.phase == FwUpdatePhase.preparing)
                     ? null
@@ -429,4 +426,3 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
     );
   }
 }
-

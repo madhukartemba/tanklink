@@ -4,7 +4,7 @@ Byte-level reference for the app ↔ pump BLE link, the app ↔ tank BLE OTA lin
 
 All multi-byte integers are **little-endian**. "Authed" means the connection has written the correct 16-byte token to **Auth** since connecting.
 
-Source files: `pump_node/main/tanklink_uuid.h`, `pump_node/main/gatt_svr.c`, `tank_node/main/tanklink_ble_uuid.h`, `tank_node/main/tank_gatt.c`, `components/tanklink_lora/include/tanklink_lora_proto.h`, `tanklink_app/lib/ble/tanklink_uuids.dart`, `tanklink_app/lib/ble/pump_session.dart`.
+Source files: `pump_node/main/tanklink_uuid.h`, `pump_node/main/gatt_payloads.c`, `pump_node/main/gatt_svr.c`, `tank_node/main/tanklink_ble_uuid.h`, `tank_node/main/tank_gatt.c`, `components/tanklink_lora/include/tanklink_lora_proto.h`, `tanklink_app/lib/ble/tanklink_uuids.dart`, `tanklink_app/lib/ble/protocol.dart`.
 
 ## Versioning
 

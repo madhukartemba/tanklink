@@ -33,6 +33,7 @@ class TankLinkUuids {
   static const cmdUnpair = 0xF0;
   static const cmdFactoryReset = 0xF1;
   static const cmdClearError = 0xE0;
+
   /// Dismiss the interrupted-fill notice.
   static const cmdDismissInterrupt = 0xE1;
   static const cmdTestBeep = 0xB1;
@@ -40,6 +41,7 @@ class TankLinkUuids {
   static const cmdTankUnpair = 0xA2;
   static const cmdTankSelect = 0xA4;
   static const cmdTankRename = 0xA5;
+
   /// slot(1) minutes(1), 0 = off.
   static const cmdTankAutoOff = 0xA6;
 
@@ -47,6 +49,7 @@ class TankLinkUuids {
   static const sensorModeEmpty = 1;
   static const sensorModeTwo = 2;
   static const tankNameLen = 16;
+
   /// Tanks entry: slot_index sensor auto_off_min name(16).
   static const tanksEntryLen = 3 + tankNameLen;
   static const autoOffMaxMin = 240;
@@ -60,7 +63,7 @@ class TankLinkUuids {
   static const tankFlagBtn = 1 << 2;
   static const tankFlagPairing = 1 << 3;
 
-  /** Pump NeoPixel / home-banner codes (match docs/ERROR_CODES.md). */
+  /// Pump NeoPixel / home-banner codes (match docs/ERROR_CODES.md).
   static const pumpErrNone = 0;
   static const pumpErrTankFull = 1;
   static const pumpErrLoraMissing = 2;
@@ -79,9 +82,11 @@ class TankLinkUuids {
   static const interruptPowerLost = 1;
   static const interruptBrownout = 2;
   static const interruptRestarted = 3;
-  /** Warn when tank reports battery at or below this %. */
+
+  /// Warn when tank reports battery at or below this %.
   static const tankBatteryLowPct = 20;
-  /** Match pump CONFIG_PUMP_TANK_STALE_SEC — used for live last-seen / online. */
+
+  /// Match pump CONFIG_PUMP_TANK_STALE_SEC — used for live last-seen / online.
   static const tankStaleSec = 1500;
 
   static const otaOpStart = 0x01;
@@ -100,7 +105,7 @@ class TankLinkUuids {
   static const buzzOnPump = 1 << 2;
   static const buzzOnAutoOff = 1 << 3;
 
-  /** Starter / contactor profile (settings byte). */
+  /// Starter / contactor profile (settings byte).
   static const starterNone = 0;
   static const starterTwoButton = 1;
 

@@ -27,6 +27,34 @@ Flow: the tank wakes on a float change or a 10-minute heartbeat, sends a LoRa ST
 | Firmware releases (`pump-v*`, `tank-v*`) | [`docs/firmware-release.md`](docs/firmware-release.md) |
 | App releases (`app-v*`) | [`docs/app-release.md`](docs/app-release.md) |
 
+## Code map
+
+Pump (`pump_node/main/`):
+
+| File | Job |
+| --- | --- |
+| `main.c` | Boot order, NimBLE host and GAP events, advertising |
+| `pump_control.c` | Pump on/off, start checks, run time, last error, schedules, per-tank auto-off |
+| `gatt_svr.c` | BLE service table, one handler per characteristic, connections, notifications |
+| `gatt_payloads.c` | Byte layout of every characteristic read |
+| `relay_control.c`, `board.c` | Starter relays; button and LED wiring |
+| `lora_link.c` | Tank link: pairing, STATUS/ACK, last-seen record |
+| `pump_tanks.c`, `pump_sched.c`, `pump_config.c`, `pump_pair.c` | Saved state in NVS: tank slots, schedules, settings, phone pairing |
+| `pump_clock.c`, `pump_rtc.c`, `pump_runlog.c` | Local time, DS3231, interrupted-fill detection |
+| `pump_ota.c` | Firmware update over BLE |
+
+App (`tanklink_app/lib/`):
+
+| Folder / file | Job |
+| --- | --- |
+| `ble/protocol.dart` | Byte layouts (pure, unit tested) |
+| `ble/models.dart` | Saved pumps, tank slots, schedules |
+| `ble/pump_session.dart` | Connection, state the screens read, commands |
+| `ble/ota_upload.dart` | The shared OTA transfer for pump and tank |
+| `update/` | GitHub release checks, downloads, update flows |
+| `screens/`, `screens/home/`, `screens/settings/` | UI. One widget family per file |
+| `util/format.dart` | Shared labels |
+
 ## Shared contracts — change all copies together
 
 These values are duplicated by hand. There is no codegen. If you change one, change the others in the same commit.
@@ -35,7 +63,7 @@ These values are duplicated by hand. There is no codegen. If you change one, cha
 | --- | --- | --- | --- |
 | BLE UUIDs, Cmd opcodes, OTA opcodes/status, payload lengths | `pump_node/main/tanklink_uuid.h` | `tank_node/main/tanklink_ble_uuid.h` | `tanklink_app/lib/ble/tanklink_uuids.dart` |
 | LoRa packet format | `components/tanklink_lora/include/tanklink_lora_proto.h` (shared) | same | — |
-| BLE payload parsing | `pump_node/main/gatt_svr.c` | `tank_node/main/tank_gatt.c` | `tanklink_app/lib/ble/pump_session.dart` |
+| BLE payload layouts | `pump_node/main/gatt_payloads.c` (reads) and the handlers in `gatt_svr.c` (writes) | `tank_node/main/tank_gatt.c` | `tanklink_app/lib/ble/protocol.dart` (covered by `test/protocol_test.dart`) |
 | Protocol versions | `TANKLINK_PROTO_MAJOR/MINOR` in `tanklink_uuid.h` | same names in `tanklink_ble_uuid.h` | `TankLinkUuids.protoMajor` |
 
 Versioning rule (details in [`docs/PROTOCOL.md`](docs/PROTOCOL.md#versioning)):
@@ -81,7 +109,7 @@ App:
 cd tanklink_app
 flutter pub get
 flutter analyze
-flutter test            # one smoke test; see the note below
+flutter test            # protocol byte-layout tests + one smoke test
 flutter build apk --release
 ```
 
@@ -91,7 +119,7 @@ flutter build apk --release
 apksigner verify --print-certs tanklink_app/build/app/outputs/flutter-apk/app-release.apk | grep SHA-256
 ```
 
-`flutter test` currently fails offline: the smoke test pumps the full app, and the update checker's HTTP call gets a 400 in the test environment. The failure comes from that, not your change.
+`test/protocol_test.dart` checks every BLE byte layout against the firmware's; update it with any protocol change. The smoke test (`widget_test.dart`) currently fails offline: it pumps the full app, and the update checker's HTTP call gets a 400 in the test environment. That failure is not from your change.
 
 ## Release checklist (agents have got this wrong before)
 

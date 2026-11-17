@@ -10,9 +10,7 @@ import 'update/firmware_update.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   FlutterBluePlus.setLogLevel(LogLevel.info, color: false);
   runApp(const TankLinkApp());
 }
@@ -34,9 +32,7 @@ class TankLinkApp extends StatelessWidget {
           create: (_) => TankFirmwareUpdate()..loadCache(),
           update: (_, session, fw) => fw!..setBoardRev(session.tankHwRev),
         ),
-        ChangeNotifierProvider(
-          create: (_) => AppSelfUpdate()..loadCache(),
-        ),
+        ChangeNotifierProvider(create: (_) => AppSelfUpdate()..loadCache()),
       ],
       child: MaterialApp(
         title: 'TankLink',

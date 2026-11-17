@@ -35,8 +35,11 @@ class PumpListScreen extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.water_drop_outlined,
-                        size: 48, color: scheme.onSurfaceVariant),
+                    Icon(
+                      Icons.water_drop_outlined,
+                      size: 48,
+                      color: scheme.onSurfaceVariant,
+                    ),
                     const SizedBox(height: 16),
                     const Text('No pumps yet'),
                     const SizedBox(height: 8),
@@ -74,8 +77,10 @@ class PumpListScreen extends StatelessWidget {
                       : scheme.surfaceContainerHighest.withValues(alpha: 0.55),
                   borderRadius: BorderRadius.circular(16),
                   child: ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),

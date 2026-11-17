@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "gatt_svr.h"
+#include "pump_control.h"
 #include "nvs.h"
 #include "pump_clock.h"
 #include "pump_config.h"
@@ -417,8 +418,8 @@ static void apply_tank_packet(const tanklink_lora_status_t *pkt, int16_t rssi_db
     s_snr_db = snr_db;
     const bool full = pump_tanks_active_is_full(pkt->flags);
     status_led_set_tank_full(full);
-    if (full && gatt_svr_pump_state()) {
-        gatt_svr_set_pump_state_silent(0);
+    if (full && pump_control_is_on()) {
+        pump_control_set_silent(false);
     }
     ESP_LOGI(TAG,
              "tank RX type=%u flags=0x%02x bat=%u%% seq=%u fw=%u.%u.%u full=%d "
@@ -426,8 +427,8 @@ static void apply_tank_packet(const tanklink_lora_status_t *pkt, int16_t rssi_db
              pkt->type, pkt->flags, pkt->battery_pct, pkt->seq, pkt->fw_major,
              pkt->fw_minor, pkt->fw_patch, (int)full, (int)rssi_dbm, (int)snr_db);
     note_last_changed();
-    gatt_svr_notify_tank_if_subscribed();
-    gatt_svr_notify_tanks_if_subscribed();
+    gatt_svr_notify_tank();
+    gatt_svr_notify_tanks();
 }
 
 static void restore_led_after_tank_pair(void)
@@ -439,7 +440,7 @@ static void restore_led_after_tank_pair(void)
         status_led_set_mode(STATUS_LED_PAIRING);
     } else if (!pump_pair_is_paired()) {
         status_led_set_mode(STATUS_LED_UNPAIRED);
-    } else if (gatt_svr_pump_state()) {
+    } else if (pump_control_is_on()) {
         status_led_set_mode(STATUS_LED_PUMP_ON);
     } else {
         status_led_set_mode(STATUS_LED_IDLE);
@@ -455,7 +456,7 @@ static bool pairing_window_open(void)
         s_pairing = false;
         ESP_LOGI(TAG, "tank pair window closed");
         restore_led_after_tank_pair();
-        gatt_svr_notify_tank_if_subscribed();
+        gatt_svr_notify_tank();
         return false;
     }
     return true;
@@ -473,10 +474,10 @@ static void lora_task(void *arg)
         if (s_bound && s_was_online && !online) {
             s_was_online = false;
             ESP_LOGW(TAG, "tank went offline (no packet ≥%ds)", CONFIG_PUMP_TANK_STALE_SEC);
-            gatt_svr_set_last_error(PUMP_ERR_TANK_OFFLINE);
+            pump_control_set_error(PUMP_ERR_TANK_OFFLINE);
         } else if (online) {
-            if (!s_was_online && gatt_svr_last_error() == PUMP_ERR_TANK_OFFLINE) {
-                gatt_svr_clear_last_error();
+            if (!s_was_online && pump_control_last_error() == PUMP_ERR_TANK_OFFLINE) {
+                pump_control_clear_error();
             }
             s_was_online = true;
         }
@@ -515,7 +516,7 @@ static void lora_task(void *arg)
                     } else {
                         s_rssi_dbm = rssi;
                         s_snr_db = snr;
-                        gatt_svr_notify_tank_if_subscribed();
+                        gatt_svr_notify_tank();
                     }
                     ESP_LOGI(TAG, "tank paired %02x:%02x:%02x:%02x:%02x:%02x",
                              s_tank_id[0], s_tank_id[1], s_tank_id[2], s_tank_id[3],
@@ -533,7 +534,7 @@ static void lora_task(void *arg)
                     } else {
                         s_rssi_dbm = rssi;
                         s_snr_db = snr;
-                        gatt_svr_notify_tank_if_subscribed();
+                        gatt_svr_notify_tank();
                     }
                 }
             }
@@ -600,7 +601,7 @@ esp_err_t lora_link_start_tank_pair(uint32_t timeout_ms)
     s_pair_deadline_us = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
     status_led_set_mode(STATUS_LED_TANK_PAIRING);
     ESP_LOGI(TAG, "tank pair window open (%u ms)", (unsigned)timeout_ms);
-    gatt_svr_notify_tank_if_subscribed();
+    gatt_svr_notify_tank();
     return ESP_OK;
 }
 
@@ -610,7 +611,7 @@ void lora_link_stop_tank_pair(void)
         s_pairing = false;
         ESP_LOGI(TAG, "tank pair window stopped");
         restore_led_after_tank_pair();
-        gatt_svr_notify_tank_if_subscribed();
+        gatt_svr_notify_tank();
     }
 }
 
@@ -644,7 +645,7 @@ esp_err_t lora_link_unpair_tank(void)
     erase_last();
     pump_tanks_on_node_unpaired();
     ESP_LOGI(TAG, "tank unpaired");
-    gatt_svr_notify_tank_if_subscribed();
+    gatt_svr_notify_tank();
     return err;
 }
 

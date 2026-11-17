@@ -1,0 +1,168 @@
+#include "gatt_payloads.h"
+
+#include <string.h>
+
+#include "lora_link.h"
+#include "pump_clock.h"
+#include "pump_config.h"
+#include "pump_control.h"
+#include "pump_ota.h"
+#include "pump_pair.h"
+#include "pump_runlog.h"
+
+_Static_assert(TANKLINK_TANKS_ENTRY_LEN == 3 + PUMP_TANK_NAME_LEN, "Tanks entry layout");
+
+static void put_u16(uint8_t *out, uint16_t v)
+{
+    out[0] = (uint8_t)(v & 0xff);
+    out[1] = (uint8_t)(v >> 8);
+}
+
+static void put_u32(uint8_t *out, uint32_t v)
+{
+    out[0] = (uint8_t)(v & 0xff);
+    out[1] = (uint8_t)((v >> 8) & 0xff);
+    out[2] = (uint8_t)((v >> 16) & 0xff);
+    out[3] = (uint8_t)((v >> 24) & 0xff);
+}
+
+size_t gatt_payload_info(uint8_t out[TANKLINK_INFO_LEN], bool authed)
+{
+    /* proto_major proto_minor hw_rev paired flags device_id(6)
+     * fw_major fw_minor fw_patch run_secs(u32). Frozen across protocol
+     * majors; new fields go after it (see tanklink_uuid.h). */
+    uint8_t flags = 0;
+    if (pump_pair_pairing_active()) {
+        flags |= 0x01;
+    }
+    if (authed) {
+        flags |= 0x02;
+    }
+    out[0] = TANKLINK_PROTO_MAJOR;
+    out[1] = TANKLINK_PROTO_MINOR;
+    out[2] = TANKLINK_HW_REV;
+    out[3] = pump_pair_is_paired() ? 1 : 0;
+    out[4] = flags;
+    memcpy(&out[5], pump_pair_device_id(), TANKLINK_DEVICE_ID_LEN);
+    out[11] = TANKLINK_FW_MAJOR;
+    out[12] = TANKLINK_FW_MINOR;
+    out[13] = TANKLINK_FW_PATCH;
+    put_u32(&out[14], pump_control_run_seconds());
+    return TANKLINK_INFO_LEN;
+}
+
+size_t gatt_payload_settings(uint8_t out[GATT_SETTINGS_READ_LEN])
+{
+    /* run(4) serial(5) buzzer_flags tone led starter pulse_ms(2) sensor_mode */
+    put_u32(&out[0], pump_control_run_seconds());
+    memcpy(&out[4], pump_pair_serial(), TANKLINK_SERIAL_LEN + 1);
+    out[9] = pump_config_buzzer_flags();
+    out[10] = pump_config_buzzer_tone();
+    out[11] = pump_config_led_brightness();
+    out[12] = pump_config_starter_type();
+    put_u16(&out[13], pump_config_relay_pulse_ms());
+    out[15] = pump_config_sensor_mode();
+    return GATT_SETTINGS_READ_LEN;
+}
+
+size_t gatt_payload_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
+{
+    memset(out, 0, TANKLINK_TANK_STATUS_LEN);
+    out[0] = lora_link_tank_bound() ? 1 : 0;
+    out[1] = lora_link_tank_pairing_active() ? 1 : 0;
+    memcpy(&out[2], lora_link_tank_id(), TANKLINK_DEVICE_ID_LEN);
+    out[8] = lora_link_tank_fw_major();
+    out[9] = lora_link_tank_fw_minor();
+    out[10] = lora_link_tank_fw_patch();
+    out[11] = lora_link_tank_flags();
+    out[12] = lora_link_tank_battery_pct();
+    out[13] = lora_link_tank_online() ? 1 : 0;
+    put_u16(&out[14], lora_link_tank_age_sec());
+    int16_t rssi = lora_link_tank_rssi_dbm();
+    if (rssi < -128) {
+        rssi = -128;
+    }
+    if (rssi > 127) {
+        rssi = 127;
+    }
+    out[16] = (uint8_t)(int8_t)rssi;
+    out[17] = (uint8_t)lora_link_tank_snr_db();
+    out[18] = pump_control_last_error();
+    if (lora_link_tank_has_ble_token()) {
+        memcpy(&out[19], lora_link_tank_ble_token(), TANKLINK_TOKEN_LEN);
+    }
+    const pump_runlog_event_t *ev = pump_runlog_event();
+    if (ev) {
+        uint8_t *o = &out[TANKLINK_TANK_STATUS_TOKEN_LEN];
+        o[0] = ev->reason;
+        put_u32(&o[1], ev->started_local);
+        put_u32(&o[5], ev->last_seen_local);
+        put_u32(&o[9], ev->back_local);
+        put_u32(&o[13], ev->ran_sec);
+    }
+    out[TANKLINK_TANK_STATUS_HW_AT] = lora_link_tank_hw_rev();
+    return TANKLINK_TANK_STATUS_LEN;
+}
+
+size_t gatt_payload_sched(uint8_t out[GATT_SCHED_MAX_LEN])
+{
+    /* clock_valid hour minute count, count × (enabled hour minute slot), then
+     * clock_flags: bit 0 = RTC present, bit 1 = RTC holds a trusted time. */
+    pump_civil_time_t now;
+    const bool valid = pump_clock_now(&now);
+    const unsigned count = pump_sched_count();
+    out[0] = valid ? 1 : 0;
+    out[1] = valid ? (uint8_t)now.hour : 0;
+    out[2] = valid ? (uint8_t)now.minute : 0;
+    out[3] = (uint8_t)count;
+    const pump_sched_entry_t *entries = pump_sched_entries();
+    uint8_t *o = &out[4];
+    for (unsigned i = 0; i < count; i++, o += 4) {
+        o[0] = entries[i].enabled ? 1 : 0;
+        o[1] = entries[i].hour;
+        o[2] = entries[i].minute;
+        o[3] = entries[i].slot;
+    }
+    uint8_t clock_flags = 0;
+    if (pump_clock_rtc_present()) {
+        clock_flags |= 0x01;
+    }
+    if (pump_clock_rtc_ok()) {
+        clock_flags |= 0x02;
+    }
+    *o = clock_flags;
+    return 4 + count * 4 + 1;
+}
+
+size_t gatt_payload_tanks(uint8_t out[GATT_TANKS_MAX_LEN])
+{
+    /* mode active_slot raw_flags count, count × (index sensor auto_off name[16]) */
+    out[0] = pump_tanks_mode();
+    out[1] = pump_tanks_active();
+    out[2] = lora_link_tank_raw_flags();
+    size_t o = 4;
+    uint8_t written = 0;
+    for (unsigned i = 0; i < pump_tanks_count() && i < PUMP_TANK_SLOT_MAX; i++) {
+        uint8_t index = 0;
+        pump_tank_slot_t slot;
+        if (!pump_tanks_slot_at(i, &index, &slot)) {
+            break;
+        }
+        out[o++] = index;
+        out[o++] = slot.sensor;
+        out[o++] = slot.auto_off_min;
+        memcpy(&out[o], slot.name, PUMP_TANK_NAME_LEN);
+        o += PUMP_TANK_NAME_LEN;
+        written++;
+    }
+    out[3] = written;
+    return o;
+}
+
+size_t gatt_payload_ota_status(uint8_t out[GATT_OTA_STATUS_LEN])
+{
+    out[0] = pump_ota_state();
+    out[1] = pump_ota_last_error();
+    put_u32(&out[2], pump_ota_offset());
+    return GATT_OTA_STATUS_LEN;
+}

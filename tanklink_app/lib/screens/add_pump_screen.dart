@@ -41,18 +41,15 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
       // Tank status is read during connect; prompt if this pump has no tank yet.
       if (!session.tankBound) {
         await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (_) => const PairTankPromptScreen(),
-          ),
+          MaterialPageRoute<void>(builder: (_) => const PairTankPromptScreen()),
         );
         if (!mounted) return;
       }
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Couldn’t add pump: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Couldn’t add pump: $e')));
     }
   }
 
@@ -87,8 +84,8 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
               session.scanning
                   ? 'Looking for TankLink pumps nearby…'
                   : session.scanResults.isEmpty
-                      ? 'Nothing found. Hold the pump button 5s for pairing, then scan again.'
-                      : 'Tap a pump to claim it.',
+                  ? 'Nothing found. Hold the pump button 5s for pairing, then scan again.'
+                  : 'Tap a pump to claim it.',
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),
           ),
@@ -97,8 +94,11 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
                 ? Center(
                     child: session.scanning
                         ? const CircularProgressIndicator()
-                        : Icon(Icons.bluetooth_searching,
-                            size: 48, color: scheme.onSurfaceVariant),
+                        : Icon(
+                            Icons.bluetooth_searching,
+                            size: 48,
+                            color: scheme.onSurfaceVariant,
+                          ),
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -113,8 +113,9 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
                         (p) => p.remoteId == r.device.remoteId.str,
                       );
                       return Material(
-                        color: scheme.surfaceContainerHighest
-                            .withValues(alpha: 0.55),
+                        color: scheme.surfaceContainerHighest.withValues(
+                          alpha: 0.55,
+                        ),
                         borderRadius: BorderRadius.circular(16),
                         child: ListTile(
                           contentPadding: const EdgeInsets.symmetric(
@@ -126,8 +127,10 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
                           ),
                           leading: CircleAvatar(
                             backgroundColor: scheme.primaryContainer,
-                            child: Icon(Icons.water_drop,
-                                color: scheme.onPrimaryContainer),
+                            child: Icon(
+                              Icons.water_drop,
+                              color: scheme.onPrimaryContainer,
+                            ),
                           ),
                           title: Text(
                             name,

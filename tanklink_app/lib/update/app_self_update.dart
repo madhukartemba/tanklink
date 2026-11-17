@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -123,7 +124,8 @@ class AppSelfUpdate extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final last = prefs.getInt(_prefsCheckAt) ?? 0;
       final age = DateTime.now().millisecondsSinceEpoch - last;
-      if (age < const Duration(hours: 6).inMilliseconds && latestVersion != null) {
+      if (age < const Duration(hours: 6).inMilliseconds &&
+          latestVersion != null) {
         return;
       }
     }
@@ -228,7 +230,10 @@ class AppSelfUpdate extends ChangeNotifier {
       final dir = await getApplicationSupportDirectory();
       final outDir = Directory(p.join(dir.path, 'updates'));
       await outDir.create(recursive: true);
-      final safeVer = latestVersion!.replaceAll(RegExp(r'[^0-9a-zA-Z._-]'), '_');
+      final safeVer = latestVersion!.replaceAll(
+        RegExp(r'[^0-9a-zA-Z._-]'),
+        '_',
+      );
       final out = File(p.join(outDir.path, 'TankLink-$safeVer.apk'));
       await out.writeAsBytes(bytes, flush: true);
       cachedApkPath = out.path;
@@ -267,10 +272,7 @@ class AppSelfUpdate extends ChangeNotifier {
   }
 
   Future<AppReleaseInfo?> _fetchLatestAppRelease() async {
-    final list = await fetchGitHubReleases(
-      owner: repoOwner,
-      repo: repoName,
-    );
+    final list = await fetchGitHubReleases(owner: repoOwner, repo: repoName);
     final candidates = listTaggedReleasesBySemver(
       releases: list,
       tagPrefix: 'app-v',

@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "gatt_svr.h"
+#include "pump_control.h"
 #include "lora_link.h"
 #include "pump_config.h"
 #include "pump_pair.h"
@@ -26,7 +27,7 @@ static void factory_reboot_task(void *arg)
 esp_err_t pump_factory_reset(void)
 {
     ESP_LOGW(TAG, "Factory reset — clearing pair, tank, config");
-    gatt_svr_set_pump_state_silent(0);
+    pump_control_set_silent(false);
     relay_control_set_blocked(true);
 
     esp_err_t err = pump_pair_unpair();
@@ -51,7 +52,7 @@ esp_err_t pump_factory_reset(void)
     }
     pump_config_apply_buzzer();
     pump_config_apply_led();
-    gatt_svr_clear_last_error();
+    pump_control_clear_error();
     pump_runlog_clear_event();
 
     status_led_set_mode(STATUS_LED_UPDATE_OK);

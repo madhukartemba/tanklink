@@ -21,6 +21,7 @@
 #include "board.h"
 #include "buzzer.h"
 #include "gatt_svr.h"
+#include "pump_control.h"
 #include "lora_link.h"
 #include "pump_clock.h"
 #include "pump_config.h"
@@ -74,21 +75,21 @@ static void on_start(void)
         return;
     }
     if (!pump_pair_is_paired()) {
-        gatt_svr_set_last_error(PUMP_ERR_NOT_PAIRED);
+        pump_control_set_error(PUMP_ERR_NOT_PAIRED);
         status_led_show_error(PUMP_ERR_NOT_PAIRED);
         return;
     }
     if (pump_config_buzzer_on_button()) {
         buzzer_play_user(false);
     }
-    gatt_svr_set_pump_state_silent(1);
+    pump_control_set_silent(true);
 }
 
 static void on_stop(void)
 {
     if (pump_ota_is_active()) {
         /* Still allow stop for safety during OTA. */
-        gatt_svr_set_pump_state_silent(0);
+        pump_control_set_silent(false);
         return;
     }
     if (pump_pair_pairing_active()) {
@@ -98,7 +99,7 @@ static void on_stop(void)
     if (pump_config_buzzer_on_button()) {
         buzzer_play_user(false);
     }
-    gatt_svr_set_pump_state_silent(0);
+    pump_control_set_silent(false);
 }
 
 static void pair_poll_task(void *arg)
@@ -107,7 +108,7 @@ static void pair_poll_task(void *arg)
     while (1) {
         pump_pair_poll();
         pump_clock_poll();
-        gatt_svr_poll();
+        pump_control_poll();
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
@@ -306,7 +307,7 @@ void app_main(void)
     board_set_stop_callback(on_stop);
     if (lora_link_init() != ESP_OK) {
         ESP_LOGW(TAG, "LoRa init failed — tank link offline");
-        gatt_svr_set_last_error(PUMP_ERR_LORA_MISSING);
+        pump_control_set_error(PUMP_ERR_LORA_MISSING);
         status_led_show_error(PUMP_ERR_LORA_MISSING);
     }
     if (pump_ota_init() != ESP_OK) {

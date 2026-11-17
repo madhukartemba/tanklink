@@ -38,9 +38,8 @@ Future<void> showAppUpdateConfirmSheet(BuildContext context) async {
           children: [
             Text(
               'Update TankLink app',
-              style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(ctx).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             Text(
@@ -54,8 +53,17 @@ Future<void> showAppUpdateConfirmSheet(BuildContext context) async {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Current', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
-                      Text(current, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(
+                        'Current',
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        current,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ],
                   ),
                 ),
@@ -64,15 +72,27 @@ Future<void> showAppUpdateConfirmSheet(BuildContext context) async {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text('New', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
-                      Text(latest, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(
+                        'New',
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        latest,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            Text('Download size: $size', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
+            Text(
+              'Download size: $size',
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+            ),
             const SizedBox(height: 20),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, 'update'),

@@ -1,5 +1,3 @@
-import 'dart:ui' show FontFeature;
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -31,7 +29,8 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
 
   Future<void> _confirm() async {
     final session = context.read<PumpSession>();
-    final dirty = _draftType != session.starterType ||
+    final dirty =
+        _draftType != session.starterType ||
         _draftPulseMs != session.relayPulseMs;
     if (!dirty) {
       Navigator.of(context).pop();
@@ -39,10 +38,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
     }
     setState(() => _saving = true);
     try {
-      await session.setStarterConfig(
-        type: _draftType,
-        pulseMs: _draftPulseMs,
-      );
+      await session.setStarterConfig(type: _draftType, pulseMs: _draftPulseMs);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -56,9 +52,8 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Couldn’t save starter: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Couldn’t save starter: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -69,14 +64,13 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
     final scheme = Theme.of(context).colorScheme;
     final session = context.watch<PumpSession>();
     _hydrate(session);
-    final dirty = _draftType != session.starterType ||
+    final dirty =
+        _draftType != session.starterType ||
         _draftPulseMs != session.relayPulseMs;
     final twoButton = _draftType == TankLinkUuids.starterTwoButton;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Starter'),
-      ),
+      appBar: AppBar(title: const Text('Starter')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
@@ -101,16 +95,15 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
             onTap: _saving
                 ? null
                 : () => setState(
-                      () => _draftType = TankLinkUuids.starterTwoButton,
-                    ),
+                    () => _draftType = TankLinkUuids.starterTwoButton,
+                  ),
           ),
           if (twoButton) ...[
             const SizedBox(height: 12),
             Text(
               'Press length',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
@@ -125,7 +118,8 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
                   child: Slider(
                     min: TankLinkUuids.relayPulseMsMin.toDouble(),
                     max: TankLinkUuids.relayPulseMsMax.toDouble(),
-                    divisions: (TankLinkUuids.relayPulseMsMax -
+                    divisions:
+                        (TankLinkUuids.relayPulseMsMax -
                             TankLinkUuids.relayPulseMsMin) ~/
                         50,
                     value: _draftPulseMs.toDouble(),
@@ -133,8 +127,8 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
                     onChanged: _saving
                         ? null
                         : (v) => setState(
-                              () => _draftPulseMs = (v / 50).round() * 50,
-                            ),
+                            () => _draftPulseMs = (v / 50).round() * 50,
+                          ),
                   ),
                 ),
                 SizedBox(
@@ -155,21 +149,28 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('50 ms',
-                      style: TextStyle(
-                          color: scheme.onSurfaceVariant, fontSize: 12)),
-                  Text('2 s',
-                      style: TextStyle(
-                          color: scheme.onSurfaceVariant, fontSize: 12)),
+                  Text(
+                    '50 ms',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                  Text(
+                    '2 s',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
             Text(
               'Wiring help',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
             Text(
@@ -181,7 +182,8 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
             const SizedBox(height: 12),
             _WiringCard(
               title: 'Start connection',
-              body: 'Use a switch that is open when the app is not pressing it.\n\n'
+              body:
+                  'Use a switch that is open when the app is not pressing it.\n\n'
                   'Wire it across the same two terminals as the panel’s Start button.\n\n'
                   'When the app presses Start, the switch closes, just like pushing '
                   'the button. The panel’s holding contact keeps the motor running '
@@ -190,7 +192,8 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
             const SizedBox(height: 10),
             _WiringCard(
               title: 'Stop connection',
-              body: 'Use a switch that is closed when the app is not pressing it. '
+              body:
+                  'Use a switch that is closed when the app is not pressing it. '
                   'Some two-way switches work this way; a switch that is only open '
                   'when idle will not work for Stop.\n\n'
                   'Wire it in series with the panel’s Stop button, so it can open '
@@ -204,7 +207,8 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
             const SizedBox(height: 10),
             _WiringCard(
               title: 'How it works',
-              body: 'Turn on → the app presses Start.\n'
+              body:
+                  'Turn on → the app presses Start.\n'
                   'Turn off → the app presses Stop.\n'
                   'When the pump restarts → it presses Stop first, for safety.\n'
                   'During an update or setup → the pump stops and will not start.\n\n'

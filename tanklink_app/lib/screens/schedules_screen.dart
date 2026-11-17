@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
+import '../util/format.dart';
 
 class SchedulesScreen extends StatefulWidget {
   const SchedulesScreen({super.key});
@@ -97,22 +98,19 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
     return 'Phone time sent · $clock';
   }
 
-  static String _minutes(int m) =>
-      m < 60 ? '$m min' : '${m ~/ 60}h${m % 60 == 0 ? '' : ' ${m % 60}m'}';
-
   String _stopLine(PumpSession session) {
     final String stop;
     if (!session.twoTankMode) {
       final m = session.autoOffMin;
       stop = m <= 0
           ? 'A fill stops when the tank is full or you stop the pump.'
-          : 'A fill stops when the tank is full or after ${_minutes(m)}.';
+          : 'A fill stops when the tank is full or after ${formatAutoOff(m)}.';
       return 'Runs every day at these times. $stop';
     }
     final limits = [
       for (final t in session.tanks)
         '${t.name.isEmpty ? session.tankNameFor(t.index) : t.name}: '
-            '${t.autoOffMin <= 0 ? 'no limit' : _minutes(t.autoOffMin)}',
+            '${t.autoOffMin <= 0 ? 'no limit' : formatAutoOff(t.autoOffMin)}',
     ].join(', ');
     return 'Runs every day at these times. A fill stops when that tank is full '
         'or after its auto-off ($limits). Set the lever to that tank before the '

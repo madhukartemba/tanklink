@@ -61,10 +61,7 @@ class HomeUpdateBannerCard extends StatelessWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: tint,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w700, color: tint),
                   ),
                   const SizedBox(height: 2),
                   Text(

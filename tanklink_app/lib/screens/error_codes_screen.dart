@@ -32,8 +32,7 @@ class ErrorCodesScreen extends StatelessWidget {
     (
       code: 5,
       name: 'Setup timed out',
-      detail:
-          'The pump did not confirm setup in time. Start setup again and hold the button.',
+      detail: 'The pump did not confirm setup in time. Start setup again and hold the button.',
     ),
   ];
 
@@ -79,10 +78,7 @@ class ErrorCodesScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
         children: [
-          Text(
-            'Tank light',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('Tank light', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 6),
           Text(
             'The light blinks slowly in groups of long blinks, with a pause between groups. '
@@ -93,10 +89,7 @@ class ErrorCodesScreen extends StatelessWidget {
           const SizedBox(height: 16),
           for (final e in _tankCodes) _CodeCard(entry: e, scheme: scheme),
           const SizedBox(height: 20),
-          Text(
-            'Pump light',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('Pump light', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 6),
           Text(
             'Red blinks, with the number of blinks showing the warning. '
@@ -132,10 +125,7 @@ class ErrorCodesScreen extends StatelessWidget {
             style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
           ),
           const SizedBox(height: 16),
-          Text(
-            'Setup tip',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('Setup tip', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 6),
           Text(
             'Hold the tank button until the light glows steadily, then keep holding until it starts to glow and fade. '

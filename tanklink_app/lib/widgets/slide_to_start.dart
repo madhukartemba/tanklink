@@ -189,15 +189,21 @@ class _SlideToStartState extends State<SlideToStart>
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: FractionallySizedBox(
-                      widthFactor:
-                          ((_pad + dx + thumbSize) / innerW).clamp(0.0, 1.0),
+                      widthFactor: ((_pad + dx + thumbSize) / innerW).clamp(
+                        0.0,
+                        1.0,
+                      ),
                       heightFactor: 1,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              scheme.primary.withValues(alpha: 0.35 * _progress),
-                              scheme.primary.withValues(alpha: 0.12 * _progress),
+                              scheme.primary.withValues(
+                                alpha: 0.35 * _progress,
+                              ),
+                              scheme.primary.withValues(
+                                alpha: 0.12 * _progress,
+                              ),
                             ],
                           ),
                         ),
@@ -254,8 +260,8 @@ class _SlideToStartState extends State<SlideToStart>
                         : null,
                     onHorizontalDragUpdate: enabled
                         ? (d) {
-                            final next =
-                                (_progress + d.delta.dx / travel).clamp(0.0, 1.0);
+                            final next = (_progress + d.delta.dx / travel)
+                                .clamp(0.0, 1.0);
                             setState(() => _progress = next);
                             if (next > 0.48 && next < 0.55) {
                               HapticFeedback.selectionClick();
@@ -282,8 +288,7 @@ class _SlideToStartState extends State<SlideToStart>
                         boxShadow: enabled
                             ? [
                                 BoxShadow(
-                                  color:
-                                      scheme.primary.withValues(alpha: 0.35),
+                                  color: scheme.primary.withValues(alpha: 0.35),
                                   blurRadius: 8,
                                   offset: Offset.zero,
                                 ),

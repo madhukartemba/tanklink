@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -50,9 +49,8 @@ Future<void> showTankFirmwareConfirmSheet(BuildContext context) async {
           children: [
             Text(
               'Update tank firmware',
-              style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(ctx).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             Container(
@@ -111,12 +109,14 @@ Future<void> showTankFirmwareConfirmSheet(BuildContext context) async {
               ),
             ),
             const SizedBox(height: 16),
-            Text('Size · $size', style: TextStyle(color: scheme.onSurfaceVariant)),
+            Text(
+              'Size · $size',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
             const SizedBox(height: 12),
             _Bullet(
               icon: Icons.touch_app_rounded,
-              text:
-                  'Press the button once on the tank sensor to start the update',
+              text: 'Press the button once on the tank sensor to start the update',
             ),
             const _Bullet(
               icon: Icons.bluetooth_rounded,
@@ -143,7 +143,9 @@ Future<void> showTankFirmwareConfirmSheet(BuildContext context) async {
                 ),
               ),
               child: Text(
-                !session.tankOtaReady ? 'Set up tank again first' : 'Update now',
+                !session.tankOtaReady
+                    ? 'Set up tank again first'
+                    : 'Update now',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
@@ -173,14 +175,16 @@ Future<void> runTankFirmwareUpdate(BuildContext context) async {
   final fw = context.read<TankFirmwareUpdate>();
 
   if (!session.ready) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Connect to the pump first')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Connect to the pump first')));
     return;
   }
   if (!session.tankOtaReady) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Set up the tank sensor again to allow updates')),
+      const SnackBar(
+        content: Text('Set up the tank sensor again to allow updates'),
+      ),
     );
     return;
   }
@@ -297,7 +301,8 @@ class _TankOtaProgressDialogState extends State<_TankOtaProgressDialog> {
           children: [
             if (!failed && !done) ...[
               LinearProgressIndicator(
-                value: (fw.phase == FwUpdatePhase.verifying ||
+                value:
+                    (fw.phase == FwUpdatePhase.verifying ||
                         fw.phase == FwUpdatePhase.rebooting ||
                         fw.phase == FwUpdatePhase.preparing)
                     ? null
@@ -356,4 +361,3 @@ class _TankOtaProgressDialogState extends State<_TankOtaProgressDialog> {
     );
   }
 }
-

@@ -107,10 +107,7 @@ List<TaggedReleaseAssets> listTaggedReleasesBySemver({
 
 Future<Map<String, dynamic>?> fetchReleaseManifest(String manifestUrl) async {
   final manRes = await http
-      .get(
-        Uri.parse(manifestUrl),
-        headers: {'User-Agent': 'TankLink-App'},
-      )
+      .get(Uri.parse(manifestUrl), headers: {'User-Agent': 'TankLink-App'})
       .timeout(githubRequestTimeout);
   if (manRes.statusCode != 200) return null;
   final man = jsonDecode(manRes.body);
