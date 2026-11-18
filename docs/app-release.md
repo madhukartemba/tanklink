@@ -13,9 +13,11 @@ cp key.properties.example key.properties
 # Edit key.properties — never commit key.properties or *.jks
 ```
 
+The upload key exists on the release machine: `android/app/upload-keystore.jks`, passwords in `android/key.properties`, certificate SHA-256 `d4000075a2503d04c9d19c4e440dfd0656140c35379809290fdfa72167ecc3a1`.
+
 Back up `upload-keystore.jks` and its passwords somewhere safe. Android only installs an update signed with the same key as the installed app, so losing the key means every phone has to uninstall and pair again.
 
-> Releases up to app 1.1.0 are signed with this build machine's debug key (cert SHA-256 `4eaeb0bf…afa381`), built with `--android-project-arg=allowDebugSigning=true`. The first release signed with the upload key cannot update those installs: uninstall the old app once, install the new one, and pair the pump again.
+> Releases up to app 1.2.0 are signed with this build machine's debug key (cert SHA-256 `4eaeb0bf…afa381`), built with `--android-project-arg=allowDebugSigning=true`. The first release signed with the upload key cannot update those installs: uninstall the old app once, install the new one, and pair the pump again.
 
 For a build on a machine without the key: `flutter build apk --release --android-project-arg=allowDebugSigning=true`. Only publish one from the machine whose debug key signed the earlier releases, and check the signer below.
 
@@ -51,6 +53,8 @@ gh release upload app-latest /tmp/TankLink.apk --clobber
 QR and direct download (always the file last uploaded to `app-latest`):
 
 `https://github.com/madhukartemba/tanklink/releases/download/app-latest/TankLink.apk`
+
+The QR image is [`docs/app-latest-qr.svg`](app-latest-qr.svg). It is the smallest symbol that URL can make (version 5, low error correction, 4-module quiet zone).
 
 The app lists releases via the GitHub API, picks the newest `app-v*` tag, verifies `app-manifest.json` **sha256**, downloads **TankLink.apk**, and opens the system install UI.
 

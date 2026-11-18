@@ -114,7 +114,7 @@ flutter test            # protocol byte-layout tests + one smoke test
 flutter build apk --release
 ```
 
-**Signing:** release builds need `tanklink_app/android/key.properties` and the upload keystore (both gitignored), and fail without them. Releases through app 1.1.0 are signed with this machine's debug key (certificate SHA-256 `4eaeb0bf…afa381`), built with `flutter build apk --release --android-project-arg=allowDebugSigning=true`. The first upload-key release needs a one-time uninstall on each phone. Check the signer before publishing:
+**Signing:** release builds need `tanklink_app/android/key.properties` and the upload keystore `tanklink_app/android/app/upload-keystore.jks` (both gitignored), and fail without them. The upload key's certificate SHA-256 is `d4000075…ecc3a1`; every release from the next one on must be signed with it. Releases through app 1.2.0 are signed with this machine's debug key (`4eaeb0bf…afa381`), so the first upload-key release needs a one-time uninstall on each phone. Never publish with `allowDebugSigning` again. Check the signer before publishing:
 
 ```bash
 apksigner verify --print-certs tanklink_app/build/app/outputs/flutter-apk/app-release.apk | grep SHA-256
