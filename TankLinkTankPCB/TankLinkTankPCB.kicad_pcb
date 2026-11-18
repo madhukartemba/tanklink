@@ -4176,7 +4176,7 @@
 			)
 		)
 	)
-	(gr_text "5V TS1 TS2 GND"
+	(gr_text "GND TS2 TS1 5V"
 		(at 106 129.1 0)
 		(layer "B.SilkS")
 		(uuid "9dbf87e6-bc43-4beb-8297-e3e02c6dca1f")
@@ -4188,7 +4188,7 @@
 			(justify mirror)
 		)
 	)
-	(gr_text "+BAT-"
+	(gr_text "-BAT+"
 		(at 117.8 129.1 0)
 		(layer "B.SilkS")
 		(uuid "bdcb3029-9c3d-460c-b3bb-8056724a6aa9")
@@ -4200,7 +4200,7 @@
 			(justify mirror)
 		)
 	)
-	(gr_text "+LED-"
+	(gr_text "-LED+"
 		(at 127.1 129.1 0)
 		(layer "B.SilkS")
 		(uuid "c425730e-a791-4a90-9ec9-bac92d980355")

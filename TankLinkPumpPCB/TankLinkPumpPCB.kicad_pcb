@@ -3618,7 +3618,7 @@
 			)
 		)
 	)
-	(gr_text "3V3 SDA SCL GND"
+	(gr_text "GND SCL SDA 3V3"
 		(at 106 123.6 0)
 		(layer "B.SilkS")
 		(uuid "272a3017-44b1-45aa-a9e9-9ef5f29e3424")
@@ -3642,7 +3642,7 @@
 			(justify mirror)
 		)
 	)
-	(gr_text "5V SIG GND"
+	(gr_text "GND SIG 5V"
 		(at 116.31 123.6 0)
 		(layer "B.SilkS")
 		(uuid "68ab55b8-fff4-4aef-bc2a-3791772f1da9")
@@ -3666,7 +3666,7 @@
 			(justify mirror)
 		)
 	)
-	(gr_text "5V DIN GND"
+	(gr_text "GND DIN 5V"
 		(at 125.62 123.6 0)
 		(layer "B.SilkS")
 		(uuid "e79fd50c-02a4-456b-a55a-9eca4e2cb935")
@@ -3690,7 +3690,7 @@
 			(justify mirror)
 		)
 	)
-	(gr_text "3V3 SIG GND"
+	(gr_text "GND SIG 3V3"
 		(at 134.93 123.6 0)
 		(layer "B.SilkS")
 		(uuid "e8b3ea55-fa3d-454d-a2ca-9f4ac5c7c434")
@@ -3714,7 +3714,7 @@
 			(justify mirror)
 		)
 	)
-	(gr_text "5V R1 R2 GND"
+	(gr_text "GND R2 R1 5V"
 		(at 145.24 123.6 0)
 		(layer "B.SilkS")
 		(uuid "7589e813-84a4-4818-b693-d5c42bc553d6")
