@@ -72,7 +72,7 @@ class _PairTankPromptScreenState extends State<PairTankPromptScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'You will hold the tank button for about 3 seconds while its light '
+              'You will hold the tank button for about 5 seconds while its light '
               'gets brighter, then wait for it to glow and fade until setup finishes.',
               style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
             ),

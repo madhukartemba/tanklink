@@ -229,7 +229,8 @@ class _TankChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final selected = slot.index == session.activeSlot;
     final locked = session.pumpOn && !selected;
-    final offline = !session.tankOnline;
+    // Each tank's state comes from its own sensor.
+    final offline = !session.slotOnline(slot);
     final full = session.slotIsFull(slot);
     final label = offline
         ? 'Offline'

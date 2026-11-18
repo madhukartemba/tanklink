@@ -10,7 +10,8 @@
 #include "pump_pair.h"
 #include "pump_runlog.h"
 
-_Static_assert(TANKLINK_TANKS_ENTRY_LEN == 3 + PUMP_TANK_NAME_LEN, "Tanks entry layout");
+_Static_assert(TANKLINK_TANKS_ENTRY_LEN == 4 + PUMP_TANK_NAME_LEN, "Tanks entry layout");
+_Static_assert(TANKLINK_NODES_ENTRY_LEN == 19 + TANKLINK_TOKEN_LEN, "Sensors entry layout");
 
 static void put_u16(uint8_t *out, uint16_t v)
 {
@@ -24,6 +25,11 @@ static void put_u32(uint8_t *out, uint32_t v)
     out[1] = (uint8_t)((v >> 8) & 0xff);
     out[2] = (uint8_t)((v >> 16) & 0xff);
     out[3] = (uint8_t)((v >> 24) & 0xff);
+}
+
+static int8_t clamp_i8(int16_t v)
+{
+    return (int8_t)(v < -128 ? -128 : (v > 127 ? 127 : v));
 }
 
 size_t gatt_payload_info(uint8_t out[TANKLINK_INFO_LEN], bool authed)
@@ -53,7 +59,7 @@ size_t gatt_payload_info(uint8_t out[TANKLINK_INFO_LEN], bool authed)
 
 size_t gatt_payload_settings(uint8_t out[GATT_SETTINGS_READ_LEN])
 {
-    /* run(4) serial(5) buzzer_flags tone led starter pulse_ms(2) sensor_mode */
+    /* run(4) serial(5) buzzer_flags tone led starter pulse_ms(2) */
     put_u32(&out[0], pump_control_run_seconds());
     memcpy(&out[4], pump_pair_serial(), TANKLINK_SERIAL_LEN + 1);
     out[9] = pump_config_buzzer_flags();
@@ -61,7 +67,6 @@ size_t gatt_payload_settings(uint8_t out[GATT_SETTINGS_READ_LEN])
     out[11] = pump_config_led_brightness();
     out[12] = pump_config_starter_type();
     put_u16(&out[13], pump_config_relay_pulse_ms());
-    out[15] = pump_config_sensor_mode();
     return GATT_SETTINGS_READ_LEN;
 }
 
@@ -78,14 +83,7 @@ size_t gatt_payload_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
     out[12] = lora_link_tank_battery_pct();
     out[13] = lora_link_tank_online() ? 1 : 0;
     put_u16(&out[14], lora_link_tank_age_sec());
-    int16_t rssi = lora_link_tank_rssi_dbm();
-    if (rssi < -128) {
-        rssi = -128;
-    }
-    if (rssi > 127) {
-        rssi = 127;
-    }
-    out[16] = (uint8_t)(int8_t)rssi;
+    out[16] = (uint8_t)clamp_i8(lora_link_tank_rssi_dbm());
     out[17] = (uint8_t)lora_link_tank_snr_db();
     out[18] = pump_control_last_error();
     if (lora_link_tank_has_ble_token()) {
@@ -136,11 +134,9 @@ size_t gatt_payload_sched(uint8_t out[GATT_SCHED_MAX_LEN])
 
 size_t gatt_payload_tanks(uint8_t out[GATT_TANKS_MAX_LEN])
 {
-    /* mode active_slot raw_flags count, count × (index sensor auto_off name[16]) */
-    out[0] = pump_tanks_mode();
-    out[1] = pump_tanks_active();
-    out[2] = lora_link_tank_raw_flags();
-    size_t o = 4;
+    /* active_slot count, count × (index sensor_pin sensor_index auto_off name[16]) */
+    out[0] = pump_tanks_active();
+    size_t o = 2;
     uint8_t written = 0;
     for (unsigned i = 0; i < pump_tanks_count() && i < PUMP_TANK_SLOT_MAX; i++) {
         uint8_t index = 0;
@@ -150,12 +146,48 @@ size_t gatt_payload_tanks(uint8_t out[GATT_TANKS_MAX_LEN])
         }
         out[o++] = index;
         out[o++] = slot.sensor;
+        out[o++] = slot.node;
         out[o++] = slot.auto_off_min;
         memcpy(&out[o], slot.name, PUMP_TANK_NAME_LEN);
         o += PUMP_TANK_NAME_LEN;
         written++;
     }
-    out[3] = written;
+    out[1] = written;
+    return o;
+}
+
+size_t gatt_payload_nodes(uint8_t out[GATT_NODES_MAX_LEN])
+{
+    out[1] = PUMP_NODE_MAX;
+    size_t o = 2;
+    uint8_t count = 0;
+    for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
+        pump_tank_node_t node;
+        lora_node_status_t st;
+        if (!pump_tanks_node_get(n, &node) || !lora_link_node_status(n, &st)) {
+            continue;
+        }
+        uint8_t *e = &out[o];
+        e[0] = n;
+        memcpy(&e[1], node.mac, 6);
+        e[7] = node.mode;
+        e[8] = st.raw_flags;
+        e[9] = st.battery_pct;
+        e[10] = st.online ? 1 : 0;
+        put_u16(&e[11], st.age_sec);
+        e[13] = (uint8_t)clamp_i8(st.rssi_dbm);
+        e[14] = (uint8_t)st.snr_db;
+        memcpy(&e[15], st.fw, 3);
+        e[18] = st.hw_rev;
+        if (st.has_ble_token) {
+            memcpy(&e[19], st.ble_token, TANKLINK_TOKEN_LEN);
+        } else {
+            memset(&e[19], 0, TANKLINK_TOKEN_LEN);
+        }
+        o += TANKLINK_NODES_ENTRY_LEN;
+        count++;
+    }
+    out[0] = count;
     return o;
 }
 

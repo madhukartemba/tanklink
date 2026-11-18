@@ -248,17 +248,11 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.sensors),
-              title: const Text('Tank sensor'),
+              title: const Text('Tank sensors'),
               subtitle: Text(
                 !ready
-                    ? 'Connect to manage the tank sensor'
-                    : !session.tankBound
-                    ? 'Not paired'
-                    : session.twoTankMode
-                    ? 'Two tanks · ${session.activeTankName}'
-                    : session.emptyFloatConnected
-                    ? 'Almost-empty sensor on'
-                    : 'Second float off',
+                    ? 'Connect to manage tank sensors'
+                    : tankSensorsSummary(session),
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
               enabled: ready,

@@ -34,7 +34,7 @@ esp_err_t pump_factory_reset(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "pair clear failed: %s", esp_err_to_name(err));
     }
-    err = lora_link_unpair_tank();
+    err = lora_link_unpair_all();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "tank clear failed: %s", esp_err_to_name(err));
     }

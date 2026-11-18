@@ -117,11 +117,18 @@ class TankSlot {
     required this.sensor,
     required this.name,
     required this.autoOffMin,
+    required this.node,
   });
 
   final int index;
+
+  /// Which float pin of its sensor is this tank's full float: 0 or 1.
   final int sensor;
   final String name;
+
+  /// Index of the tank sensor it belongs to, [TankLinkUuids.sensorNone] for
+  /// a pump with no sensor.
+  final int node;
 
   /// Stop a fill into this tank after this many minutes. 0 = off.
   final int autoOffMin;
@@ -131,6 +138,7 @@ class TankSlot {
     sensor: sensor,
     name: name ?? this.name,
     autoOffMin: autoOffMin ?? this.autoOffMin,
+    node: node,
   );
 }
 

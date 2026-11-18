@@ -112,7 +112,7 @@ Stored on the pump in NVS namespace `pump`, key `cfg`. Defaults apply after a fi
 | LED brightness | 70 % | 1 – 100 % | Pump settings |
 | **Starter type** | **none** | none, two-button | **Starter** |
 | Relay pulse | 1000 ms | 50 – 2000 ms | Starter |
-| Second float | off | off, almost-empty, two tanks | Tank sensor settings |
+| Second float (per sensor) | off | off, almost-empty, two tanks | Tank sensors → a sensor. Stored with the sensor in `tl_tanks` |
 
 > **The starter type defaults to "none".** In that mode the pump tracks on/off and the LED, but never pulses the relays. A new or factory-reset pump needs **Starter → two-button** set in the app before it will actually run a motor.
 
@@ -122,8 +122,8 @@ Other data the pump saves (all cleared by factory reset or `erase-flash`):
 | --- | --- |
 | `pump` | Runtime settings above |
 | `tl_pair` | Phone pairing (paired flag + 16-byte token) |
-| `tl_tank` | Bound tank ID, the tank's BLE OTA token, and the last tank packet (`last`) for restoring last-seen after a restart |
-| `tl_tanks` | Tank slots: names, which float, and each tank's auto-off |
+| `tl_tank` | Per paired sensor N: its BLE OTA token (`tok<N>`) and last packet (`last<N>`, for restoring last-seen after a restart). Pump 0.12's single-sensor keys (`bound`, `id`, `ble_tok`, `last`) are moved to node 0 on first boot |
+| `tl_tanks` | Paired sensors (up to 4: MAC, float mode), tank slots (up to 8: sensor, which float, name, auto-off), and the selected tank. Pump 0.12's layout (`TNK5`) is migrated on first boot, taking the float mode from `pump/cfg` |
 | `tl_sched` | Fill schedules (up to 4) |
 | `tl_run` | "Pump is running" record while a fill runs (refreshed each minute), and the interrupted-fill notice until it is dismissed |
 

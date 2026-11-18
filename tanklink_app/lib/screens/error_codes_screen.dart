@@ -10,7 +10,7 @@ class ErrorCodesScreen extends StatelessWidget {
       name: 'Not set up',
       detail:
           'The tank was pressed but is not connected to a pump yet. '
-          'Start setup on the pump, then hold the tank button for about 3 seconds.',
+          'Start setup on the pump, then hold the tank button for about 5 seconds.',
     ),
     (
       code: 2,

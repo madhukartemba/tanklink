@@ -8,21 +8,27 @@ import '../../update/firmware_update_flow.dart';
 import '../../update/firmware_update.dart';
 import '../../update/tank_firmware_update_flow.dart';
 
+/// Firmware of one tank sensor, with an update button when one is available.
 class TankFirmwareTile extends StatelessWidget {
-  const TankFirmwareTile({super.key, required this.ready});
+  const TankFirmwareTile({
+    super.key,
+    required this.ready,
+    required this.sensor,
+  });
 
   final bool ready;
+  final TankSensor sensor;
 
   @override
   Widget build(BuildContext context) {
     final session = context.watch<PumpSession>();
     final fw = context.watch<TankFirmwareUpdate>();
-    final device = session.tankFw.isEmpty ? '—' : session.tankFw;
+    final device = sensor.firmware.isEmpty ? '—' : sensor.firmware;
     final available =
         ready &&
-        session.tankOnline &&
-        session.tankOtaReady &&
-        fw.updateAvailableFor(session.tankFw);
+        session.sensorOnline(sensor) &&
+        sensor.otaReady &&
+        fw.updateAvailableFor(sensor.firmware);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -35,7 +41,7 @@ class TankFirmwareTile extends StatelessWidget {
         ),
         title: const Text('Tank firmware'),
         subtitle: Text(
-          !session.tankOtaReady
+          !sensor.otaReady
               ? '$device · pair again to allow updates'
               : available
               ? '$device → ${fw.latestVersion}'
@@ -43,7 +49,7 @@ class TankFirmwareTile extends StatelessWidget {
         ),
         trailing: available
             ? FilledButton.tonal(
-                onPressed: () => showTankFirmwareConfirmSheet(context),
+                onPressed: () => showTankFirmwareConfirmSheet(context, sensor),
                 child: Text('Update to ${fw.latestVersion}'),
               )
             : IconButton(

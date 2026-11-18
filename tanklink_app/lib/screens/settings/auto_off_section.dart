@@ -5,7 +5,7 @@ import '../../ble/pump_session.dart';
 import '../../ble/tanklink_uuids.dart';
 import '../../util/format.dart';
 
-/// Auto-off switch and duration for one tank. In two-tank mode a selector
+/// Auto-off switch and duration for one tank. With several tanks a selector
 /// picks which tank is being edited; each tank keeps its own limit.
 class AutoOffSection extends StatefulWidget {
   const AutoOffSection({super.key, required this.ready});
@@ -91,7 +91,7 @@ class _AutoOffSectionState extends State<AutoOffSection> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    session.twoTankMode ? 'Auto-off per tank' : 'Auto-off',
+                    session.multiTank ? 'Auto-off per tank' : 'Auto-off',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
@@ -119,25 +119,26 @@ class _AutoOffSectionState extends State<AutoOffSection> {
             ),
           ],
         ),
-        if (ready && session.twoTankMode && _editSlot != null) ...[
+        if (ready && session.multiTank && _editSlot != null) ...[
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.only(left: 40),
-            child: SegmentedButton<int>(
-              showSelectedIcon: false,
-              segments: [
+            // Up to eight tanks: chips wrap where segments would overflow.
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
                 for (final t in session.tanks)
-                  ButtonSegment(
-                    value: t.index,
+                  ChoiceChip(
                     label: Text(
                       t.name.isEmpty ? session.tankNameFor(t.index) : t.name,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    selected: t.index == _editSlot,
+                    onSelected: (_) =>
+                        setState(() => _loadSlot(session, t.index)),
                   ),
               ],
-              selected: {_editSlot!},
-              onSelectionChanged: (s) =>
-                  setState(() => _loadSlot(session, s.first)),
             ),
           ),
         ],

@@ -47,7 +47,7 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
     final picked = await showTimePicker(context: context, initialTime: initial);
     if (picked == null || !mounted) return;
     var slot = existing?.slot ?? session.activeSlot;
-    if (session.twoTankMode) {
+    if (session.multiTank) {
       final chosen = await showDialog<int>(
         context: context,
         builder: (ctx) => SimpleDialog(
@@ -100,7 +100,7 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
 
   String _stopLine(PumpSession session) {
     final String stop;
-    if (!session.twoTankMode) {
+    if (!session.multiTank) {
       final m = session.autoOffMin;
       stop = m <= 0
           ? 'A fill stops when the tank is full or you stop the pump.'
@@ -156,7 +156,7 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
             for (var i = 0; i < session.schedules.length; i++)
               _ScheduleTile(
                 schedule: session.schedules[i],
-                tankName: session.twoTankMode
+                tankName: session.multiTank
                     ? session.tankNameFor(session.schedules[i].slot)
                     : null,
                 enabled: ready && !_busy,

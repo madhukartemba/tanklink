@@ -50,6 +50,7 @@ typedef enum {
     SUB_TANK,
     SUB_SCHED,
     SUB_TANKS,
+    SUB_NODES,
     SUB_COUNT,
 } sub_t;
 
@@ -137,6 +138,12 @@ void gatt_svr_notify_tanks(void)
 {
     uint8_t buf[GATT_TANKS_MAX_LEN];
     notify_all(SUB_TANKS, buf, gatt_payload_tanks(buf));
+}
+
+void gatt_svr_notify_nodes(void)
+{
+    uint8_t buf[GATT_NODES_MAX_LEN];
+    notify_all(SUB_NODES, buf, gatt_payload_nodes(buf));
 }
 
 void gatt_svr_notify_sched(void)
@@ -265,6 +272,24 @@ static int on_state(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *c
     return reply(ctxt, &on, 1);
 }
 
+/** Everything the app shows about tanks, after a sensor or slot change. */
+static void notify_tank_change(void)
+{
+    lora_link_on_active_changed();
+    gatt_svr_notify_tank();
+    gatt_svr_notify_tanks();
+    gatt_svr_notify_nodes();
+}
+
+/** Sensor index for a sensor_id(6) in a command, or -1. */
+static int node_from_id(const uint8_t *body, uint16_t len, uint16_t at)
+{
+    if (len < at + TANKLINK_DEVICE_ID_LEN) {
+        return -1;
+    }
+    return pump_tanks_node_find(&body[at]);
+}
+
 /** Runs one Cmd opcode. [body] is the whole write, [len] at least 1. */
 static int run_command(const uint8_t *body, uint16_t len)
 {
@@ -291,8 +316,28 @@ static int run_command(const uint8_t *body, uint16_t len)
                    ? 0
                    : BLE_ATT_ERR_UNLIKELY;
 
-    case TANKLINK_CMD_TANK_UNPAIR:
-        return lora_link_unpair_tank() == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+    case TANKLINK_CMD_TANK_UNPAIR: {
+        /* Refused while the pump fills one of that sensor's tanks. */
+        const int node = node_from_id(body, len, 1);
+        if (node < 0) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        return lora_link_unpair_node((uint8_t)node) == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+    }
+
+    case TANKLINK_CMD_SENSOR_MODE: {
+        const int node = node_from_id(body, len, 1);
+        if (node < 0 || len < 1 + TANKLINK_DEVICE_ID_LEN + 1) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        if (pump_tanks_set_node_mode((uint8_t)node, body[1 + TANKLINK_DEVICE_ID_LEN],
+                                     pump_control_is_on()) != ESP_OK) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        notify_tank_change();
+        gatt_svr_notify_sched();
+        return 0;
+    }
 
     case TANKLINK_CMD_FACTORY_RESET:
         return pump_factory_reset() == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
@@ -313,8 +358,7 @@ static int run_command(const uint8_t *body, uint16_t len)
         if (pump_tanks_select(body[1], pump_control_is_on()) != ESP_OK) {
             return BLE_ATT_ERR_UNLIKELY;
         }
-        gatt_svr_notify_tank();
-        gatt_svr_notify_tanks();
+        notify_tank_change();
         return 0;
 
     case TANKLINK_CMD_TANK_RENAME:
@@ -352,8 +396,9 @@ static int on_cmd(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctx
         ESP_LOGW(TAG, "Cmd rejected: conn=%u not signed in", conn);
         return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
     }
-    /* Longest command: rename = opcode + slot + name. */
+    /* Longest command: rename = opcode + slot + name (sensor mode is 8). */
     uint8_t body[1 + 1 + PUMP_TANK_NAME_LEN];
+    _Static_assert(sizeof(body) >= 1 + TANKLINK_DEVICE_ID_LEN + 1, "Cmd buffer");
     uint16_t len = 0;
     const int rc = read_write(ctxt, body, sizeof(body), 1, &len);
     return rc != 0 ? rc : run_command(body, len);
@@ -372,8 +417,8 @@ static int on_settings(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt
     if (!gatt_svr_is_authed_conn(conn)) {
         return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
     }
-    /* buzzer_flags tone led starter pulse_ms(u16) sensor_mode. A newer app
-     * may append fields (protocol minor); they are ignored. */
+    /* buzzer_flags tone led starter pulse_ms(u16). A newer app may append
+     * fields (protocol minor); they are ignored. */
     uint8_t buf[TANKLINK_SETTINGS_WRITE_LEN + 16];
     uint16_t len = 0;
     const int rc = read_write(ctxt, buf, sizeof(buf), TANKLINK_SETTINGS_WRITE_LEN, &len);
@@ -387,16 +432,8 @@ static int on_settings(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt
         pump_config_set_relay_pulse_ms(pulse) != ESP_OK) {
         return BLE_ATT_ERR_UNLIKELY;
     }
-    if (buf[6] != pump_tanks_mode()) {
-        if (pump_tanks_set_mode(buf[6], pump_control_is_on()) != ESP_OK) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        gatt_svr_notify_tank();
-        gatt_svr_notify_tanks();
-        gatt_svr_notify_sched();
-    }
-    ESP_LOGI(TAG, "settings buzz=0x%02x tone=%u led=%u starter=%u pulse=%ums mode=%u", buf[0],
-             buf[1], buf[2], buf[3], (unsigned)pulse, buf[6]);
+    ESP_LOGI(TAG, "settings buzz=0x%02x tone=%u led=%u starter=%u pulse=%ums", buf[0],
+             buf[1], buf[2], buf[3], (unsigned)pulse);
     return 0;
 }
 
@@ -503,6 +540,18 @@ static int on_tanks(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *c
     return reply(ctxt, buf, gatt_payload_tanks(buf));
 }
 
+static int on_nodes(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    if (!gatt_svr_is_authed_conn(conn)) {
+        return BLE_ATT_ERR_READ_NOT_PERMITTED;
+    }
+    if (!is_read(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t buf[GATT_NODES_MAX_LEN];
+    return reply(ctxt, buf, gatt_payload_nodes(buf));
+}
+
 static int on_ota_status(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
                          void *arg)
 {
@@ -581,6 +630,7 @@ static const ble_uuid128_t uuid_ota_status = TANKLINK_CHR_OTA_STATUS_INIT;
 static const ble_uuid128_t uuid_tank = TANKLINK_CHR_TANK_INIT;
 static const ble_uuid128_t uuid_sched = TANKLINK_CHR_SCHED_INIT;
 static const ble_uuid128_t uuid_tanks = TANKLINK_CHR_TANKS_INIT;
+static const ble_uuid128_t uuid_nodes = TANKLINK_CHR_NODES_INIT;
 
 #define F_R BLE_GATT_CHR_F_READ
 #define F_W BLE_GATT_CHR_F_WRITE
@@ -610,6 +660,8 @@ static const struct ble_gatt_svc_def s_services[] = {
              .val_handle = &s_val_handle[SUB_SCHED]},
             {.uuid = &uuid_tanks.u, .access_cb = on_tanks, .flags = F_R | F_N,
              .val_handle = &s_val_handle[SUB_TANKS]},
+            {.uuid = &uuid_nodes.u, .access_cb = on_nodes, .flags = F_R | F_N,
+             .val_handle = &s_val_handle[SUB_NODES]},
             {0},
         },
     },

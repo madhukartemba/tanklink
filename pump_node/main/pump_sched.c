@@ -4,6 +4,7 @@
 
 #include "esp_log.h"
 #include "nvs.h"
+#include "pump_tanks.h"
 
 #define TAG "SCHED"
 #define NVS_NS "tl_sched"
@@ -98,7 +99,7 @@ esp_err_t pump_sched_set(const pump_sched_entry_t *entries, unsigned count)
         return ESP_ERR_INVALID_ARG;
     }
     for (unsigned i = 0; i < count; i++) {
-        if (entries[i].hour > 23 || entries[i].minute > 59 || entries[i].slot > 3) {
+        if (entries[i].hour > 23 || entries[i].minute > 59 || entries[i].slot >= PUMP_TANK_SLOT_MAX) {
             return ESP_ERR_INVALID_ARG;
         }
         for (unsigned j = 0; j < i; j++) {

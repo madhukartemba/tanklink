@@ -25,6 +25,8 @@ Every link carries a protocol version, and every board reports its hardware revi
 - Pump major is lower: the app says *Update the pump firmware* and allows only a firmware update.
 - Pump major is higher: the app says *Update the app* and allows only a firmware update.
 
+The app has one major for pump and tank, because firmware manifests of both are filtered by it. The tank's major follows the pump's even when nothing on the tank changed.
+
 **Frozen across every major**, so the check above and OTA always work: the service UUID, the Info layout (append-only), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
 
 **Hardware revision**: set per build in Kconfig and reported in Info (pump) and every LoRa packet (tank, relayed to the app in the Tank characteristic). Bump it when a board change needs different firmware. Each firmware manifest lists the revisions the binary fits (`hw_revs`), and the app only offers a release whose `hw_revs` contains the connected board's revision and whose `proto_major` equals its own.
@@ -45,9 +47,10 @@ All UUIDs are `7f1a00XX-ac01-4c8c-9b2e-74616e6b6c6e`.
 | 08 | OtaCtrl | ✓ | ✓ |
 | 09 | OtaData | ✓ | ✓ |
 | 0a | OtaStatus | ✓ | ✓ |
-| 0b | Tank (status of the paired tank) | ✓ | |
+| 0b | Tank (the selected tank's sensor) | ✓ | |
 | 0c | Schedule | ✓ | |
 | 0d | Tanks (slot list) | ✓ | |
+| 0e | Sensors (paired tank sensors) | ✓ | |
 
 Advertised names: pump `TankLink-XXXX` (last 4 hex of MAC), tank `TL-Tank-XXXX`. The tank also puts its `tank_id` in manufacturer data under company ID `0xFFFF`.
 
@@ -87,11 +90,12 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | Opcode | Meaning | Extra bytes |
 | --- | --- | --- |
 | `0x00` / `0x01` | Pump off / on | — |
-| `0xA1` | Open LoRa tank-pair window (60 s default) | — |
-| `0xA2` | Unpair tank | — |
+| `0xA1` | Open LoRa tank-pair window (60 s default). A PAIR adds that sensor, or refreshes its token if already paired. Ignored when 4 sensors are paired | — |
+| `0xA2` | Unpair a sensor: deletes its tanks and their schedules. Refused while the pump fills one of its tanks. The last sensor's first tank stays, without a sensor | `sensor_id(6)` |
 | `0xA4` | Select active tank slot (rejected for a different slot while running) | `slot(1)` |
 | `0xA5` | Rename tank slot | `slot(1) name(≤16, UTF-8)` |
 | `0xA6` | Set a tank slot's auto-off | `slot(1) minutes(1)`, 0 = off, max 240 |
+| `0xA7` | Set a sensor's float mode (see Sensors). Leaving two-tank mode deletes that sensor's second tank and its schedules, refused while the pump fills it | `sensor_id(6) mode(1)` |
 | `0xB1` | Test beep | — |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |
@@ -102,23 +106,21 @@ Maximum write length is 18 bytes.
 
 ### Settings (read no auth, write authed)
 
-Read, 16 bytes:
+Read, 15 bytes:
 
-`run_secs(u32) serial(4 chars + NUL) buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16) sensor_mode(1)`
+`run_secs(u32) serial(4 chars + NUL) buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16)`
 
-Write, at least 7 bytes (extra bytes from a newer app are ignored):
+Write, at least 6 bytes (extra bytes from a newer app are ignored):
 
-`buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16) sensor_mode(1)`
+`buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16)`
 
 - `buzzer_flags`: bit 0 enabled, bit 1 on button, bit 2 on pump start/stop, bit 3 on auto-off.
 - `starter_type`: 0 = none (logical on/off only), 1 = two-button starter (Start/Stop momentary relays).
-- `sensor_mode`: 0 = second float off, 1 = almost-empty float, 2 = two tanks (sensor 2 is a second tank's full float). Leaving mode 2 while running fails. Leaving mode 2 deletes slot 1 and any schedules pointing at it.
-
-Auto-off is per tank: see Cmd `0xA6` and the Tanks characteristic.
+Auto-off is per tank (Cmd `0xA6`, Tanks) and the float mode per sensor (Cmd `0xA7`, Sensors).
 
 ### Tank (read + notify)
 
-53 bytes:
+The sensor of the **selected** tank (the one the pump fills), plus pump-wide error and interrupted-fill fields. `bound` = 0 when no sensor is paired. 53 bytes:
 
 | Offset | Size | Field |
 | --- | --- | --- |
@@ -126,7 +128,7 @@ Auto-off is per tank: see Cmd `0xA6` and the Tanks characteristic.
 | 1 | 1 | LoRa pairing window open |
 | 2 | 6 | tank_id (tank MAC) |
 | 8 | 3 | tank fw major, minor, patch |
-| 11 | 1 | flags (LoRa flags, see below) |
+| 11 | 1 | flags: bit 0 = the selected tank is full, bit 1 = almost empty (that sensor in almost-empty mode), bits 2–3 as LoRa |
 | 12 | 1 | battery % |
 | 13 | 1 | online (bound and heard within the stale window) |
 | 14 | 2 | seconds since last packet (`0xFFFF` = never). Survives a restart when the DS3231 holds the time |
@@ -141,7 +143,7 @@ Auto-off is per tank: see Cmd `0xA6` and the Tanks characteristic.
 | 48 | 4 | how long it ran before the cut, seconds (u32, ±1 min) |
 | 52 | 1 | tank board revision (0 = not heard yet) |
 
-The app uses the token at offset 19 to authenticate to the tank directly for tank OTA.
+For tank OTA the app authenticates to the tank with that sensor's token from the Sensors characteristic.
 
 ### Schedule (read/write/notify, authed)
 
@@ -154,9 +156,36 @@ Write:
 
 ### Tanks (read + notify, authed)
 
-`mode(1) active_slot(1) raw_flags(1) count(1)` followed by `count` × 19-byte entries: `slot_index(1) sensor(1) auto_off_min(1) name(16, NUL-padded)`.
+`active_slot(1) count(1)` followed by `count` × 20-byte entries: `slot_index(1) sensor_pin(1) sensor_index(1) auto_off_min(1) name(16, NUL-padded)`.
 
-`sensor`: 0 = the tank's sensor 1 pin, 1 = sensor 2 pin. `auto_off_min`: 0 = off. `raw_flags` is the last LoRa flags byte. A fill stops after the active slot's auto-off.
+- `sensor_pin`: 0 = the sensor's pin 1, 1 = pin 2 (only in two-tank mode).
+- `sensor_index`: the sensor (see Sensors) whose float this tank uses, `0xFF` = none.
+- `auto_off_min`: 0 = off. A fill stops after the active slot's auto-off.
+
+Up to 8 slots. With no sensor paired there is exactly one slot (`sensor_index` `0xFF`), holding the name and auto-off for running without a sensor. Otherwise every slot has a sensor, each sensor has a pin-1 slot, and a pin-2 slot only in two-tank mode. A new sensor adds one slot; the first one takes over the sensorless slot.
+
+**Only the selected tank** blocks a start when full or stops a running fill. Other tanks may be full (a lever or valve picks the tank). Selecting another slot (Cmd `0xA4`) is refused while the pump runs. A schedule switches to its slot before starting.
+
+### Sensors (read + notify, authed)
+
+`count(1) max(1)` followed by `count` × 35-byte entries:
+
+| Offset | Size | Field |
+| --- | --- | --- |
+| 0 | 1 | sensor index (stable while paired; used by Tanks) |
+| 1 | 6 | sensor id (tank MAC) |
+| 7 | 1 | float mode: 0 = second float off, 1 = almost-empty float, 2 = two tanks (pin 2 is a second tank's full float) |
+| 8 | 1 | raw LoRa flags of its last packet |
+| 9 | 1 | battery % |
+| 10 | 1 | online |
+| 11 | 2 | seconds since last packet (`0xFFFF` = never) |
+| 13 | 1 | RSSI dBm (int8) |
+| 14 | 1 | SNR dB (int8) |
+| 15 | 3 | firmware major, minor, patch |
+| 18 | 1 | board revision |
+| 19 | 16 | BLE OTA token (zeros if unknown) |
+
+Notified on every packet from any sensor, and when one goes out of range.
 
 ### OTA (pump and tank) — frozen
 
@@ -210,6 +239,6 @@ Flags: bit 0 = sensor 1 pin HIGH, bit 1 = sensor 2 pin HIGH, bit 2 = button, bit
 Exchange:
 
 1. The tank sends STATUS (or PAIR when the button is held ~5 s).
-2. The pump accepts PAIR only while its tank-pair window is open (Cmd `0xA1`). It accepts STATUS only from the bound `tank_id`.
-3. The pump replies ACK with the same layout, `type = 0x03`, and the same `seq`. The tank retries up to 5 times without an ACK.
+2. The pump accepts PAIR only while its tank-pair window is open (Cmd `0xA1`). It accepts STATUS only from a paired `tank_id` (up to 4).
+3. The pump replies ACK with the same layout, `type = 0x03`, and the same `seq`. The tank retries up to 5 times without an ACK, with a random 40–440 ms gap so two tanks that collided don't retry in step. It only accepts an ACK carrying its own `tank_id` (seq is per tank).
 4. The pump ignores repeated `seq` values for state changes but still updates RSSI/SNR.

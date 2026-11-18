@@ -128,7 +128,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onSettings: () => showPumpSettingsSheet(context),
                   onRename: () => showRenamePumpDialog(context, pump),
                 ),
-                if (ready && session.twoTankMode) ...[
+                if (ready && session.multiTank) ...[
                   const SizedBox(height: 10),
                   TankChips(session: session),
                 ],
@@ -155,10 +155,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           const SizedBox(height: 8),
                         ],
                         Expanded(
-                          child: TankHero(
-                            session: session,
-                            ready: ready,
-                          ),
+                          child: TankHero(session: session, ready: ready),
                         ),
                       ],
                     ),

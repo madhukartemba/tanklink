@@ -4,11 +4,7 @@ import '../../ble/pump_session.dart';
 
 /// Full-area tank status — level, signal, battery; no FW / tank ID.
 class TankHero extends StatelessWidget {
-  const TankHero({
-    super.key,
-    required this.session,
-    required this.ready,
-  });
+  const TankHero({super.key, required this.session, required this.ready});
 
   final PumpSession session;
   final bool ready;
@@ -66,7 +62,7 @@ class TankHero extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Hold the tank button about 3 seconds',
+              'Hold the tank button about 5 seconds',
               textAlign: TextAlign.center,
               style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
             ),
@@ -214,7 +210,7 @@ class TankHero extends StatelessWidget {
                 ),
               ),
               SizedBox(height: gap),
-              if (session.twoTankMode)
+              if (session.multiTank)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Text(

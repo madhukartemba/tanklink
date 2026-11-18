@@ -54,8 +54,7 @@ void main() {
         2,
         70,
         1,
-        ...[0xe8, 0x03],
-        2, // flags tone led starter 1000ms mode
+        ...[0xe8, 0x03], // flags tone led starter 1000ms
       ];
       final s = PumpSettings.parse(read)!;
       expect(s.runSeconds, 30);
@@ -64,8 +63,7 @@ void main() {
       expect(s.ledBrightness, 70);
       expect(s.starterType, 1);
       expect(s.relayPulseMs, 1000);
-      expect(s.sensorMode, TankLinkUuids.sensorModeTwo);
-      expect(s.encode(), [0x0f, 2, 70, 1, 0xe8, 0x03, 2]);
+      expect(s.encode(), [0x0f, 2, 70, 1, 0xe8, 0x03]);
     });
 
     test('returns null when too short', () {
@@ -128,23 +126,101 @@ void main() {
     });
   });
 
-  test('TankList parses slots with per-tank auto-off', () {
-    List<int> entry(int index, int sensor, int autoOff, String name) => [
+  test('TankList parses slots with their sensor and auto-off', () {
+    List<int> entry(int index, int pin, int node, int autoOff, String name) => [
       index,
-      sensor,
+      pin,
+      node,
       autoOff,
       ...name.codeUnits,
       ...List.filled(16 - name.length, 0),
     ];
     final list = TankList.parse([
-      2, 1, 0x03, 2, // two-tank mode, slot 1 active, raw flags, 2 slots
-      ...entry(0, 0, 30, 'Roof'),
-      ...entry(1, 1, 0, 'Sump'),
+      2, 3, // slot 2 active, 3 slots
+      ...entry(0, 0, 0, 30, 'Roof'),
+      ...entry(1, 1, 0, 0, 'Sump'),
+      ...entry(2, 0, 3, 45, 'Garden'),
     ])!;
-    expect(list.sensorMode, TankLinkUuids.sensorModeTwo);
-    expect(list.activeSlot, 1);
-    expect(list.slots.map((s) => s.name), ['Roof', 'Sump']);
-    expect(list.slots.map((s) => s.autoOffMin), [30, 0]);
+    expect(list.activeSlot, 2);
+    expect(list.slots.map((s) => s.name), ['Roof', 'Sump', 'Garden']);
+    expect(list.slots.map((s) => s.sensor), [0, 1, 0]);
+    expect(list.slots.map((s) => s.node), [0, 0, 3]);
+    expect(list.slots.map((s) => s.autoOffMin), [30, 0, 45]);
+  });
+
+  test('TankList: a pump with no sensor has one sensorless slot', () {
+    final list = TankList.parse([
+      0, 1, //
+      0, 0, TankLinkUuids.sensorNone, 30, ...'Tank'.codeUnits,
+      ...List.filled(12, 0),
+    ])!;
+    expect(list.slots.single.node, TankLinkUuids.sensorNone);
+  });
+
+  group('TankSensor', () {
+    final token = List.generate(16, (i) => i + 1);
+    List<int> entry({
+      required int index,
+      required List<int> id,
+      int age = 42,
+    }) => [
+      index,
+      ...id,
+      TankLinkUuids.sensorModeTwo,
+      0x02, // raw flags: sensor 2 pin high
+      87, // battery
+      1, // online
+      age & 0xff, age >> 8,
+      0xb5, // -75 dBm
+      0xfb, // -5 dB
+      1, 2, 3, // fw
+      1, // hw rev
+      ...token,
+    ];
+    const idA = [0xa4, 0xcf, 0x12, 0x34, 0xe5, 0x01];
+    const idB = [0xa4, 0xcf, 0x12, 0x34, 0xe5, 0x02];
+
+    test('parses every sensor', () {
+      final list = TankSensor.parseList([
+        2,
+        TankLinkUuids.sensorMax,
+        ...entry(index: 0, id: idA),
+        ...entry(index: 3, id: idB, age: 0xffff),
+      ])!;
+      expect(list, hasLength(2));
+      final a = list.first;
+      expect(a.index, 0);
+      expect(a.idHex, 'a4cf1234e501');
+      expect(a.shortId, 'E501');
+      expect(a.mode, TankLinkUuids.sensorModeTwo);
+      expect(a.rawFlags, 0x02);
+      expect(a.batteryPct, 87);
+      expect(a.online, isTrue);
+      expect(a.ageSec, 42);
+      expect(a.rssiDbm, -75);
+      expect(a.snrDb, -5);
+      expect(a.firmware, '1.2.3');
+      expect(a.hwRev, 1);
+      expect(a.bleToken, token);
+      expect(list.last.index, 3);
+      expect(list.last.ageSec, isNull);
+    });
+
+    test('entry length matches the constant', () {
+      expect(entry(index: 0, id: idA), hasLength(TankLinkUuids.sensorEntryLen));
+    });
+
+    test('encodes mode and unpair commands with the sensor id', () {
+      expect(TankSensor.encodeMode('a4:cf:12:34:e5:01', 1), [
+        TankLinkUuids.cmdSensorMode,
+        ...idA,
+        1,
+      ]);
+      expect(TankSensor.encodeUnpair('a4cf1234e501'), [
+        TankLinkUuids.cmdTankUnpair,
+        ...idA,
+      ]);
+    });
   });
 
   group('ScheduleState', () {

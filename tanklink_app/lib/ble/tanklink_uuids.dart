@@ -29,6 +29,9 @@ class TankLinkUuids {
   static final sched = Guid('7f1a000c-ac01-4c8c-9b2e-74616e6b6c6e');
   static final tanks = Guid('7f1a000d-ac01-4c8c-9b2e-74616e6b6c6e');
 
+  /// Paired tank sensors.
+  static final sensors = Guid('7f1a000e-ac01-4c8c-9b2e-74616e6b6c6e');
+
   static const tokenLen = 16;
   static const cmdUnpair = 0xF0;
   static const cmdFactoryReset = 0xF1;
@@ -38,6 +41,8 @@ class TankLinkUuids {
   static const cmdDismissInterrupt = 0xE1;
   static const cmdTestBeep = 0xB1;
   static const cmdTankPair = 0xA1;
+
+  /// sensor_id(6).
   static const cmdTankUnpair = 0xA2;
   static const cmdTankSelect = 0xA4;
   static const cmdTankRename = 0xA5;
@@ -45,13 +50,25 @@ class TankLinkUuids {
   /// slot(1) minutes(1), 0 = off.
   static const cmdTankAutoOff = 0xA6;
 
+  /// sensor_id(6) mode(1): one sensor's float mode.
+  static const cmdSensorMode = 0xA7;
+
   static const sensorModeOff = 0;
   static const sensorModeEmpty = 1;
   static const sensorModeTwo = 2;
   static const tankNameLen = 16;
 
-  /// Tanks entry: slot_index sensor auto_off_min name(16).
-  static const tanksEntryLen = 3 + tankNameLen;
+  /// Tank sensors one pump can pair, and tank slots (two per sensor).
+  static const sensorMax = 4;
+  static const tankSlotMax = sensorMax * 2;
+  static const sensorNone = 0xFF;
+
+  /// Sensors entry: index id(6) mode raw_flags battery online age(u16) rssi
+  /// snr fw(3) hw_rev token(16).
+  static const sensorEntryLen = 35;
+
+  /// Tanks entry: slot_index sensor_pin sensor_index auto_off_min name(16).
+  static const tanksEntryLen = 4 + tankNameLen;
   static const autoOffMaxMin = 240;
 
   static const schedOpSetClock = 0x01;

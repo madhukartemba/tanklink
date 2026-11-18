@@ -11,6 +11,7 @@ import 'protocol.dart';
 import 'tanklink_uuids.dart';
 
 export 'models.dart';
+export 'protocol.dart' show TankSensor;
 
 class PumpSession extends ChangeNotifier {
   final List<SavedPump> pumps = [];
@@ -37,11 +38,14 @@ class PumpSession extends ChangeNotifier {
   int starterType = TankLinkUuids.starterNone;
   int relayPulseMs = TankLinkUuids.relayPulseMsDefault;
 
-  /// 0 off, 1 almost-empty, 2 two tanks. Stored on the pump.
-  int sensorMode = 0;
   int activeSlot = 0;
-  int tankRawFlags = 0;
   List<TankSlot> tanks = [];
+
+  /// Paired tank sensors, up to [TankLinkUuids.sensorMax].
+  List<TankSensor> sensors = [];
+
+  /// Wall-clock estimate of each sensor's last packet, by sensor index.
+  final Map<int, DateTime> _sensorHeardAt = {};
   bool connecting = false;
   bool connectFailed = false;
   bool scanning = false;
@@ -96,12 +100,14 @@ class PumpSession extends ChangeNotifier {
   BluetoothCharacteristic? _tank;
   BluetoothCharacteristic? _sched;
   BluetoothCharacteristic? _tanks;
+  BluetoothCharacteristic? _sensorsChr;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<List<int>>? _pairNotifySub;
   StreamSubscription<List<int>>? _stateNotifySub;
   StreamSubscription<List<int>>? _tankNotifySub;
   StreamSubscription<List<int>>? _schedNotifySub;
   StreamSubscription<List<int>>? _tanksNotifySub;
+  StreamSubscription<List<int>>? _sensorsNotifySub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
   Timer? _runTicker;
   Timer? _ageTicker;
@@ -126,8 +132,65 @@ class PumpSession extends ChangeNotifier {
       tankBleToken!.length == TankLinkUuids.tokenLen &&
       tankBleToken!.any((b) => b != 0);
 
+  /// Float mode of the selected tank's sensor (each sensor has its own).
+  int get sensorMode => activeSensor?.mode ?? TankLinkUuids.sensorModeOff;
+
   bool get emptyFloatConnected => sensorMode == TankLinkUuids.sensorModeEmpty;
-  bool get twoTankMode => sensorMode == TankLinkUuids.sensorModeTwo;
+
+  /// More than one tank to pick from (several sensors, or two-tank mode).
+  bool get multiTank => tanks.length > 1;
+
+  bool get canAddSensor => sensors.length < TankLinkUuids.sensorMax;
+
+  TankSensor? sensorAt(int index) {
+    for (final s in sensors) {
+      if (s.index == index) return s;
+    }
+    return null;
+  }
+
+  /// The sensor whose float reports [slot]'s level.
+  TankSensor? sensorForSlot(TankSlot slot) => sensorAt(slot.node);
+
+  /// The selected tank's sensor.
+  TankSensor? get activeSensor {
+    final slot = slotAt(activeSlot);
+    return slot == null ? null : sensorForSlot(slot);
+  }
+
+  /// Tanks whose level comes from [sensor].
+  List<TankSlot> slotsOf(TankSensor sensor) => [
+    for (final t in tanks)
+      if (t.node == sensor.index) t,
+  ];
+
+  /// Removing [sensor] now would stop the running fill's tank from reporting.
+  bool sensorFeedsRunningFill(TankSensor sensor) =>
+      pumpOn && slotsOf(sensor).any((t) => t.index == activeSlot);
+
+  int? sensorAgeSec(TankSensor sensor) =>
+      _liveAge(_sensorHeardAt[sensor.index]);
+
+  bool sensorOnline(TankSensor sensor) {
+    final age = sensorAgeSec(sensor);
+    return sensor.online && age != null && age <= TankLinkUuids.tankStaleSec;
+  }
+
+  String sensorAgeLabel(TankSensor sensor) => ageLabel(sensorAgeSec(sensor));
+
+  String sensorSignalLabel(TankSensor sensor) =>
+      signalLabel(sensor.rssiDbm, sensorOnline(sensor));
+
+  bool sensorBatteryLow(TankSensor sensor) =>
+      sensorOnline(sensor) &&
+      sensor.batteryPct > 0 &&
+      sensor.batteryPct <= TankLinkUuids.tankBatteryLowPct;
+
+  /// The tank's sensor is paired and heard recently.
+  bool slotOnline(TankSlot slot) {
+    final s = sensorForSlot(slot);
+    return s != null && sensorOnline(s);
+  }
 
   bool get tankFull => (tankFlags & TankLinkUuids.tankFlagFull) != 0;
   bool get tankEmpty =>
@@ -172,17 +235,18 @@ class PumpSession extends ChangeNotifier {
 
   int autoOffMinFor(int slot) => slotAt(slot)?.autoOffMin ?? 0;
 
+  /// [slot]'s own float says full, from its own sensor's last packet.
   bool slotIsFull(TankSlot slot) {
-    if (!tankBound || !tankOnline) return false;
-    final bit = slot.sensor == 0
-        ? TankLinkUuids.tankFlagFull
-        : TankLinkUuids.tankFlagEmpty;
-    return (tankRawFlags & bit) != 0;
+    final s = sensorForSlot(slot);
+    if (s == null || !sensorOnline(s)) return false;
+    // Raw pin bits: bit 0 is the sensor 1 pin, bit 1 the sensor 2 pin.
+    final bit = slot.sensor == 1 && s.mode == TankLinkUuids.sensorModeTwo
+        ? 1 << 1
+        : 1 << 0;
+    return (s.rawFlags & bit) != 0;
   }
 
-  /// Live seconds since last tank LoRa packet (ticks with UI timer).
-  int? get tankAgeSec {
-    final at = _tankLastHeardAt;
+  static int? _liveAge(DateTime? at) {
     if (at == null) return null;
     final s = DateTime.now().difference(at).inSeconds;
     if (s < 0) return 0;
@@ -190,8 +254,12 @@ class PumpSession extends ChangeNotifier {
     return s;
   }
 
-  String get tankAgeLabel {
-    final age = tankAgeSec;
+  /// Live seconds since last tank LoRa packet (ticks with UI timer).
+  int? get tankAgeSec => _liveAge(_tankLastHeardAt);
+
+  String get tankAgeLabel => ageLabel(tankAgeSec);
+
+  static String ageLabel(int? age) {
     if (age == null) return 'Never heard';
     if (age < 10) return 'Just now';
     if (age < 60) return '${age}s ago';
@@ -213,8 +281,12 @@ class PumpSession extends ChangeNotifier {
 
   String get tankSignalLabel {
     if (!tankBound) return '—';
-    if (!tankOnline || tankRssiDbm == null) return 'No signal';
-    final q = tankSignalQuality;
+    return signalLabel(tankRssiDbm, tankOnline);
+  }
+
+  static String signalLabel(int? rssi, bool online) {
+    if (!online || rssi == null) return 'No signal';
+    final q = ((rssi + 120) / 80).clamp(0.0, 1.0);
     if (q >= 0.75) return 'Strong';
     if (q >= 0.45) return 'Good';
     if (q >= 0.25) return 'Fair';
@@ -531,7 +603,6 @@ class PumpSession extends ChangeNotifier {
     ledBrightness = s.ledBrightness;
     starterType = s.starterType;
     relayPulseMs = s.relayPulseMs;
-    sensorMode = s.sensorMode;
   }
 
   bool get buzzerEnabled => (buzzerFlags & TankLinkUuids.buzzEnabled) != 0;
@@ -545,7 +616,6 @@ class PumpSession extends ChangeNotifier {
     int? brightness,
     int? starter,
     int? pulseMs,
-    int? mode,
   }) async {
     if (_settings == null || !authed) {
       status = 'Not connected';
@@ -561,7 +631,6 @@ class PumpSession extends ChangeNotifier {
         TankLinkUuids.relayPulseMsMin,
         TankLinkUuids.relayPulseMsMax,
       ),
-      sensorMode: (mode ?? sensorMode).clamp(0, TankLinkUuids.sensorModeTwo),
     );
     await _settings!.write(next.encode(), withoutResponse: false);
     _applySettings(
@@ -572,7 +641,6 @@ class PumpSession extends ChangeNotifier {
         ledBrightness: next.ledBrightness,
         starterType: next.starterType,
         relayPulseMs: next.relayPulseMs,
-        sensorMode: next.sensorMode,
       ),
     );
     notifyListeners();
@@ -600,9 +668,17 @@ class PumpSession extends ChangeNotifier {
     await _writeSettings(brightness: percent.clamp(1, 100));
   }
 
-  Future<void> setSensorMode(int mode) async {
+  /// Set one sensor's float mode. The pump notifies the new tank list.
+  Future<void> setSensorMode(TankSensor sensor, int mode) async {
     final next = mode.clamp(0, TankLinkUuids.sensorModeTwo);
-    await _writeSettings(mode: next);
+    final chr = _cmd;
+    if (chr == null || !authed) {
+      throw StateError('Connect to the pump first');
+    }
+    await chr.write(
+      TankSensor.encodeMode(sensor.idHex, next),
+      withoutResponse: false,
+    );
     status = switch (next) {
       TankLinkUuids.sensorModeEmpty => 'Almost-empty sensor on',
       TankLinkUuids.sensorModeTwo => 'Two tanks',
@@ -698,14 +774,31 @@ class PumpSession extends ChangeNotifier {
     _ensureAgeTicker();
   }
 
+  void _applySensors(List<TankSensor>? list) {
+    if (list == null) return;
+    sensors = list;
+    final now = DateTime.now();
+    _sensorHeardAt.clear();
+    for (final s in list) {
+      final age = s.ageSec;
+      if (age != null) {
+        _sensorHeardAt[s.index] = now.subtract(Duration(seconds: age));
+      }
+    }
+    _ensureAgeTicker();
+  }
+
   void _ensureAgeTicker() {
-    if (!authed || !connected || !tankBound || _tankLastHeardAt == null) {
+    final heard = _tankLastHeardAt != null || _sensorHeardAt.isNotEmpty;
+    if (!authed || !connected || !heard) {
       _ageTicker?.cancel();
       _ageTicker = null;
       return;
     }
     _ageTicker ??= Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!authed || !connected || _tankLastHeardAt == null) {
+      if (!authed ||
+          !connected ||
+          (_tankLastHeardAt == null && _sensorHeardAt.isEmpty)) {
         _ageTicker?.cancel();
         _ageTicker = null;
         return;
@@ -727,11 +820,19 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> unpairTank() async {
-    if (_cmd == null || !authed) {
+  /// Forget one tank sensor, its tanks, and their schedules.
+  Future<void> unpairSensor(TankSensor sensor) async {
+    final chr = _cmd;
+    if (chr == null || !authed) {
       throw StateError('Not connected');
     }
-    await _cmd!.write([TankLinkUuids.cmdTankUnpair], withoutResponse: false);
+    if (sensorFeedsRunningFill(sensor)) {
+      throw StateError('Stop the pump before removing this sensor');
+    }
+    await chr.write(
+      TankSensor.encodeUnpair(sensor.idHex),
+      withoutResponse: false,
+    );
   }
 
   Future<void> unpairOnDevice() async {
@@ -936,19 +1037,22 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Scan for the bound tank advertising after a button press, then BLE OTA.
+  /// Scan for [sensor] (default: the selected tank's) advertising after a
+  /// button press, then BLE OTA.
   Future<void> otaUpdateTank(
     Uint8List image, {
+    TankSensor? sensor,
     void Function()? onScanning,
     void Function(int done, int total)? onProgress,
     void Function()? onVerifying,
     void Function()? onRebooting,
   }) async {
-    if (!tankOtaReady || tankIdHex.isEmpty) {
+    final target = sensor ?? activeSensor;
+    if (target == null || !target.otaReady || target.idHex.isEmpty) {
       throw StateError('Set up the tank sensor again to allow updates');
     }
-    final wantId = tankIdHex.toLowerCase().replaceAll(':', '');
-    final token = Uint8List.fromList(tankBleToken!);
+    final wantId = target.idHex.toLowerCase().replaceAll(':', '');
+    final token = Uint8List.fromList(target.bleToken!);
 
     onScanning?.call();
     await FlutterBluePlus.stopScan();
@@ -1091,12 +1195,14 @@ class PumpSession extends ChangeNotifier {
     await _tankNotifySub?.cancel();
     await _schedNotifySub?.cancel();
     await _tanksNotifySub?.cancel();
+    await _sensorsNotifySub?.cancel();
     await _connSub?.cancel();
     _pairNotifySub = null;
     _stateNotifySub = null;
     _tankNotifySub = null;
     _schedNotifySub = null;
     _tanksNotifySub = null;
+    _sensorsNotifySub = null;
     _connSub = null;
     try {
       await _device?.disconnect();
@@ -1106,12 +1212,13 @@ class PumpSession extends ChangeNotifier {
     _info = null;
     _pair = _auth = _state = _cmd = _settings = null;
     _otaCtrl = _otaData = _otaStatus = _tank = _sched = _tanks = null;
+    _sensorsChr = null;
+    sensors = [];
+    _sensorHeardAt.clear();
     pumpClockValid = false;
     pumpRtcOk = false;
     schedules = [];
-    sensorMode = 0;
     activeSlot = 0;
-    tankRawFlags = 0;
     tanks = [];
     connected = false;
     authed = false;
@@ -1239,6 +1346,7 @@ class PumpSession extends ChangeNotifier {
     _tank = _chr(TankLinkUuids.tank);
     _sched = _chr(TankLinkUuids.sched);
     _tanks = _chr(TankLinkUuids.tanks);
+    _sensorsChr = _chr(TankLinkUuids.sensors);
 
     await _state!.setNotifyValue(true);
     await _stateNotifySub?.cancel();
@@ -1296,9 +1404,13 @@ class PumpSession extends ChangeNotifier {
         throw StateError('That time is already scheduled');
       }
     }
+    // One tank: every fill goes to it, whatever its slot index.
+    final only = tanks.length == 1 ? tanks.first.index : null;
     final toSend = [
       for (final s in sorted)
-        s.copyWith(slot: twoTankMode ? s.slot.clamp(0, 3) : 0),
+        s.copyWith(
+          slot: only ?? s.slot.clamp(0, TankLinkUuids.tankSlotMax - 1),
+        ),
     ];
     await chr.write(ScheduleState.encodeList(toSend), withoutResponse: false);
     schedules = toSend;
@@ -1377,13 +1489,21 @@ class PumpSession extends ChangeNotifier {
     try {
       _applyTanks(TankList.parse(await chr.read()));
     } catch (_) {}
+    final sensorsChr = _sensorsChr!;
+    await _sensorsNotifySub?.cancel();
+    await sensorsChr.setNotifyValue(true);
+    _sensorsNotifySub = sensorsChr.onValueReceived.listen((value) {
+      _applySensors(TankSensor.parseList(value));
+      notifyListeners();
+    });
+    try {
+      _applySensors(TankSensor.parseList(await sensorsChr.read()));
+    } catch (_) {}
   }
 
   void _applyTanks(TankList? list) {
     if (list == null) return;
-    sensorMode = list.sensorMode;
     activeSlot = list.activeSlot;
-    tankRawFlags = list.rawFlags;
     tanks = list.slots;
   }
 

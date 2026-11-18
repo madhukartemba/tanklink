@@ -168,27 +168,36 @@ class HomeUpdateBannerSection extends StatelessWidget {
   List<Widget> _tankCard(BuildContext context) {
     final session = context.watch<PumpSession>();
     final fw = context.watch<TankFirmwareUpdate>();
-    if (!(session.ready && session.tankBound)) {
+    if (!session.ready) {
       return const [];
     }
-    if (!session.tankOnline || !session.tankOtaReady) {
-      return const [];
-    }
-    if (!fw.showHomeBanner(session.tankFw)) {
+    // The first sensor in range that can take the update; the rest follow
+    // from Settings → Tank sensors (each needs its own button press).
+    final sensor = session.sensors
+        .where(
+          (s) =>
+              session.sensorOnline(s) &&
+              s.otaReady &&
+              fw.showHomeBanner(s.firmware),
+        )
+        .firstOrNull;
+    if (sensor == null) {
       return const [];
     }
     final scheme = Theme.of(context).colorScheme;
-    final current = session.tankFw.isEmpty ? '—' : session.tankFw;
+    final current = sensor.firmware.isEmpty ? '—' : sensor.firmware;
     final latest = fw.latestVersion ?? '';
     return [
       HomeUpdateBannerCard(
         tint: scheme.tertiary,
         backgroundAlpha: 0.16,
         icon: Icons.sensors,
-        title: 'Tank update available',
+        title: session.sensors.length > 1
+            ? 'Sensor #${sensor.shortId} update available'
+            : 'Tank update available',
         subtitle: '$current → $latest',
         tonalUpdateButton: true,
-        onUpdate: () => showTankFirmwareConfirmSheet(context),
+        onUpdate: () => showTankFirmwareConfirmSheet(context, sensor),
         onDismiss: () => fw.snoozeLatest(),
       ),
     ];

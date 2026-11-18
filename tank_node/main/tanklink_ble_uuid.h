@@ -24,6 +24,9 @@ extern "C" {
  * the pump (see pump_node/main/tanklink_uuid.h): MINOR = appended fields,
  * MAJOR = breaking. The 13-byte Info layout (append-only), Auth and the OTA
  * characteristics never change, so any app can update any tank.
+ *
+ * The app has one protocol major for pump and tank, and only offers firmware
+ * releases whose manifest carries it, so this follows the pump's major.
  */
 #define TANKLINK_PROTO_MAJOR 1
 #define TANKLINK_PROTO_MINOR 0

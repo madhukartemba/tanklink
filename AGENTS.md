@@ -13,7 +13,7 @@ A local (no cloud) water-tank pump controller with three parts:
 | App | [`tanklink_app/`](tanklink_app/) | Flutter, `flutter_blue_plus`, Android sideload | Pump over BLE, GitHub Releases for updates |
 | Shared LoRa driver | [`components/tanklink_lora/`](components/tanklink_lora/) | SX1278 (RA-02, 433 MHz) driver + packet format | Used by both firmware nodes |
 
-Flow: the tank wakes on a float change or a 10-minute heartbeat, sends a LoRa STATUS packet with raw float pin levels, and sleeps. The pump decides what those pins mean (full / almost-empty / second tank), drives the starter relays, and serves state to the app over BLE. The app is the only UI besides the single pump button.
+Flow: the tank wakes on a float change or a 10-minute heartbeat, sends a LoRa STATUS packet with raw float pin levels, and sleeps. A pump pairs up to 4 tank sensors; each sensor's float mode says what its pins mean (full / almost-empty / second tank), giving up to 8 tanks. The pump fills one **selected** tank at a time (the user sets a valve or lever to match); only that tank's float can block a start or stop a fill. It drives the starter relays and serves state to the app over BLE. The app is the only UI besides the single pump button.
 
 ## Docs map
 
@@ -38,8 +38,9 @@ Pump (`pump_node/main/`):
 | `gatt_svr.c` | BLE service table, one handler per characteristic, connections, notifications |
 | `gatt_payloads.c` | Byte layout of every characteristic read |
 | `relay_control.c`, `board.c` | Starter relays; button and LED wiring |
-| `lora_link.c` | Tank link: pairing, STATUS/ACK, last-seen record |
-| `pump_tanks.c`, `pump_sched.c`, `pump_config.c`, `pump_pair.c` | Saved state in NVS: tank slots, schedules, settings, phone pairing |
+| `lora_link.c` | Tank link: pairing, STATUS/ACK, per-sensor token and last-seen record |
+| `pump_tanks.c` | Paired sensors (up to 4, each with its float mode), tank slots (up to 8), the selected tank. Keeps the invariants in `pump_tanks.h` |
+| `pump_sched.c`, `pump_config.c`, `pump_pair.c` | Saved state in NVS: schedules, settings, phone pairing |
 | `pump_clock.c`, `pump_rtc.c`, `pump_runlog.c` | Local time, DS3231, interrupted-fill detection |
 | `pump_ota.c` | Firmware update over BLE |
 
@@ -135,7 +136,7 @@ apksigner verify --print-certs tanklink_app/build/app/outputs/flutter-apk/app-re
 
 ## Time on the pump
 
-The pump keeps **local** time (whatever the phone sends, not UTC) in `pump_clock.c`, anchored to the DS3231 (`pump_rtc.c`) at boot and re-read hourly. Only two things need wall-clock time: **fill schedules** and the **tank's last-seen time**, which `lora_link.c` saves to NVS (`tl_tank/last`) so a restart knows the real age. Everything else (auto-off, pairing windows, button holds) uses time since boot on purpose.
+The pump keeps **local** time (whatever the phone sends, not UTC) in `pump_clock.c`, anchored to the DS3231 (`pump_rtc.c`) at boot and re-read hourly. Only two things need wall-clock time: **fill schedules** and the **tank's last-seen time**, which `lora_link.c` saves to NVS per sensor (`tl_tank/last<N>`) so a restart knows the real age. Everything else (auto-off, pairing windows, button holds) uses time since boot on purpose.
 
 A fill cut short by a power cut or restart is detected by `pump_runlog.c` (a "running" record in NVS that a normal stop deletes) and shown in the app as a notice. The pump never restarts a fill on its own after power returns; that is a deliberate safety choice. Without a DS3231, or with its "oscillator stopped" flag set, the pump has no time until the app syncs.
 

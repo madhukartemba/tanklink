@@ -21,6 +21,8 @@ extern "C" {
  *   OtaStatus 7f1a000a-ac01-4c8c-9b2e-74616e6b6c6e
  *   Tank      7f1a000b-ac01-4c8c-9b2e-74616e6b6c6e
  *   Schedule 7f1a000c-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Tanks    7f1a000d-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Sensors  7f1a000e-ac01-4c8c-9b2e-74616e6b6c6e
  */
 #define TANKLINK_UUID_BASE_TAIL 0x6e, 0x6c, 0x6b, 0x6e, 0x61, 0x74, 0x2e, 0x9b, \
                                 0x8c, 0x4c, 0x01, 0xac
@@ -38,6 +40,7 @@ extern "C" {
 #define TANKLINK_CHR_TANK_INIT  BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0b, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_SCHED_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0c, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_TANKS_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0d, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_NODES_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0e, 0x00, 0x1a, 0x7f)
 
 #define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
 /* GAP name before the serial suffix is known. Adverts use PREFIX + serial. */
@@ -45,7 +48,7 @@ extern "C" {
 
 /* Firmware version. TANKLINK_FW_VERSION is built from the three numbers. */
 #define TANKLINK_FW_MAJOR 0
-#define TANKLINK_FW_MINOR 12
+#define TANKLINK_FW_MINOR 13
 #define TANKLINK_FW_PATCH 0
 #define TANKLINK_STR_(x) #x
 #define TANKLINK_STR(x) TANKLINK_STR_(x)
@@ -104,10 +107,11 @@ extern "C" {
 #define TANKLINK_CMD_ON        0x01
 #define TANKLINK_CMD_TEST_BEEP 0xB1
 #define TANKLINK_CMD_TANK_PAIR 0xA1
-#define TANKLINK_CMD_TANK_UNPAIR 0xA2
+#define TANKLINK_CMD_TANK_UNPAIR 0xA2 /* sensor_id(6) */
 #define TANKLINK_CMD_TANK_SELECT 0xA4
 #define TANKLINK_CMD_TANK_RENAME 0xA5
 #define TANKLINK_CMD_TANK_AUTO_OFF 0xA6 /* slot(1) minutes(1), 0 = off */
+#define TANKLINK_CMD_SENSOR_MODE 0xA7 /* sensor_id(6) mode(1) */
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
 #define TANKLINK_CMD_CLEAR_ERROR   0xE0
@@ -133,11 +137,19 @@ extern "C" {
 /* Info read length for this protocol version. */
 #define TANKLINK_INFO_LEN 18
 
-/* Settings write: buzzer_flags tone led starter pulse_ms(u16) sensor_mode. */
-#define TANKLINK_SETTINGS_WRITE_LEN 7
+/* Settings write: buzzer_flags tone led starter pulse_ms(u16). Float modes
+ * are per sensor (Cmd 0xA7). */
+#define TANKLINK_SETTINGS_WRITE_LEN 6
 
-/* Tanks entry: slot_index(1) sensor(1) auto_off_min(1) name(16). */
-#define TANKLINK_TANKS_ENTRY_LEN 19
+/* Tanks: active_slot(1) count(1), then count x entry:
+ * slot_index(1) sensor_pin(1) sensor_index(1, 0xFF = none) auto_off_min(1)
+ * name(16). */
+#define TANKLINK_TANKS_ENTRY_LEN 20
+
+/* Sensors: count(1) max(1), then count x entry:
+ * index(1) id(6) mode(1) raw_flags(1) battery(1) online(1) age_sec(u16)
+ * rssi(i8) snr(i8) fw(3) hw_rev(1) ble_token(16). */
+#define TANKLINK_NODES_ENTRY_LEN 35
 
 #ifdef __cplusplus
 }

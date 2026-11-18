@@ -88,9 +88,8 @@ static uint8_t start_blocker(void)
     if (relay_control_is_blocked() || pump_ota_is_active()) {
         return PUMP_ERR_BLOCKED;
     }
-    const bool tank_says_full =
-        (lora_link_tank_flags() & TANKLINK_LORA_FLAG_SENSOR1) != 0 || status_led_get_tank_full();
-    if (lora_link_tank_bound() && lora_link_tank_online() && tank_says_full) {
+    /* Only the selected tank counts: with a lever, others may already be full. */
+    if (lora_link_active_tank_full()) {
         return PUMP_ERR_TANK_FULL;
     }
     return PUMP_ERR_NONE;
@@ -170,13 +169,15 @@ static void start_due_schedule(void)
     if (slot < 0 || s_on) {
         return;
     }
-    if (pump_tanks_mode() == PUMP_SENSOR_MODE_TWO) {
+    if ((uint8_t)slot != pump_tanks_active()) {
         if (pump_tanks_select((uint8_t)slot, false) != ESP_OK) {
             ESP_LOGW(TAG, "Schedule slot %d missing", slot);
             return;
         }
+        lora_link_on_active_changed();
         gatt_svr_notify_tanks();
         gatt_svr_notify_tank();
+        gatt_svr_notify_nodes();
     }
     ESP_LOGI(TAG, "Schedule start %02u:%02u slot %d", now.hour, now.minute, slot);
     pump_control_set(true);

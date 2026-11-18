@@ -1,5 +1,6 @@
 #include "lora_link.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -10,7 +11,6 @@
 #include "pump_control.h"
 #include "nvs.h"
 #include "pump_clock.h"
-#include "pump_config.h"
 #include "pump_tanks.h"
 #include "pump_errors.h"
 #include "pump_pair.h"
@@ -21,11 +21,14 @@
 
 #define TAG "LORA"
 #define NVS_NS "tl_tank"
-#define NVS_KEY_BOUND "bound"
-#define NVS_KEY_ID "id"
-#define NVS_KEY_BLE_TOKEN "ble_tok"
-/* Last packet from the bound tank, so a restart knows how long ago it was heard. */
+/* Per sensor, suffixed with the node index: BLE OTA token and last packet. */
+#define NVS_KEY_TOKEN "tok"
 #define NVS_KEY_LAST "last"
+/* Single-sensor layout up to pump 0.12, migrated to node keys at boot. */
+#define NVS_KEY_LEGACY_BOUND "bound"
+#define NVS_KEY_LEGACY_ID "id"
+#define NVS_KEY_LEGACY_TOKEN "ble_tok"
+#define NVS_KEY_LEGACY_LAST "last"
 #define LAST_REC_VER 2
 /* Save at most once a minute unless the float flags changed. */
 #define LAST_SAVE_MIN_US (60LL * 1000000)
@@ -55,9 +58,24 @@ bool lora_link_tank_pairing_active(void)
 {
     return false;
 }
-esp_err_t lora_link_unpair_tank(void)
+esp_err_t lora_link_unpair_node(uint8_t node)
+{
+    return pump_tanks_node_remove(node, pump_control_is_on());
+}
+esp_err_t lora_link_unpair_all(void)
 {
     return ESP_OK;
+}
+void lora_link_on_active_changed(void) {}
+bool lora_link_node_status(uint8_t node, lora_node_status_t *out)
+{
+    (void)node;
+    (void)out;
+    return false;
+}
+bool lora_link_active_tank_full(void)
+{
+    return false;
 }
 bool lora_link_tank_bound(void)
 {
@@ -132,29 +150,25 @@ const uint8_t *lora_link_tank_ble_token(void)
 #define CONFIG_PUMP_TANK_STALE_SEC 1500
 #endif
 
-static bool s_ready;
-static bool s_bound;
-static bool s_heard;
-static bool s_pairing;
-static bool s_was_online;
-static int64_t s_pair_deadline_us;
-static int64_t s_last_rx_us;
-static uint8_t s_tank_id[TANKLINK_LORA_TANK_ID_LEN];
-static uint8_t s_ble_token[TANKLINK_LORA_BLE_TOKEN_LEN];
-static bool s_has_ble_token;
-static uint8_t s_flags;
-static uint8_t s_bat;
-static uint8_t s_fw_maj;
-static uint8_t s_hw_rev;
-static uint8_t s_fw_min;
-static uint8_t s_fw_pat;
-static int16_t s_rssi_dbm;
-static int8_t s_snr_db;
-static uint16_t s_last_seq = 0xFFFF;
-static bool s_last_pending;
-static int64_t s_last_saved_us;
-static bool s_last_saved_once;
-static uint8_t s_last_saved_flags;
+/** Radio-side state of one paired sensor, indexed like pump_tanks nodes. */
+typedef struct {
+    bool heard;
+    bool was_online;
+    bool has_token;
+    bool last_pending;
+    bool last_saved_once;
+    int64_t last_rx_us;
+    int64_t last_saved_us;
+    uint8_t token[TANKLINK_LORA_BLE_TOKEN_LEN];
+    uint8_t flags;
+    uint8_t bat;
+    uint8_t fw[3];
+    uint8_t hw_rev;
+    uint8_t last_saved_flags;
+    int16_t rssi_dbm;
+    int8_t snr_db;
+    uint16_t last_seq;
+} node_rt_t;
 
 typedef struct {
     uint8_t ver;
@@ -168,6 +182,17 @@ typedef struct {
     int64_t rx_local_unix; /* pump clock (local time) when the packet arrived */
 } tank_last_rec_t;
 
+static bool s_ready;
+static bool s_pairing;
+static int64_t s_pair_deadline_us;
+static node_rt_t s_rt[PUMP_NODE_MAX];
+static const uint8_t s_zero_token[TANKLINK_LORA_BLE_TOKEN_LEN];
+
+static void node_key(char *buf, size_t cap, const char *base, uint8_t node)
+{
+    snprintf(buf, cap, "%s%u", base, (unsigned)node);
+}
+
 static bool token_nonzero(const uint8_t *tok)
 {
     for (int i = 0; i < TANKLINK_LORA_BLE_TOKEN_LEN; i++) {
@@ -178,89 +203,179 @@ static bool token_nonzero(const uint8_t *tok)
     return false;
 }
 
-static esp_err_t save_bind(void)
+static void rt_reset(uint8_t node)
 {
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
-    if (err != ESP_OK) {
-        return err;
-    }
-    uint8_t bound = s_bound ? 1 : 0;
-    err = nvs_set_u8(h, NVS_KEY_BOUND, bound);
-    if (err == ESP_OK && s_bound) {
-        err = nvs_set_blob(h, NVS_KEY_ID, s_tank_id, sizeof(s_tank_id));
-        if (err == ESP_OK) {
-            if (s_has_ble_token) {
-                err = nvs_set_blob(h, NVS_KEY_BLE_TOKEN, s_ble_token,
-                                   sizeof(s_ble_token));
-            } else {
-                (void)nvs_erase_key(h, NVS_KEY_BLE_TOKEN);
-            }
-        }
-    }
-    if (err == ESP_OK) {
-        err = nvs_commit(h);
-    }
-    nvs_close(h);
-    return err;
+    memset(&s_rt[node], 0, sizeof(s_rt[node]));
+    s_rt[node].last_seq = 0xFFFF;
 }
 
-static void load_bind(void)
+static bool node_mac(uint8_t node, uint8_t mac[6])
 {
-    memset(s_tank_id, 0, sizeof(s_tank_id));
-    memset(s_ble_token, 0, sizeof(s_ble_token));
-    s_has_ble_token = false;
-    s_bound = false;
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) {
-        return;
+    pump_tank_node_t n;
+    if (!pump_tanks_node_get(node, &n)) {
+        return false;
     }
-    uint8_t bound = 0;
-    if (nvs_get_u8(h, NVS_KEY_BOUND, &bound) == ESP_OK && bound) {
-        size_t len = sizeof(s_tank_id);
-        if (nvs_get_blob(h, NVS_KEY_ID, s_tank_id, &len) == ESP_OK &&
-            len == sizeof(s_tank_id)) {
-            s_bound = true;
-            size_t tlen = sizeof(s_ble_token);
-            if (nvs_get_blob(h, NVS_KEY_BLE_TOKEN, s_ble_token, &tlen) == ESP_OK &&
-                tlen == sizeof(s_ble_token) && token_nonzero(s_ble_token)) {
-                s_has_ble_token = true;
-            }
-            ESP_LOGI(TAG, "bound tank %02x:%02x:%02x:%02x:%02x:%02x ble_tok=%d",
-                     s_tank_id[0], s_tank_id[1], s_tank_id[2], s_tank_id[3],
-                     s_tank_id[4], s_tank_id[5], (int)s_has_ble_token);
-        }
-    }
-    nvs_close(h);
+    memcpy(mac, n.mac, 6);
+    return true;
 }
 
-static uint16_t tank_age_sec_now(void);
-static bool tank_online_now(void);
-
-/* Needs a known time: the age is stored as the packet's clock time. */
-static void save_last(void)
+static void save_token(uint8_t node)
 {
-    int64_t now_unix = 0;
-    if (!s_bound || !s_heard || !pump_clock_unix_now(&now_unix)) {
-        return;
-    }
-    const int64_t age_s = (esp_timer_get_time() - s_last_rx_us) / 1000000LL;
-    tank_last_rec_t rec = {
-        .ver = LAST_REC_VER,
-        .flags = s_flags,
-        .bat = s_bat,
-        .fw = {s_fw_maj, s_fw_min, s_fw_pat},
-        .hw_rev = s_hw_rev,
-        .snr_db = s_snr_db,
-        .rssi_dbm = s_rssi_dbm,
-        .rx_local_unix = now_unix - (age_s > 0 ? age_s : 0),
-    };
-    memcpy(rec.tank_id, s_tank_id, sizeof(rec.tank_id));
+    char key[12];
+    node_key(key, sizeof(key), NVS_KEY_TOKEN, node);
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
         return;
     }
-    esp_err_t err = nvs_set_blob(h, NVS_KEY_LAST, &rec, sizeof(rec));
+    esp_err_t err = s_rt[node].has_token
+                        ? nvs_set_blob(h, key, s_rt[node].token, sizeof(s_rt[node].token))
+                        : nvs_erase_key(h, key);
+    if (err == ESP_OK || err == ESP_ERR_NVS_NOT_FOUND) {
+        err = nvs_commit(h);
+    }
+    nvs_close(h);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "save token %u failed: %s", node, esp_err_to_name(err));
+    }
+}
+
+static void load_token(uint8_t node)
+{
+    char key[12];
+    node_key(key, sizeof(key), NVS_KEY_TOKEN, node);
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    size_t len = sizeof(s_rt[node].token);
+    if (nvs_get_blob(h, key, s_rt[node].token, &len) == ESP_OK &&
+        len == sizeof(s_rt[node].token) && token_nonzero(s_rt[node].token)) {
+        s_rt[node].has_token = true;
+    } else {
+        memset(s_rt[node].token, 0, sizeof(s_rt[node].token));
+    }
+    nvs_close(h);
+}
+
+static void erase_node_keys(uint8_t node)
+{
+    char key[12];
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    node_key(key, sizeof(key), NVS_KEY_TOKEN, node);
+    (void)nvs_erase_key(h, key);
+    node_key(key, sizeof(key), NVS_KEY_LAST, node);
+    (void)nvs_erase_key(h, key);
+    (void)nvs_commit(h);
+    nvs_close(h);
+}
+
+/** Move a blob from one key to another in the open handle. */
+static void move_blob(nvs_handle_t h, const char *from, const char *to)
+{
+    uint8_t buf[64];
+    size_t len = sizeof(buf);
+    if (nvs_get_blob(h, from, buf, &len) == ESP_OK) {
+        (void)nvs_set_blob(h, to, buf, len);
+    }
+    (void)nvs_erase_key(h, from);
+}
+
+/** Pump 0.12 and older kept one sensor under fixed keys. Give it node keys. */
+static void migrate_legacy(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    uint8_t bound = 0;
+    if (nvs_get_u8(h, NVS_KEY_LEGACY_BOUND, &bound) != ESP_OK) {
+        nvs_close(h);
+        return;
+    }
+    uint8_t id[TANKLINK_LORA_TANK_ID_LEN];
+    size_t len = sizeof(id);
+    uint8_t node = PUMP_NODE_NONE;
+    if (bound && nvs_get_blob(h, NVS_KEY_LEGACY_ID, id, &len) == ESP_OK && len == sizeof(id) &&
+        pump_tanks_node_add(id, &node, NULL) == ESP_OK) {
+        char key[12];
+        node_key(key, sizeof(key), NVS_KEY_TOKEN, node);
+        move_blob(h, NVS_KEY_LEGACY_TOKEN, key);
+        node_key(key, sizeof(key), NVS_KEY_LAST, node);
+        move_blob(h, NVS_KEY_LEGACY_LAST, key);
+        ESP_LOGI(TAG, "migrated paired sensor to node %u", node);
+    }
+    (void)nvs_erase_key(h, NVS_KEY_LEGACY_BOUND);
+    (void)nvs_erase_key(h, NVS_KEY_LEGACY_ID);
+    (void)nvs_erase_key(h, NVS_KEY_LEGACY_TOKEN);
+    if (node == PUMP_NODE_NONE) {
+        (void)nvs_erase_key(h, NVS_KEY_LEGACY_LAST);
+    }
+    (void)nvs_commit(h);
+    nvs_close(h);
+}
+
+static uint16_t node_age_sec(uint8_t node)
+{
+    const node_rt_t *rt = &s_rt[node];
+    if (!rt->heard || rt->last_rx_us == 0) {
+        return 0xFFFF;
+    }
+    int64_t age = (esp_timer_get_time() - rt->last_rx_us) / 1000000LL;
+    if (age < 0) {
+        age = 0;
+    }
+    if (age > 65535) {
+        age = 65535;
+    }
+    return (uint16_t)age;
+}
+
+static bool node_online(uint8_t node)
+{
+    if (node >= PUMP_NODE_MAX || !pump_tanks_node_get(node, NULL) || !s_rt[node].heard) {
+        return false;
+    }
+    return node_age_sec(node) <= (uint16_t)CONFIG_PUMP_TANK_STALE_SEC;
+}
+
+/** Radio state of the selected tank's sensor, or NULL. */
+static const node_rt_t *active_rt(void)
+{
+    const uint8_t node = pump_tanks_active_node();
+    return node == PUMP_NODE_NONE ? NULL : &s_rt[node];
+}
+
+/* Needs a known time: the age is stored as the packet's clock time. */
+static void save_last(uint8_t node)
+{
+    node_rt_t *rt = &s_rt[node];
+    int64_t now_unix = 0;
+    uint8_t mac[6];
+    if (!rt->heard || !node_mac(node, mac) || !pump_clock_unix_now(&now_unix)) {
+        return;
+    }
+    const int64_t age_s = (esp_timer_get_time() - rt->last_rx_us) / 1000000LL;
+    tank_last_rec_t rec = {
+        .ver = LAST_REC_VER,
+        .flags = rt->flags,
+        .bat = rt->bat,
+        .fw = {rt->fw[0], rt->fw[1], rt->fw[2]},
+        .hw_rev = rt->hw_rev,
+        .snr_db = rt->snr_db,
+        .rssi_dbm = rt->rssi_dbm,
+        .rx_local_unix = now_unix - (age_s > 0 ? age_s : 0),
+    };
+    memcpy(rec.tank_id, mac, sizeof(rec.tank_id));
+    char key[12];
+    node_key(key, sizeof(key), NVS_KEY_LAST, node);
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    esp_err_t err = nvs_set_blob(h, key, &rec, sizeof(rec));
     if (err == ESP_OK) {
         err = nvs_commit(h);
     }
@@ -269,97 +384,89 @@ static void save_last(void)
         ESP_LOGW(TAG, "save last-seen failed: %s", esp_err_to_name(err));
         return;
     }
-    s_last_pending = false;
-    s_last_saved_us = esp_timer_get_time();
-    s_last_saved_once = true;
-    s_last_saved_flags = s_flags;
+    rt->last_pending = false;
+    rt->last_saved_us = esp_timer_get_time();
+    rt->last_saved_once = true;
+    rt->last_saved_flags = rt->flags;
 }
 
 /* After each packet: save now if the floats changed, otherwise rate-limit. */
-static void note_last_changed(void)
+static void note_last_changed(uint8_t node)
 {
-    const bool flags_changed = !s_last_saved_once || s_flags != s_last_saved_flags;
-    if (flags_changed || esp_timer_get_time() - s_last_saved_us >= LAST_SAVE_MIN_US) {
-        save_last();
+    node_rt_t *rt = &s_rt[node];
+    const bool flags_changed = !rt->last_saved_once || rt->flags != rt->last_saved_flags;
+    if (flags_changed || esp_timer_get_time() - rt->last_saved_us >= LAST_SAVE_MIN_US) {
+        save_last(node);
     } else {
-        s_last_pending = true;
+        rt->last_pending = true;
     }
 }
 
 static void poll_last_save(void)
 {
-    if (s_last_pending && esp_timer_get_time() - s_last_saved_us >= LAST_SAVE_MIN_US) {
-        save_last();
+    for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
+        if (s_rt[n].last_pending &&
+            esp_timer_get_time() - s_rt[n].last_saved_us >= LAST_SAVE_MIN_US) {
+            save_last(n);
+        }
     }
-}
-
-static void erase_last(void)
-{
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_erase_key(h, NVS_KEY_LAST);
-        nvs_commit(h);
-        nvs_close(h);
-    }
-    s_last_pending = false;
-    s_last_saved_once = false;
 }
 
 /*
- * Restore the last packet so a restart does not show the tank as never heard.
- * Only when the clock is known (RTC). The saved "full" flag is honoured while
- * the record is inside the stale window, so the pump still refuses to start
- * into a full tank right after a restart.
+ * Restore a sensor's last packet so a restart does not show it as never
+ * heard. Only when the clock is known (RTC). The saved "full" flag is honoured
+ * while the record is inside the stale window, so the pump still refuses to
+ * start into a full tank right after a restart.
  */
-static void restore_last(void)
+static void restore_last(uint8_t node)
 {
-    if (!s_bound) {
+    uint8_t mac[6];
+    if (!node_mac(node, mac)) {
         return;
     }
     int64_t now_unix = 0;
     if (!pump_clock_unix_now(&now_unix)) {
-        ESP_LOGI(TAG, "last-seen not restored: clock unknown");
+        ESP_LOGI(TAG, "sensor %u last-seen not restored: clock unknown", node);
         return;
     }
+    char key[12];
+    node_key(key, sizeof(key), NVS_KEY_LAST, node);
     tank_last_rec_t rec;
     size_t len = sizeof(rec);
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) {
         return;
     }
-    esp_err_t err = nvs_get_blob(h, NVS_KEY_LAST, &rec, &len);
+    esp_err_t err = nvs_get_blob(h, key, &rec, &len);
     nvs_close(h);
     if (err != ESP_OK || len != sizeof(rec) || rec.ver != LAST_REC_VER ||
-        memcmp(rec.tank_id, s_tank_id, sizeof(s_tank_id)) != 0) {
+        memcmp(rec.tank_id, mac, sizeof(mac)) != 0) {
         return;
     }
     int64_t age = now_unix - rec.rx_local_unix;
     if (age < -120) {
         /* Clock went backwards by more than a little: the record is unusable. */
-        ESP_LOGW(TAG, "last-seen in the future (%lld s); ignoring", (long long)-age);
+        ESP_LOGW(TAG, "sensor %u last-seen in the future (%lld s); ignoring", node,
+                 (long long)-age);
         return;
     }
     if (age < 0) {
         age = 0;
     }
-    s_heard = true;
-    s_last_rx_us = esp_timer_get_time() - age * 1000000LL;
-    s_flags = rec.flags;
-    s_bat = rec.bat;
-    s_fw_maj = rec.fw[0];
-    s_fw_min = rec.fw[1];
-    s_fw_pat = rec.fw[2];
-    s_hw_rev = rec.hw_rev;
-    s_rssi_dbm = rec.rssi_dbm;
-    s_snr_db = rec.snr_db;
-    s_last_saved_once = true;
-    s_last_saved_flags = rec.flags;
-    s_was_online = tank_online_now();
-    if (s_was_online) {
-        status_led_set_tank_full(pump_tanks_active_is_full(s_flags));
-    }
-    ESP_LOGI(TAG, "tank last heard %lld s ago (restored, %s) flags=0x%02x", (long long)age,
-             s_was_online ? "online" : "stale", s_flags);
+    node_rt_t *rt = &s_rt[node];
+    rt->heard = true;
+    rt->last_rx_us = esp_timer_get_time() - age * 1000000LL;
+    rt->flags = rec.flags;
+    rt->bat = rec.bat;
+    memcpy(rt->fw, rec.fw, sizeof(rt->fw));
+    rt->hw_rev = rec.hw_rev;
+    rt->rssi_dbm = rec.rssi_dbm;
+    rt->snr_db = rec.snr_db;
+    rt->last_saved_once = true;
+    rt->last_saved_flags = rec.flags;
+    rt->was_online = node_online(node);
+    ESP_LOGI(TAG, "sensor %u last heard %lld s ago (restored, %s) flags=0x%02x", node,
+             (long long)age, rt->was_online ? "online" : "stale", rec.flags);
 }
 
 static void send_ack(const tanklink_lora_status_t *pkt)
@@ -379,56 +486,72 @@ static void send_ack(const tanklink_lora_status_t *pkt)
     (void)sx1278_start_rx();
 }
 
-static uint16_t tank_age_sec_now(void)
+void lora_link_on_active_changed(void)
 {
-    if (!s_heard || s_last_rx_us == 0) {
-        return 0xFFFF;
+    const uint8_t node = pump_tanks_active_node();
+    status_led_set_tank_full(lora_link_active_tank_full());
+    /* "Tank out of range" is about the selected tank only. */
+    if (pump_control_last_error() == PUMP_ERR_TANK_OFFLINE &&
+        (node == PUMP_NODE_NONE || node_online(node))) {
+        pump_control_clear_error();
     }
-    int64_t age = (esp_timer_get_time() - s_last_rx_us) / 1000000LL;
-    if (age < 0) {
-        age = 0;
-    }
-    if (age > 65535) {
-        age = 65535;
-    }
-    return (uint16_t)age;
 }
 
-static bool tank_online_now(void)
+static void notify_after_packet(bool active)
 {
-    if (!s_bound || !s_heard) {
-        return false;
+    if (active) {
+        gatt_svr_notify_tank();
     }
-    return tank_age_sec_now() <= (uint16_t)CONFIG_PUMP_TANK_STALE_SEC;
+    gatt_svr_notify_nodes();
 }
 
-static void apply_tank_packet(const tanklink_lora_status_t *pkt, int16_t rssi_dbm,
-                              int8_t snr_db)
+static void apply_tank_packet(uint8_t node, const tanklink_lora_status_t *pkt,
+                              int16_t rssi_dbm, int8_t snr_db)
 {
-    s_heard = true;
-    s_last_rx_us = esp_timer_get_time();
-    s_was_online = true;
-    s_flags = pkt->flags;
-    s_bat = pkt->battery_pct;
-    s_fw_maj = pkt->fw_major;
-    s_fw_min = pkt->fw_minor;
-    s_fw_pat = pkt->fw_patch;
-    s_hw_rev = pkt->hw_rev;
-    s_rssi_dbm = rssi_dbm;
-    s_snr_db = snr_db;
-    const bool full = pump_tanks_active_is_full(pkt->flags);
-    status_led_set_tank_full(full);
-    if (full && pump_control_is_on()) {
-        pump_control_set_silent(false);
+    node_rt_t *rt = &s_rt[node];
+    rt->heard = true;
+    rt->last_rx_us = esp_timer_get_time();
+    rt->flags = pkt->flags;
+    rt->bat = pkt->battery_pct;
+    rt->fw[0] = pkt->fw_major;
+    rt->fw[1] = pkt->fw_minor;
+    rt->fw[2] = pkt->fw_patch;
+    rt->hw_rev = pkt->hw_rev;
+    rt->rssi_dbm = rssi_dbm;
+    rt->snr_db = snr_db;
+    const bool active = node == pump_tanks_active_node();
+    bool full = false;
+    if (active) {
+        full = pump_tanks_active_is_full(pkt->flags);
+        status_led_set_tank_full(full);
+        /* Only the selected tank stops a fill; other tanks may well be full. */
+        if (full && pump_control_is_on()) {
+            pump_control_set_silent(false);
+        }
     }
     ESP_LOGI(TAG,
-             "tank RX type=%u flags=0x%02x bat=%u%% seq=%u fw=%u.%u.%u full=%d "
+             "sensor %u RX type=%u flags=0x%02x bat=%u%% seq=%u fw=%u.%u.%u%s full=%d "
              "rssi=%d snr=%d",
-             pkt->type, pkt->flags, pkt->battery_pct, pkt->seq, pkt->fw_major,
-             pkt->fw_minor, pkt->fw_patch, (int)full, (int)rssi_dbm, (int)snr_db);
-    note_last_changed();
-    gatt_svr_notify_tank();
-    gatt_svr_notify_tanks();
+             node, pkt->type, pkt->flags, pkt->battery_pct, pkt->seq, pkt->fw_major,
+             pkt->fw_minor, pkt->fw_patch, active ? " (selected)" : "", (int)full,
+             (int)rssi_dbm, (int)snr_db);
+    note_last_changed(node);
+    notify_after_packet(active);
+}
+
+/** A packet from a paired sensor: state changes once per seq, signal always. */
+static void handle_packet(uint8_t node, const tanklink_lora_status_t *pkt, int16_t rssi,
+                          int8_t snr)
+{
+    node_rt_t *rt = &s_rt[node];
+    if (pkt->seq != rt->last_seq) {
+        rt->last_seq = pkt->seq;
+        apply_tank_packet(node, pkt, rssi, snr);
+    } else {
+        rt->rssi_dbm = rssi;
+        rt->snr_db = snr;
+        notify_after_packet(node == pump_tanks_active_node());
+    }
 }
 
 static void restore_led_after_tank_pair(void)
@@ -462,6 +585,89 @@ static bool pairing_window_open(void)
     return true;
 }
 
+static void on_pair_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t snr)
+{
+    const tanklink_lora_status_t *pkt = (const tanklink_lora_status_t *)buf;
+    if (n < TANKLINK_LORA_PAIR_LEN) {
+        ESP_LOGW(TAG, "PAIR ignored — %u bytes, no token", (unsigned)n);
+        return;
+    }
+    if (!pairing_window_open()) {
+        ESP_LOGW(TAG, "PAIR ignored — window closed");
+        return;
+    }
+    uint8_t node = 0;
+    bool added = false;
+    const esp_err_t err = pump_tanks_node_add(pkt->tank_id, &node, &added);
+    if (err == ESP_ERR_NO_MEM) {
+        ESP_LOGW(TAG, "PAIR ignored — %d sensors already paired", PUMP_NODE_MAX);
+        return;
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "PAIR ignored — %s", esp_err_to_name(err));
+        return;
+    }
+    if (added) {
+        rt_reset(node);
+        erase_node_keys(node);
+    }
+    node_rt_t *rt = &s_rt[node];
+    memcpy(rt->token, buf + sizeof(tanklink_lora_status_t), TANKLINK_LORA_BLE_TOKEN_LEN);
+    rt->has_token = token_nonzero(rt->token);
+    save_token(node);
+    s_pairing = false;
+    restore_led_after_tank_pair();
+    send_ack(pkt);
+    ESP_LOGI(TAG, "sensor %u %s %02x:%02x:%02x:%02x:%02x:%02x", node,
+             added ? "paired" : "re-paired", pkt->tank_id[0], pkt->tank_id[1],
+             pkt->tank_id[2], pkt->tank_id[3], pkt->tank_id[4], pkt->tank_id[5]);
+    handle_packet(node, pkt, rssi, snr);
+    /* A first sensor becomes the selected tank's sensor; slots may have changed. */
+    lora_link_on_active_changed();
+    gatt_svr_notify_tank();
+    gatt_svr_notify_tanks();
+    gatt_svr_notify_nodes();
+}
+
+static void on_status_packet(const tanklink_lora_status_t *pkt, int16_t rssi, int8_t snr)
+{
+    const int node = pump_tanks_node_find(pkt->tank_id);
+    if (node < 0) {
+        ESP_LOGW(TAG, "STATUS ignored — sensor %02x%02x not paired", pkt->tank_id[4],
+                 pkt->tank_id[5]);
+        return;
+    }
+    send_ack(pkt);
+    handle_packet((uint8_t)node, pkt, rssi, snr);
+}
+
+/** Notice sensors dropping out of range (and coming back). */
+static void poll_online(void)
+{
+    const uint8_t active = pump_tanks_active_node();
+    for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
+        if (!pump_tanks_node_get(n, NULL)) {
+            continue;
+        }
+        node_rt_t *rt = &s_rt[n];
+        const bool online = node_online(n);
+        if (rt->was_online && !online) {
+            rt->was_online = false;
+            ESP_LOGW(TAG, "sensor %u went offline (no packet ≥%ds)", n,
+                     CONFIG_PUMP_TANK_STALE_SEC);
+            if (n == active) {
+                pump_control_set_error(PUMP_ERR_TANK_OFFLINE);
+            }
+            gatt_svr_notify_nodes();
+        } else if (online && !rt->was_online) {
+            rt->was_online = true;
+            if (n == active && pump_control_last_error() == PUMP_ERR_TANK_OFFLINE) {
+                pump_control_clear_error();
+            }
+        }
+    }
+}
+
 static void lora_task(void *arg)
 {
     (void)arg;
@@ -469,18 +675,7 @@ static void lora_task(void *arg)
     while (true) {
         (void)pairing_window_open();
         poll_last_save();
-        /* Notify app when a bound tank drops out of range. */
-        const bool online = tank_online_now();
-        if (s_bound && s_was_online && !online) {
-            s_was_online = false;
-            ESP_LOGW(TAG, "tank went offline (no packet ≥%ds)", CONFIG_PUMP_TANK_STALE_SEC);
-            pump_control_set_error(PUMP_ERR_TANK_OFFLINE);
-        } else if (online) {
-            if (!s_was_online && pump_control_last_error() == PUMP_ERR_TANK_OFFLINE) {
-                pump_control_clear_error();
-            }
-            s_was_online = true;
-        }
+        poll_online();
         size_t n = 0;
         int16_t rssi = 0;
         int8_t snr = 0;
@@ -493,50 +688,10 @@ static void lora_task(void *arg)
                 vTaskDelay(pdMS_TO_TICKS(15));
                 continue;
             }
-
             if (pkt->type == TANKLINK_LORA_TYPE_PAIR) {
-                if (n < TANKLINK_LORA_PAIR_LEN) {
-                    ESP_LOGW(TAG, "PAIR ignored — %u bytes, no token", (unsigned)n);
-                } else if (!pairing_window_open()) {
-                    ESP_LOGW(TAG, "PAIR ignored — window closed");
-                } else {
-                    memcpy(s_tank_id, pkt->tank_id, TANKLINK_LORA_TANK_ID_LEN);
-                    s_bound = true;
-                    s_pairing = false;
-                    memcpy(s_ble_token, buf + sizeof(tanklink_lora_status_t),
-                           TANKLINK_LORA_BLE_TOKEN_LEN);
-                    s_has_ble_token = token_nonzero(s_ble_token);
-                    restore_led_after_tank_pair();
-                    save_bind();
-                    pump_tanks_on_node_bound(s_tank_id);
-                    send_ack(pkt);
-                    if (pkt->seq != s_last_seq) {
-                        s_last_seq = pkt->seq;
-                        apply_tank_packet(pkt, rssi, snr);
-                    } else {
-                        s_rssi_dbm = rssi;
-                        s_snr_db = snr;
-                        gatt_svr_notify_tank();
-                    }
-                    ESP_LOGI(TAG, "tank paired %02x:%02x:%02x:%02x:%02x:%02x",
-                             s_tank_id[0], s_tank_id[1], s_tank_id[2], s_tank_id[3],
-                             s_tank_id[4], s_tank_id[5]);
-                }
+                on_pair_packet(buf, n, rssi, snr);
             } else if (pkt->type == TANKLINK_LORA_TYPE_STATUS) {
-                if (!s_bound ||
-                    memcmp(pkt->tank_id, s_tank_id, TANKLINK_LORA_TANK_ID_LEN) != 0) {
-                    ESP_LOGW(TAG, "STATUS ignored — not bound / wrong tank");
-                } else {
-                    send_ack(pkt);
-                    if (pkt->seq != s_last_seq) {
-                        s_last_seq = pkt->seq;
-                        apply_tank_packet(pkt, rssi, snr);
-                    } else {
-                        s_rssi_dbm = rssi;
-                        s_snr_db = snr;
-                        gatt_svr_notify_tank();
-                    }
-                }
+                on_status_packet(pkt, rssi, snr);
             }
         } else if (err != ESP_ERR_NOT_FOUND && err != ESP_ERR_INVALID_CRC) {
             vTaskDelay(pdMS_TO_TICKS(20));
@@ -547,11 +702,23 @@ static void lora_task(void *arg)
 
 esp_err_t lora_link_init(void)
 {
-    load_bind();
-    if (s_bound) {
-        pump_tanks_on_node_bound(s_tank_id);
-        restore_last();
+    for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
+        rt_reset(n);
     }
+    migrate_legacy();
+    for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
+        if (!pump_tanks_node_get(n, NULL)) {
+            continue;
+        }
+        load_token(n);
+        restore_last(n);
+        uint8_t mac[6];
+        (void)node_mac(n, mac);
+        ESP_LOGI(TAG, "sensor %u %02x:%02x:%02x:%02x:%02x:%02x ble_tok=%d", n, mac[0], mac[1],
+                 mac[2], mac[3], mac[4], mac[5], (int)s_rt[n].has_token);
+    }
+    lora_link_on_active_changed();
+
     sx1278_config_t cfg = {
         .pin_sck = CONFIG_PUMP_LORA_SCK_GPIO,
         .pin_miso = CONFIG_PUMP_LORA_MISO_GPIO,
@@ -580,7 +747,7 @@ esp_err_t lora_link_init(void)
         s_ready = false;
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "listening for tank @ %u Hz", (unsigned)CONFIG_PUMP_LORA_FREQ_HZ);
+    ESP_LOGI(TAG, "listening for tank sensors @ %u Hz", (unsigned)CONFIG_PUMP_LORA_FREQ_HZ);
     return ESP_OK;
 }
 
@@ -620,117 +787,170 @@ bool lora_link_tank_pairing_active(void)
     return pairing_window_open();
 }
 
-esp_err_t lora_link_unpair_tank(void)
+esp_err_t lora_link_unpair_node(uint8_t node)
 {
-    s_bound = false;
-    s_heard = false;
-    s_was_online = false;
-    s_last_rx_us = 0;
-    s_flags = 0;
-    s_bat = 0;
-    s_rssi_dbm = 0;
-    s_snr_db = 0;
-    s_has_ble_token = false;
-    memset(s_tank_id, 0, sizeof(s_tank_id));
-    memset(s_ble_token, 0, sizeof(s_ble_token));
-    status_led_set_tank_full(false);
-    esp_err_t err = save_bind();
+    const esp_err_t err = pump_tanks_node_remove(node, pump_control_is_on());
+    if (err != ESP_OK) {
+        return err;
+    }
+    rt_reset(node);
+    erase_node_keys(node);
+    ESP_LOGI(TAG, "sensor %u unpaired", node);
+    lora_link_on_active_changed();
+    gatt_svr_notify_tank();
+    gatt_svr_notify_tanks();
+    gatt_svr_notify_nodes();
+    gatt_svr_notify_sched();
+    return ESP_OK;
+}
+
+esp_err_t lora_link_unpair_all(void)
+{
+    for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
+        if (pump_tanks_node_get(n, NULL)) {
+            (void)pump_tanks_node_remove(n, false);
+        }
+        rt_reset(n);
+    }
     nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_erase_key(h, NVS_KEY_ID);
-        nvs_erase_key(h, NVS_KEY_BLE_TOKEN);
-        nvs_commit(h);
+    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    if (err == ESP_OK) {
+        err = nvs_erase_all(h);
+        if (err == ESP_OK) {
+            err = nvs_commit(h);
+        }
         nvs_close(h);
     }
-    erase_last();
-    pump_tanks_on_node_unpaired();
-    ESP_LOGI(TAG, "tank unpaired");
+    status_led_set_tank_full(false);
+    ESP_LOGI(TAG, "all sensors unpaired");
     gatt_svr_notify_tank();
+    gatt_svr_notify_tanks();
+    gatt_svr_notify_nodes();
     return err;
+}
+
+bool lora_link_node_status(uint8_t node, lora_node_status_t *out)
+{
+    if (node >= PUMP_NODE_MAX || !pump_tanks_node_get(node, NULL)) {
+        return false;
+    }
+    if (!out) {
+        return true;
+    }
+    const node_rt_t *rt = &s_rt[node];
+    memset(out, 0, sizeof(*out));
+    out->heard = rt->heard;
+    out->online = node_online(node);
+    out->age_sec = node_age_sec(node);
+    out->raw_flags = rt->flags;
+    out->battery_pct = rt->bat;
+    memcpy(out->fw, rt->fw, sizeof(out->fw));
+    out->hw_rev = rt->hw_rev;
+    out->rssi_dbm = rt->heard ? rt->rssi_dbm : 0;
+    out->snr_db = rt->heard ? rt->snr_db : 0;
+    out->has_ble_token = rt->has_token;
+    memcpy(out->ble_token, rt->token, sizeof(out->ble_token));
+    return true;
+}
+
+bool lora_link_active_tank_full(void)
+{
+    const uint8_t node = pump_tanks_active_node();
+    return node != PUMP_NODE_NONE && node_online(node) &&
+           pump_tanks_active_is_full(s_rt[node].flags);
 }
 
 bool lora_link_tank_bound(void)
 {
-    return s_bound;
+    return pump_tanks_active_node() != PUMP_NODE_NONE;
 }
 bool lora_link_tank_heard(void)
 {
-    return s_heard;
+    const node_rt_t *rt = active_rt();
+    return rt && rt->heard;
 }
 bool lora_link_tank_online(void)
 {
-    return tank_online_now();
+    return node_online(pump_tanks_active_node());
 }
 uint16_t lora_link_tank_age_sec(void)
 {
-    return tank_age_sec_now();
+    const uint8_t node = pump_tanks_active_node();
+    return node == PUMP_NODE_NONE ? 0xFFFF : node_age_sec(node);
 }
 int16_t lora_link_tank_rssi_dbm(void)
 {
-    return s_heard ? s_rssi_dbm : 0;
+    const node_rt_t *rt = active_rt();
+    return rt && rt->heard ? rt->rssi_dbm : 0;
 }
 int8_t lora_link_tank_snr_db(void)
 {
-    return s_heard ? s_snr_db : 0;
+    const node_rt_t *rt = active_rt();
+    return rt && rt->heard ? rt->snr_db : 0;
 }
 const uint8_t *lora_link_tank_id(void)
 {
-    return s_tank_id;
+    static uint8_t id[TANKLINK_LORA_TANK_ID_LEN];
+    if (!node_mac(pump_tanks_active_node(), id)) {
+        memset(id, 0, sizeof(id));
+    }
+    return id;
 }
 bool lora_link_tank_has_ble_token(void)
 {
-    return s_has_ble_token;
+    const node_rt_t *rt = active_rt();
+    return rt && rt->has_token;
 }
 const uint8_t *lora_link_tank_ble_token(void)
 {
-    return s_ble_token;
+    const node_rt_t *rt = active_rt();
+    return rt ? rt->token : s_zero_token;
 }
 uint8_t lora_link_tank_raw_flags(void)
 {
-    return s_flags;
+    const node_rt_t *rt = active_rt();
+    return rt ? rt->flags : 0;
 }
 uint8_t lora_link_tank_flags(void)
 {
     /* Bit 0 is "selected tank is full" and bit 1 is "almost empty". */
-    const uint8_t raw = s_flags;
+    const uint8_t raw = lora_link_tank_raw_flags();
     uint8_t out = raw & (uint8_t)(TANKLINK_LORA_FLAG_BTN | TANKLINK_LORA_FLAG_PAIRING);
-    const bool s1 = (raw & TANKLINK_LORA_FLAG_SENSOR1) != 0;
-    const bool s2 = (raw & TANKLINK_LORA_FLAG_SENSOR2) != 0;
-    const uint8_t mode = pump_config_sensor_mode();
-    if (mode == PUMP_SENSOR_MODE_TWO) {
-        if (pump_tanks_active_is_full(raw)) {
-            out |= TANKLINK_LORA_FLAG_SENSOR1;
-        }
-    } else if (s1) {
+    if (!lora_link_tank_bound()) {
+        return out;
+    }
+    if (pump_tanks_active_is_full(raw)) {
         out |= TANKLINK_LORA_FLAG_SENSOR1;
-        if (mode == PUMP_SENSOR_MODE_EMPTY && !s2) {
-            out |= TANKLINK_LORA_FLAG_SENSOR2;
-        }
-    } else if (mode == PUMP_SENSOR_MODE_EMPTY && !s2) {
+    }
+    if (pump_tanks_mode() == PUMP_SENSOR_MODE_EMPTY && !(raw & TANKLINK_LORA_FLAG_SENSOR2)) {
         out |= TANKLINK_LORA_FLAG_SENSOR2;
     }
     return out;
 }
 uint8_t lora_link_tank_battery_pct(void)
 {
-    return s_bat;
+    const node_rt_t *rt = active_rt();
+    return rt ? rt->bat : 0;
 }
 uint8_t lora_link_tank_fw_major(void)
 {
-    return s_fw_maj;
+    const node_rt_t *rt = active_rt();
+    return rt ? rt->fw[0] : 0;
 }
 uint8_t lora_link_tank_fw_minor(void)
 {
-    return s_fw_min;
+    const node_rt_t *rt = active_rt();
+    return rt ? rt->fw[1] : 0;
 }
 uint8_t lora_link_tank_fw_patch(void)
 {
-    return s_fw_pat;
+    const node_rt_t *rt = active_rt();
+    return rt ? rt->fw[2] : 0;
 }
-
 uint8_t lora_link_tank_hw_rev(void)
 {
-    return s_hw_rev;
+    const node_rt_t *rt = active_rt();
+    return rt ? rt->hw_rev : 0;
 }
 
 #endif /* CONFIG_PUMP_ENABLE_LORA */

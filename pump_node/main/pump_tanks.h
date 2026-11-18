@@ -1,5 +1,25 @@
 #pragma once
 
+/*
+ * Which tank sensors are paired to this pump, and the tanks they watch.
+ *
+ * A sensor node is one tank board (one MAC, two float pins). Its float mode
+ * says what its second pin means: nothing, "almost empty", or the full float
+ * of a second tank. A tank slot is one logical tank: a node plus which pin is
+ * its full float, a name, and its own auto-off.
+ *
+ * Invariants (kept by every change):
+ *  - With no nodes there is exactly one slot, with node PUMP_NODE_NONE. It
+ *    keeps the name and auto-off for a pump that runs without a sensor.
+ *  - With nodes, every slot belongs to a node; each node has a sensor-0 slot,
+ *    and a sensor-1 slot only in two-tank mode.
+ *  - The active slot is always present. Only the active slot's tank can block
+ *    a start or stop a running fill.
+ *
+ * The radio side (tokens, last packet per node) is in lora_link.c, indexed by
+ * the same node index.
+ */
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -9,8 +29,10 @@
 extern "C" {
 #endif
 
-/** Room for a later second paired node. This build only fills slots from one node. */
-#define PUMP_TANK_SLOT_MAX 4
+#define PUMP_NODE_MAX 4
+#define PUMP_NODE_NONE 0xFF
+/* Every node in two-tank mode: two slots each. */
+#define PUMP_TANK_SLOT_MAX (PUMP_NODE_MAX * 2)
 #define PUMP_TANK_NAME_LEN 16
 #define PUMP_AUTO_OFF_DEFAULT_MIN 30
 #define PUMP_AUTO_OFF_MAX_MIN 240
@@ -21,31 +43,63 @@ extern "C" {
 
 typedef struct {
     uint8_t present;
-    uint8_t node_mac[6];
+    uint8_t mac[6];
+    uint8_t mode; /* PUMP_SENSOR_MODE_* */
+} pump_tank_node_t;
+
+typedef struct {
+    uint8_t present;
+    uint8_t node;   /* node index, PUMP_NODE_NONE = no sensor */
     uint8_t sensor; /* 0 = sensor 1 pin, 1 = sensor 2 pin */
     uint8_t auto_off_min; /* 0 = off, else stop a fill after this many minutes */
     char name[PUMP_TANK_NAME_LEN];
 } pump_tank_slot_t;
 
+/** Load (and migrate the single-sensor layout). Call after pump_sched_init. */
 esp_err_t pump_tanks_init(void);
 esp_err_t pump_tanks_clear(void);
 
-void pump_tanks_on_node_bound(const uint8_t mac[6]);
-void pump_tanks_on_node_unpaired(void);
+/* ---- Sensor nodes ---- */
 
-uint8_t pump_tanks_mode(void);
-uint8_t pump_tanks_active(void);
-uint8_t pump_tanks_active_sensor(void);
+unsigned pump_tanks_node_count(void);
+bool pump_tanks_node_get(uint8_t node, pump_tank_node_t *out);
+/** Node index for [mac], or -1. */
+int pump_tanks_node_find(const uint8_t mac[6]);
+
+/**
+ * Add a node, or return the index it already has. A new node gets one tank
+ * slot (the first node takes over the no-sensor slot). ESP_ERR_NO_MEM when
+ * PUMP_NODE_MAX nodes are already paired.
+ */
+esp_err_t pump_tanks_node_add(const uint8_t mac[6], uint8_t *index, bool *added);
+
+/**
+ * Remove a node, its slots and the schedules that point at them. Refused
+ * while the pump runs into one of its tanks. Removing the last node keeps one
+ * no-sensor slot.
+ */
+esp_err_t pump_tanks_node_remove(uint8_t node, bool pump_running);
+
+uint8_t pump_tanks_node_mode(uint8_t node);
+
+/**
+ * Change one node's float mode. Leaving two-tank mode removes that node's
+ * second tank and its schedules, and is refused while the pump runs into it.
+ */
+esp_err_t pump_tanks_set_node_mode(uint8_t node, uint8_t mode, bool pump_running);
+
+/* ---- Tank slots ---- */
 
 /** Present slots in index order. */
 unsigned pump_tanks_count(void);
 bool pump_tanks_slot_at(unsigned nth, uint8_t *index, pump_tank_slot_t *out);
+bool pump_tanks_slot_present(uint8_t slot);
 
-/**
- * Change float mode. Leaving two-tank mode while the pump is running fails.
- * Leaving two-tank mode deletes slot 1 and schedules that point at it.
- */
-esp_err_t pump_tanks_set_mode(uint8_t mode, bool pump_running);
+uint8_t pump_tanks_active(void);
+/** Node of the active slot, or PUMP_NODE_NONE. */
+uint8_t pump_tanks_active_node(void);
+/** Float mode of the active slot's node (OFF without a node). */
+uint8_t pump_tanks_mode(void);
 
 /** Select a present slot. A different slot is rejected while the pump is running. */
 esp_err_t pump_tanks_select(uint8_t slot, bool pump_running);
@@ -58,7 +112,10 @@ esp_err_t pump_tanks_set_auto_off(uint8_t slot, uint8_t minutes);
 /** Auto-off minutes of the active slot (0 = off). */
 uint8_t pump_tanks_active_auto_off_min(void);
 
-/** True when the active slot's float says that tank is full. */
+/** True when [raw_flags] (from the slot's node) say that slot's tank is full. */
+bool pump_tanks_slot_is_full(uint8_t slot, uint8_t raw_flags);
+
+/** True when [raw_flags] (from the active node) say the active tank is full. */
 bool pump_tanks_active_is_full(uint8_t raw_flags);
 
 #ifdef __cplusplus

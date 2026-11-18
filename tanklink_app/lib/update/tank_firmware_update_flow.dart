@@ -22,13 +22,17 @@ String _fmtEta(Duration? d) {
   return 'About ${m}m ${r}s left';
 }
 
-Future<void> showTankFirmwareConfirmSheet(BuildContext context) async {
+/// Confirm, then update [sensor] (one of the pump's paired tank sensors).
+Future<void> showTankFirmwareConfirmSheet(
+  BuildContext context,
+  TankSensor sensor,
+) async {
   final session = context.read<PumpSession>();
   final fw = context.read<TankFirmwareUpdate>();
   final latest = fw.latestVersion ?? '—';
-  final current = session.tankFw.isEmpty ? '—' : session.tankFw;
+  final current = sensor.firmware.isEmpty ? '—' : sensor.firmware;
   final size = fw.bytesTotal > 0 ? _fmtBytes(fw.bytesTotal) : '—';
-  final ready = session.ready && session.tankOtaReady;
+  final ready = session.ready && sensor.otaReady;
 
   final action = await showModalBottomSheet<String>(
     context: context,
@@ -48,7 +52,7 @@ Future<void> showTankFirmwareConfirmSheet(BuildContext context) async {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Update tank firmware',
+              'Update sensor #${sensor.shortId}',
               style: Theme.of(ctx).textTheme.titleLarge
                   ?.copyWith(fontWeight: FontWeight.w700),
             ),
@@ -126,7 +130,7 @@ Future<void> showTankFirmwareConfirmSheet(BuildContext context) async {
               icon: Icons.battery_std_rounded,
               text: 'Prefer a healthy tank battery before updating',
             ),
-            if (!session.tankOtaReady) ...[
+            if (!sensor.otaReady) ...[
               const SizedBox(height: 8),
               Text(
                 'Set up the tank again first, so your phone is allowed to update it.',
@@ -143,9 +147,7 @@ Future<void> showTankFirmwareConfirmSheet(BuildContext context) async {
                 ),
               ),
               child: Text(
-                !session.tankOtaReady
-                    ? 'Set up tank again first'
-                    : 'Update now',
+                !sensor.otaReady ? 'Set up tank again first' : 'Update now',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
@@ -166,11 +168,14 @@ Future<void> showTankFirmwareConfirmSheet(BuildContext context) async {
     return;
   }
   if (action == 'update') {
-    await runTankFirmwareUpdate(context);
+    await runTankFirmwareUpdate(context, sensor);
   }
 }
 
-Future<void> runTankFirmwareUpdate(BuildContext context) async {
+Future<void> runTankFirmwareUpdate(
+  BuildContext context,
+  TankSensor sensor,
+) async {
   final session = context.read<PumpSession>();
   final fw = context.read<TankFirmwareUpdate>();
 
@@ -180,7 +185,7 @@ Future<void> runTankFirmwareUpdate(BuildContext context) async {
     ).showSnackBar(const SnackBar(content: Text('Connect to the pump first')));
     return;
   }
-  if (!session.tankOtaReady) {
+  if (!sensor.otaReady) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Set up the tank sensor again to allow updates'),
@@ -192,7 +197,7 @@ Future<void> runTankFirmwareUpdate(BuildContext context) async {
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (ctx) => const _TankOtaProgressDialog(),
+    builder: (ctx) => _TankOtaProgressDialog(sensor: sensor),
   );
   fw.resetPhase();
 }
@@ -221,7 +226,9 @@ class _Bullet extends StatelessWidget {
 }
 
 class _TankOtaProgressDialog extends StatefulWidget {
-  const _TankOtaProgressDialog();
+  const _TankOtaProgressDialog({required this.sensor});
+
+  final TankSensor sensor;
 
   @override
   State<_TankOtaProgressDialog> createState() => _TankOtaProgressDialogState();
@@ -245,6 +252,7 @@ class _TankOtaProgressDialogState extends State<_TankOtaProgressDialog> {
       fw.beginTransfer(image.length);
       await session.otaUpdateTank(
         image,
+        sensor: widget.sensor,
         onScanning: fw.setScanning,
         onProgress: fw.setTransferProgress,
         onVerifying: fw.setVerifying,

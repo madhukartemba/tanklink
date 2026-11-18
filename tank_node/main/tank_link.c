@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "esp_mac.h"
+#include "esp_random.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -106,7 +107,9 @@ static bool packet_is_ack_for(const uint8_t *buf, size_t len, uint16_t seq)
         ack->type != TANKLINK_LORA_TYPE_ACK) {
         return false;
     }
-    return ack->seq == seq;
+    /* Several tanks can share a pump, and seq is per tank: the ACK must be ours. */
+    return ack->seq == seq &&
+           memcmp(ack->tank_id, s_tank_id, TANKLINK_LORA_TANK_ID_LEN) == 0;
 }
 
 static bool wait_ack(uint16_t seq, uint32_t timeout_ms,
@@ -195,7 +198,8 @@ static esp_err_t send_with_ack(const uint8_t *payload, size_t len, uint16_t seq,
         if (should_cancel && should_cancel(ctx)) {
             return ESP_ERR_INVALID_STATE;
         }
-        vTaskDelay(pdMS_TO_TICKS(40));
+        /* Random backoff: two tanks that collided once should not retry in step. */
+        vTaskDelay(pdMS_TO_TICKS(40 + esp_random() % 400));
     }
     return ESP_ERR_TIMEOUT;
 }

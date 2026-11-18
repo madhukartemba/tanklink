@@ -252,15 +252,6 @@ uint8_t pump_config_sensor_mode(void)
     return s_cfg.empty_float > 2 ? 0 : s_cfg.empty_float;
 }
 
-esp_err_t pump_config_set_sensor_mode(uint8_t mode)
-{
-    if (mode > 2) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    s_cfg.empty_float = mode;
-    return pump_config_set(&s_cfg);
-}
-
 void pump_config_log(void)
 {
     ESP_LOGI(TAG,

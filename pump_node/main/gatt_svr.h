@@ -34,6 +34,7 @@ bool gatt_svr_is_authed_conn(uint16_t conn_handle);
 void gatt_svr_notify_state(void);
 void gatt_svr_notify_tank(void);
 void gatt_svr_notify_tanks(void);
+void gatt_svr_notify_nodes(void);
 void gatt_svr_notify_sched(void);
 
 #ifdef __cplusplus
