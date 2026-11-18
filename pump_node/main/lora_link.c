@@ -24,11 +24,6 @@
 /* Per sensor, suffixed with the node index: BLE OTA token and last packet. */
 #define NVS_KEY_TOKEN "tok"
 #define NVS_KEY_LAST "last"
-/* Single-sensor layout up to pump 0.12, migrated to node keys at boot. */
-#define NVS_KEY_LEGACY_BOUND "bound"
-#define NVS_KEY_LEGACY_ID "id"
-#define NVS_KEY_LEGACY_TOKEN "ble_tok"
-#define NVS_KEY_LEGACY_LAST "last"
 #define LAST_REC_VER 2
 /* Save at most once a minute unless the float flags changed. */
 #define LAST_SAVE_MIN_US (60LL * 1000000)
@@ -268,51 +263,6 @@ static void erase_node_keys(uint8_t node)
     (void)nvs_erase_key(h, key);
     node_key(key, sizeof(key), NVS_KEY_LAST, node);
     (void)nvs_erase_key(h, key);
-    (void)nvs_commit(h);
-    nvs_close(h);
-}
-
-/** Move a blob from one key to another in the open handle. */
-static void move_blob(nvs_handle_t h, const char *from, const char *to)
-{
-    uint8_t buf[64];
-    size_t len = sizeof(buf);
-    if (nvs_get_blob(h, from, buf, &len) == ESP_OK) {
-        (void)nvs_set_blob(h, to, buf, len);
-    }
-    (void)nvs_erase_key(h, from);
-}
-
-/** Pump 0.12 and older kept one sensor under fixed keys. Give it node keys. */
-static void migrate_legacy(void)
-{
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
-        return;
-    }
-    uint8_t bound = 0;
-    if (nvs_get_u8(h, NVS_KEY_LEGACY_BOUND, &bound) != ESP_OK) {
-        nvs_close(h);
-        return;
-    }
-    uint8_t id[TANKLINK_LORA_TANK_ID_LEN];
-    size_t len = sizeof(id);
-    uint8_t node = PUMP_NODE_NONE;
-    if (bound && nvs_get_blob(h, NVS_KEY_LEGACY_ID, id, &len) == ESP_OK && len == sizeof(id) &&
-        pump_tanks_node_add(id, &node, NULL) == ESP_OK) {
-        char key[12];
-        node_key(key, sizeof(key), NVS_KEY_TOKEN, node);
-        move_blob(h, NVS_KEY_LEGACY_TOKEN, key);
-        node_key(key, sizeof(key), NVS_KEY_LAST, node);
-        move_blob(h, NVS_KEY_LEGACY_LAST, key);
-        ESP_LOGI(TAG, "migrated paired sensor to node %u", node);
-    }
-    (void)nvs_erase_key(h, NVS_KEY_LEGACY_BOUND);
-    (void)nvs_erase_key(h, NVS_KEY_LEGACY_ID);
-    (void)nvs_erase_key(h, NVS_KEY_LEGACY_TOKEN);
-    if (node == PUMP_NODE_NONE) {
-        (void)nvs_erase_key(h, NVS_KEY_LEGACY_LAST);
-    }
     (void)nvs_commit(h);
     nvs_close(h);
 }
@@ -705,7 +655,6 @@ esp_err_t lora_link_init(void)
     for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
         rt_reset(n);
     }
-    migrate_legacy();
     for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
         if (!pump_tanks_node_get(n, NULL)) {
             continue;

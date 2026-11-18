@@ -55,7 +55,7 @@ typedef struct {
     char name[PUMP_TANK_NAME_LEN];
 } pump_tank_slot_t;
 
-/** Load (and migrate the single-sensor layout). Call after pump_sched_init. */
+/** Load saved sensors and tanks. Call after pump_sched_init. */
 esp_err_t pump_tanks_init(void);
 esp_err_t pump_tanks_clear(void);
 

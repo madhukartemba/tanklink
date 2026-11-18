@@ -5,7 +5,6 @@
 
 #include "esp_log.h"
 #include "nvs.h"
-#include "pump_config.h"
 #include "pump_sched.h"
 #include "tanklink_lora_proto.h"
 
@@ -20,22 +19,6 @@ typedef struct {
     pump_tank_node_t nodes[PUMP_NODE_MAX];
     pump_tank_slot_t slots[PUMP_TANK_SLOT_MAX];
 } tanks_blob_t;
-
-/* Layout up to pump 0.12: one node, its MAC copied into each of 4 slots, and
- * the float mode pump-wide in pump_config. Read once to migrate. */
-#define TANKS_MAGIC_V5 0x544E4B35u /* 'TNK5' */
-typedef struct {
-    uint8_t present;
-    uint8_t node_mac[6];
-    uint8_t sensor;
-    uint8_t auto_off_min;
-    char name[PUMP_TANK_NAME_LEN];
-} tank_slot_v5_t;
-typedef struct {
-    uint32_t magic;
-    uint8_t active;
-    tank_slot_v5_t slots[4];
-} tanks_blob_v5_t;
 
 static tanks_blob_t s_blob;
 
@@ -232,57 +215,15 @@ static void normalize(void)
     }
 }
 
-/** Single-node layout: node 0 gets the MAC and the pump-wide float mode. */
-static void migrate_v5(const tanks_blob_v5_t *old)
-{
-    memset(&s_blob, 0, sizeof(s_blob));
-    const uint8_t *mac = NULL;
-    for (int i = 0; i < 4; i++) {
-        if (old->slots[i].present && mac_nonzero(old->slots[i].node_mac)) {
-            mac = old->slots[i].node_mac;
-            break;
-        }
-    }
-    if (mac) {
-        s_blob.nodes[0].present = 1;
-        memcpy(s_blob.nodes[0].mac, mac, 6);
-        s_blob.nodes[0].mode = pump_config_sensor_mode();
-    }
-    for (int i = 0; i < 4; i++) {
-        const tank_slot_v5_t *o = &old->slots[i];
-        if (!o->present) {
-            continue;
-        }
-        pump_tank_slot_t *s = &s_blob.slots[i];
-        s->present = 1;
-        s->node = mac ? 0 : PUMP_NODE_NONE;
-        s->sensor = o->sensor;
-        s->auto_off_min = o->auto_off_min;
-        memcpy(s->name, o->name, PUMP_TANK_NAME_LEN);
-    }
-    s_blob.active = old->active;
-    ESP_LOGI(TAG, "migrated single-sensor tank slots (sensor %s)", mac ? "paired" : "none");
-}
-
 esp_err_t pump_tanks_init(void)
 {
     memset(&s_blob, 0, sizeof(s_blob));
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
-        size_t len = 0;
-        if (nvs_get_blob(h, NVS_KEY, NULL, &len) == ESP_OK) {
-            if (len == sizeof(tanks_blob_t)) {
-                if (nvs_get_blob(h, NVS_KEY, &s_blob, &len) != ESP_OK ||
-                    s_blob.magic != TANKS_MAGIC) {
-                    memset(&s_blob, 0, sizeof(s_blob));
-                }
-            } else if (len == sizeof(tanks_blob_v5_t)) {
-                tanks_blob_v5_t old;
-                if (nvs_get_blob(h, NVS_KEY, &old, &len) == ESP_OK &&
-                    old.magic == TANKS_MAGIC_V5) {
-                    migrate_v5(&old);
-                }
-            }
+        size_t len = sizeof(s_blob);
+        if (nvs_get_blob(h, NVS_KEY, &s_blob, &len) != ESP_OK || len != sizeof(s_blob) ||
+            s_blob.magic != TANKS_MAGIC) {
+            memset(&s_blob, 0, sizeof(s_blob));
         }
         nvs_close(h);
     }

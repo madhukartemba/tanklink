@@ -32,8 +32,7 @@ typedef struct {
     uint8_t buzzer_tone;  /* buzzer_tone_t */
     uint8_t led_brightness; /* 1-100; 0 treated as default on load */
     uint8_t starter_type;   /* pump_starter_type_t */
-    uint8_t empty_float;    /* pump 0.12 and older: the one sensor's float mode. Now per sensor in pump_tanks; read once to migrate */
-    uint8_t reserved_u8[3];
+    uint8_t reserved_u8[4];
     uint32_t relay_pulse_ms; /* 50-2000; 0 = default on load */
     uint32_t reserved;
 } pump_config_t;
@@ -66,8 +65,6 @@ uint16_t pump_config_relay_pulse_ms(void);
 esp_err_t pump_config_set_relay_pulse_ms(uint16_t ms);
 
 /** 0 off, 1 almost-empty, 2 two tanks. */
-/** Float mode saved by pump 0.12 and older, for migrating to per-sensor modes. */
-uint8_t pump_config_sensor_mode(void);
 
 void pump_config_log(void);
 

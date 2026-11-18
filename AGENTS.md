@@ -157,4 +157,5 @@ There is no hardware-in-the-loop setup. Firmware changes can be compile-checked,
 - Commit subjects are plain sentences: `Fix tank select ...`, `Pump 0.9.0: ...`, `TankLink app 1.0.9: ...` for version bumps.
 - Don't commit `sdkconfig`, `build/`, `managed_components/`, `dependencies.lock`, `key.properties`, or keystores (all gitignored). Pin and feature defaults belong in `sdkconfig.defaults` and `Kconfig.projbuild`.
 - A local `sdkconfig` overrides `sdkconfig.defaults`. After changing defaults, check the local `sdkconfig` picked them up (or delete it and rebuild).
+- **No old-version handling.** The project is in development: don't add migrations of saved NVS data, fallbacks for older firmware or apps, or compatibility shims. A changed NVS layout fails its size/magic check and loads defaults; a changed BLE layout keeps the protocol version as is. Say in the release notes what has to be re-paired or set again.
 - User-facing app text is short and plain. Help text that describes the button or wiring must match the firmware.
