@@ -73,7 +73,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 1
+#define TANKLINK_PROTO_MINOR 2
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -106,6 +106,13 @@ extern "C" {
 #define TANKLINK_SERIAL_LEN  4
 #define TANKLINK_ADV_NAME_MAX 16
 
+/* Manufacturer data in the pump's advertising (minor 2): company ID 0xFFFF
+ * (little-endian on air), then one state byte, so a phone can tell before
+ * connecting whether a pump can be added. */
+#define TANKLINK_ADV_COMPANY_ID     0xFFFF
+#define TANKLINK_ADV_STATE_CLAIMABLE 0x01 /* a phone can add it now */
+#define TANKLINK_ADV_STATE_PAIRED    0x02 /* at least one phone has it */
+
 /* Cmd opcodes (byte 0). Unknown opcodes are rejected. */
 #define TANKLINK_CMD_OFF       0x00
 #define TANKLINK_CMD_ON        0x01
@@ -118,6 +125,10 @@ extern "C" {
 #define TANKLINK_CMD_SENSOR_MODE 0xA7 /* sensor_id(6) mode(1) */
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
+/* Open / close the phone pairing window from a signed-in phone (minor 2).
+ * Open is refused while the pump runs: the window switches it off. */
+#define TANKLINK_CMD_PAIRING_OPEN  0xF2
+#define TANKLINK_CMD_PAIRING_CLOSE 0xF3
 #define TANKLINK_CMD_CLEAR_ERROR   0xE0
 #define TANKLINK_CMD_DISMISS_INTERRUPT 0xE1
 

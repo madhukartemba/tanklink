@@ -29,6 +29,10 @@ const char *pump_pair_adv_name(void);
 /** Open pairing window (e.g. after 5s button hold). Timeout from Kconfig. */
 esp_err_t pump_pair_enter_pairing_mode(void);
 void pump_pair_exit_pairing_mode(void);
+
+/** Called after anything that changes pump_pair_is_claimable() or
+ * pump_pair_is_paired(), so advertising can be refreshed. */
+void pump_pair_set_change_callback(void (*cb)(void));
 /** Call periodically; ends pairing window when timed out. */
 void pump_pair_poll(void);
 

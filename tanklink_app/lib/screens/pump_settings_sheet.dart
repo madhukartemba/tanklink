@@ -13,6 +13,7 @@ import 'fill_history_screen.dart';
 import 'schedules_screen.dart';
 import 'starter_settings_screen.dart';
 import 'settings/tank_sensor_screen.dart';
+import 'settings/add_phone_dialog.dart';
 import 'settings/update_tiles.dart';
 import 'settings/buzzer_settings_sheet.dart';
 import 'settings/led_brightness_tile.dart';
@@ -314,6 +315,24 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                         ),
                       );
                     },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.phone_android_rounded),
+              title: const Text('Add another phone'),
+              subtitle: Text(
+                !ready
+                    ? 'Connect to the pump first'
+                    : session.canControlPairing
+                    ? 'Turn on pairing mode so another phone can add this pump'
+                    : 'Update the pump to do this from the app. Or hold its '
+                          'button until the light turns blue.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              enabled: ready && session.canControlPairing,
+              onTap: ready && session.canControlPairing
+                  ? () => showAddPhoneDialog(context, session)
+                  : null,
             ),
             const Divider(height: 28),
             if (ready)

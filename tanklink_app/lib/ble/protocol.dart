@@ -52,6 +52,7 @@ class PumpInfo {
     required this.deviceIdHex,
     required this.firmware,
     required this.runSeconds,
+    this.pairingOpen = false,
   });
 
   final int protoMajor;
@@ -61,6 +62,9 @@ class PumpInfo {
   final String deviceIdHex;
   final String firmware;
   final int runSeconds;
+
+  /// The phone pairing window is open (Info flags bit 0).
+  final bool pairingOpen;
 
   String get serial => serialFromDeviceId(deviceIdHex);
 
@@ -75,12 +79,36 @@ class PumpInfo {
       protoMinor: b[1],
       hwRev: b[2],
       paired: b[3] != 0,
-      // b[4] is flags (pairing window open, this connection authed).
+      // b[4] is flags: bit 0 pairing window open, bit 1 this connection
+      // is authed.
+      pairingOpen: (b[4] & 0x01) != 0,
       deviceIdHex: _hex(b.sublist(5, 11)),
       firmware: '${b[11]}.${b[12]}.${b[13]}',
       runSeconds: _u32(b, 14),
     );
   }
+}
+
+/// Whether a pump seen in a scan can be added, from its advertising.
+enum PumpAdvState {
+  /// A phone can add it now (pairing window open, or never set up).
+  ready,
+
+  /// It belongs to someone and its pairing window is closed.
+  notReady,
+
+  /// Firmware before protocol minor 2 doesn't say.
+  unknown,
+}
+
+/// Reads the pump's advertising state byte: manufacturer data under
+/// company 0xFFFF as flutter_blue_plus gives it (company ID → bytes).
+PumpAdvState pumpAdvState(Map<int, List<int>> manufacturerData) {
+  final d = manufacturerData[TankLinkUuids.tankMfgCompanyId];
+  if (d == null || d.isEmpty) return PumpAdvState.unknown;
+  return (d[0] & TankLinkUuids.advStateClaimable) != 0
+      ? PumpAdvState.ready
+      : PumpAdvState.notReady;
 }
 
 /// Pump Settings characteristic (pump-wide; auto-off and float modes are

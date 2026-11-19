@@ -72,7 +72,7 @@ These are not LED blink codes; they appear in the app when a BLE command fails.
 
 | Situation | Typical message |
 | --- | --- |
-| Pump not in phone-pairing window | Claim rejected — hold the pump button 5 s |
+| Pump not in phone-pairing window | Add pump shows how to turn on pairing mode and waits for it |
 | Not authenticated | Cmd rejected |
 | Tank pair window / LoRa down | Tank pair failed |
 | Unpair tank | Unpair tank failed |

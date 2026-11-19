@@ -115,6 +115,9 @@ static void pair_poll_task(void *arg)
     }
 }
 
+/** True once NimBLE has synced and the first advertising has started. */
+static bool s_adv_ready;
+
 static void advertise(void)
 {
     const char *name = pump_pair_adv_name();
@@ -122,41 +125,43 @@ static void advertise(void)
         name = TANKLINK_DEVICE_NAME;
     }
 
+    /* Advertising (31 bytes max): flags (3) + name (2 + 13) + manufacturer
+     * data (2 + 2 + 1): company ID, then the state byte the app reads to
+     * show whether this pump can be added. Service UUID (18) goes in the
+     * scan response: it doesn't fit next to the name. */
+    uint8_t state = 0;
+    if (pump_pair_is_claimable()) {
+        state |= TANKLINK_ADV_STATE_CLAIMABLE;
+    }
+    if (pump_pair_is_paired()) {
+        state |= TANKLINK_ADV_STATE_PAIRED;
+    }
+    const uint8_t mfg[3] = {
+        TANKLINK_ADV_COMPANY_ID & 0xFF, TANKLINK_ADV_COMPANY_ID >> 8, state,
+    };
+
     struct ble_hs_adv_fields fields;
     memset(&fields, 0, sizeof(fields));
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-    fields.tx_pwr_lvl_is_present = 1;
-    fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
     fields.name = (uint8_t *)name;
     fields.name_len = strlen(name);
     fields.name_is_complete = 1;
-    fields.uuids128 = (ble_uuid128_t *)&s_svc_uuid;
-    fields.num_uuids128 = 1;
-    fields.uuids128_is_complete = 1;
-
+    fields.mfg_data = mfg;
+    fields.mfg_data_len = sizeof(mfg);
     int rc = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {
-        ESP_LOGW(TAG, "adv fields compact fallback rc=%d", rc);
-        memset(&fields, 0, sizeof(fields));
-        fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-        fields.name = (uint8_t *)name;
-        fields.name_len = strlen(name);
-        fields.name_is_complete = 1;
-        rc = ble_gap_adv_set_fields(&fields);
-        if (rc != 0) {
-            ESP_LOGE(TAG, "adv set fields failed rc=%d", rc);
-            return;
-        }
+        ESP_LOGE(TAG, "adv set fields failed rc=%d", rc);
+        return;
+    }
 
-        struct ble_hs_adv_fields rsp;
-        memset(&rsp, 0, sizeof(rsp));
-        rsp.uuids128 = (ble_uuid128_t *)&s_svc_uuid;
-        rsp.num_uuids128 = 1;
-        rsp.uuids128_is_complete = 1;
-        rc = ble_gap_adv_rsp_set_fields(&rsp);
-        if (rc != 0) {
-            ESP_LOGW(TAG, "scan rsp set failed rc=%d", rc);
-        }
+    struct ble_hs_adv_fields rsp;
+    memset(&rsp, 0, sizeof(rsp));
+    rsp.uuids128 = (ble_uuid128_t *)&s_svc_uuid;
+    rsp.num_uuids128 = 1;
+    rsp.uuids128_is_complete = 1;
+    rc = ble_gap_adv_rsp_set_fields(&rsp);
+    if (rc != 0) {
+        ESP_LOGW(TAG, "scan rsp set failed rc=%d", rc);
     }
 
     struct ble_gap_adv_params adv;
@@ -171,6 +176,7 @@ static void advertise(void)
         ESP_LOGE(TAG, "adv start failed rc=%d", rc);
         return;
     }
+    s_adv_ready = true;
 
     if (pump_pair_pairing_active()) {
         ESP_LOGI(TAG, "PAIRING — advertising as %s", name);
@@ -178,6 +184,20 @@ static void advertise(void)
         ESP_LOGI(TAG, "PAIRED — advertising as %s", name);
     } else {
         ESP_LOGI(TAG, "UNPAIRED — advertising as %s", name);
+    }
+}
+
+/** Pairing state changed: restart advertising so its state byte is current. */
+static void on_pair_state_changed(void)
+{
+    if (!s_adv_ready) {
+        return;
+    }
+    if (ble_gap_adv_active()) {
+        ble_gap_adv_stop();
+    }
+    if (gatt_svr_conn_count() < TANKLINK_MAX_BLE_CONN) {
+        advertise();
     }
 }
 
@@ -317,6 +337,7 @@ void app_main(void)
     }
     pump_config_apply_led();
     ESP_ERROR_CHECK(pump_pair_init());
+    pump_pair_set_change_callback(on_pair_state_changed);
     board_set_long_press_callback(on_ble_pair_hold);
     board_set_factory_reset_callback(on_factory_reset_hold);
     board_set_start_callback(on_start);

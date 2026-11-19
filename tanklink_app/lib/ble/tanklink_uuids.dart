@@ -57,6 +57,19 @@ class TankLinkUuids {
   static const tokenLen = 16;
   static const cmdUnpair = 0xF0;
   static const cmdFactoryReset = 0xF1;
+
+  /// Open / close the pump's phone pairing window (pump protocol minor 2).
+  static const cmdPairingOpen = 0xF2;
+  static const cmdPairingClose = 0xF3;
+
+  /// Pump protocol minor that has the two commands above and the
+  /// advertising state byte below.
+  static const pairingControlMinor = 2;
+
+  /// Pump advertising: manufacturer data under [tankMfgCompanyId] (same
+  /// 0xFFFF as the tank) holding one state byte.
+  static const advStateClaimable = 0x01;
+  static const advStatePaired = 0x02;
   static const cmdClearError = 0xE0;
 
   /// Dismiss the interrupted-fill notice.

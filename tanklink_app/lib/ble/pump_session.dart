@@ -955,6 +955,42 @@ class PumpSession extends ChangeNotifier {
     }
   }
 
+  /// The pump can open its phone pairing window on command (minor 2+).
+  bool get canControlPairing =>
+      authed && pumpProtoMinor >= TankLinkUuids.pairingControlMinor;
+
+  /// Open the pump's phone pairing window so another phone can add it.
+  /// The window switches the pump off, so it is refused while it runs.
+  Future<void> openPhonePairing() async {
+    final chr = _cmd;
+    if (chr == null || !authed) {
+      throw StateError('Connect to the pump first');
+    }
+    if (pumpOn) {
+      throw StateError('Stop the pump first');
+    }
+    await chr.write([TankLinkUuids.cmdPairingOpen], withoutResponse: false);
+    AppLog.i('pump', 'Phone pairing opened from the app');
+  }
+
+  Future<void> closePhonePairing() async {
+    final chr = _cmd;
+    if (chr == null || !authed) return;
+    try {
+      await chr.write([TankLinkUuids.cmdPairingClose], withoutResponse: false);
+      AppLog.i('pump', 'Phone pairing closed from the app');
+    } catch (e) {
+      AppLog.w('pump', 'Close pairing failed: $e');
+    }
+  }
+
+  /// Whether the connected pump's phone pairing window is open, from Info.
+  Future<bool> readPairingOpen() async {
+    final chr = _info;
+    if (chr == null || !connected) return false;
+    return PumpInfo.parse(await chr.read()).pairingOpen;
+  }
+
   Future<void> dismissFillInterruption() async {
     fillInterruption = null;
     notifyListeners();
@@ -968,7 +1004,12 @@ class PumpSession extends ChangeNotifier {
     }
   }
 
-  Future<void> startScan() async {
+  /// Scan for pumps. [continuous] keeps every advertisement coming, so a
+  /// pump's pairing state (in its advertising) updates while you watch.
+  Future<void> startScan({
+    Duration timeout = const Duration(seconds: 12),
+    bool continuous = false,
+  }) async {
     scanResults.clear();
     scanning = true;
     status = 'Scanning…';
@@ -1007,7 +1048,10 @@ class PumpSession extends ChangeNotifier {
       notifyListeners();
     });
 
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 12));
+    await FlutterBluePlus.startScan(
+      timeout: timeout,
+      continuousUpdates: continuous,
+    );
     await FlutterBluePlus.isScanning
         .where((v) => v == false)
         .first
@@ -1028,7 +1072,18 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Claim a pump whose pairing window is open. On failure the link is
+  /// closed again, so a retry starts clean.
   Future<void> claimDevice(BluetoothDevice device) async {
+    try {
+      await _claimDevice(device);
+    } catch (_) {
+      await disconnect();
+      rethrow;
+    }
+  }
+
+  Future<void> _claimDevice(BluetoothDevice device) async {
     status = 'Connecting…';
     notifyListeners();
     await _connectAndDiscover(device);

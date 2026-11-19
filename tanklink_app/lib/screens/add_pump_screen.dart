@@ -1,8 +1,11 @@
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
+import '../ble/protocol.dart';
 import '../ble/pump_session.dart';
 import 'pair_tank_prompt_screen.dart';
+import 'pairing_wait_sheet.dart';
 import '../diag/app_log.dart';
 import '../diag/report_builder.dart';
 import 'report_problem_screen.dart';
@@ -44,12 +47,50 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
     await session.selectPump(pump);
   }
 
+  /// The pump refused the claim: its pairing window isn't open.
+  static bool _notInPairingMode(Object e) =>
+      '$e'.contains('WRITE_NOT_PERMITTED');
+
   Future<void> _claim(int index) async {
     final session = context.read<PumpSession>();
-    final device = session.scanResults[index].device;
-    setState(() => _claimingId = device.remoteId.str);
+    final r = session.scanResults[index];
+    final device = r.device;
+    final id = device.remoteId.str;
+    final name = _nameOf(r);
+    final state = pumpAdvState(r.advertisementData.manufacturerData);
+
+    // Not in pairing mode: show how, and wait for it before connecting.
+    if (state == PumpAdvState.notReady &&
+        !await showPairingWaitSheet(
+          context,
+          remoteId: id,
+          name: name,
+          canDetect: true,
+        )) {
+      return;
+    }
+    if (!mounted) return;
+
+    setState(() => _claimingId = id);
     try {
-      await session.claimDevice(device);
+      try {
+        await session.claimDevice(device);
+      } catch (e) {
+        // The window closed meanwhile, or older firmware that doesn't
+        // advertise its state: guide the user, then try once more.
+        if (!_notInPairingMode(e) || !mounted) rethrow;
+        AppLog.i('pump', 'Claim refused: not in pairing mode');
+        setState(() => _claimingId = null);
+        final again = await showPairingWaitSheet(
+          context,
+          remoteId: id,
+          name: name,
+          canDetect: state != PumpAdvState.unknown,
+        );
+        if (!again || !mounted) return;
+        setState(() => _claimingId = id);
+        await session.claimDevice(device);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Added ${session.selected?.name ?? 'pump'}')),
@@ -87,6 +128,10 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
     }
   }
 
+  static String _nameOf(ScanResult r) => r.advertisementData.advName.isNotEmpty
+      ? r.advertisementData.advName
+      : 'TankLink device';
+
   @override
   Widget build(BuildContext context) {
     final session = context.watch<PumpSession>();
@@ -120,8 +165,9 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
               session.scanning
                   ? 'Looking for TankLink pumps nearby…'
                   : session.scanResults.isEmpty
-                  ? 'Nothing found. Hold the pump button 5s for pairing, then scan again.'
-                  : 'Tap a pump to claim it.',
+                  ? 'Nothing found. Check the pump has power and is nearby, '
+                        'then scan again.'
+                  : 'Tap a pump to add it.',
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),
           ),
@@ -161,9 +207,10 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, i) {
                       final r = session.scanResults[i];
-                      final name = r.advertisementData.advName.isNotEmpty
-                          ? r.advertisementData.advName
-                          : 'TankLink device';
+                      final name = _nameOf(r);
+                      final adv = pumpAdvState(
+                        r.advertisementData.manufacturerData,
+                      );
                       final id = r.device.remoteId.str;
                       final saved = session.pumps
                           .where((p) => p.remoteId == id)
@@ -202,6 +249,18 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
                               : saved != null
                               ? Text(
                                   'Already added · tap to open',
+                                  style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                )
+                              : adv == PumpAdvState.ready
+                              ? Text(
+                                  'Ready to add',
+                                  style: TextStyle(color: scheme.primary),
+                                )
+                              : adv == PumpAdvState.notReady
+                              ? Text(
+                                  'Not in pairing mode · tap for help',
                                   style: TextStyle(
                                     color: scheme.onSurfaceVariant,
                                   ),

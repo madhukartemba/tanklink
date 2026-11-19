@@ -33,6 +33,19 @@ static bool s_pairing_active;
 static int64_t s_pairing_deadline_us;
 static char s_serial[TANKLINK_SERIAL_LEN + 1];
 static char s_adv_name[TANKLINK_ADV_NAME_MAX];
+static void (*s_change_cb)(void);
+
+void pump_pair_set_change_callback(void (*cb)(void))
+{
+    s_change_cb = cb;
+}
+
+static void notify_change(void)
+{
+    if (s_change_cb) {
+        s_change_cb();
+    }
+}
 
 static void refresh_identity_strings(void)
 {
@@ -178,6 +191,7 @@ esp_err_t pump_pair_enter_pairing_mode(void)
     s_pairing_deadline_us = esp_timer_get_time() + (int64_t)CONFIG_PUMP_PAIRING_TIMEOUT_MS * 1000;
     ESP_LOGI(TAG, "Pairing window open (%d ms)", CONFIG_PUMP_PAIRING_TIMEOUT_MS);
     refresh_led_for_pair_state();
+    notify_change();
     return ESP_OK;
 }
 
@@ -190,6 +204,7 @@ void pump_pair_exit_pairing_mode(void)
     relay_control_set_blocked(false);
     ESP_LOGI(TAG, "Pairing window closed");
     refresh_led_for_pair_state();
+    notify_change();
 }
 
 void pump_pair_poll(void)
@@ -230,9 +245,10 @@ esp_err_t pump_pair_claim(uint8_t out_token[TANKLINK_TOKEN_LEN])
     /* First successful phone claim → standby LED immediately (stop blue pair anim).
      * Additional phones can re-open the window with Start+Stop hold. */
     if (s_pairing_active) {
-        pump_pair_exit_pairing_mode();
+        pump_pair_exit_pairing_mode(); /* notifies */
     } else {
         refresh_led_for_pair_state();
+        notify_change();
     }
     return ESP_OK;
 }
@@ -252,6 +268,7 @@ esp_err_t pump_pair_unpair(void)
     s_pairing_deadline_us = esp_timer_get_time() + (int64_t)CONFIG_PUMP_PAIRING_TIMEOUT_MS * 1000;
     ESP_LOGI(TAG, "UNPAIRED via command serial=%s", s_serial);
     refresh_led_for_pair_state();
+    notify_change();
     return ESP_OK;
 }
 

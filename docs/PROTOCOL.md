@@ -12,7 +12,7 @@ Every link carries a protocol version, and every board reports its hardware revi
 
 | | Where | Current |
 | --- | --- | --- |
-| BLE protocol (app ↔ pump, app ↔ tank) | `TANKLINK_PROTO_MAJOR` / `_MINOR` in both BLE headers, `TankLinkUuids.protoMajor` in the app | 1.0 |
+| BLE protocol (app ↔ pump, app ↔ tank) | `TANKLINK_PROTO_MAJOR` / `_MINOR` in both BLE headers, `TankLinkUuids.protoMajor` in the app | pump 1.2 |
 | LoRa protocol (tank ↔ pump) | `TANKLINK_LORA_VER` | 5 |
 | Pump board revision | Kconfig `PUMP_HW_REV` | 1 |
 | Tank board revision | Kconfig `TANK_HW_REV` | 1 |
@@ -56,6 +56,8 @@ All UUIDs are `7f1a00XX-ac01-4c8c-9b2e-74616e6b6c6e`.
 
 Advertised names: pump `TankLink-XXXX` (last 4 hex of MAC), tank `TL-Tank-XXXX`. The tank also puts its `tank_id` in manufacturer data under company ID `0xFFFF`.
 
+**Pump advertising** (minor 2): flags, the complete name, and manufacturer data under company ID `0xFFFF` with one **state byte**: bit 0 = a phone can add it now (pairing window open, or never set up), bit 1 = paired. The service UUID is in the scan response. The pump re-advertises whenever the state changes, so the app's Add pump screen shows *Ready to add* or *Not in pairing mode* without connecting, and waits for the window to open. Earlier firmware sends no manufacturer data.
+
 ## Pump characteristics
 
 ### Info (read, no auth) — frozen layout
@@ -75,7 +77,7 @@ Advertised names: pump `TankLink-XXXX` (last 4 hex of MAC), tank `TL-Tank-XXXX`.
 
 ### Pair (write + notify, no auth)
 
-Write anything while the pairing window is open (hold the button ~5 s) to claim the pump. The pump makes a new 16-byte token, notifies it on this characteristic, and marks the connection authed. The app stores the token. A write outside the window is rejected with *write not permitted*.
+Write anything while the pairing window is open (hold the button ~5 s, or `0xF2` from a phone that already has the pump) to claim the pump. The pump makes a new 16-byte token, notifies it on this characteristic, and marks the connection authed. The app stores the token. A write outside the window is rejected with *write not permitted*.
 
 ### Auth (write)
 
@@ -103,6 +105,8 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xE1` | Dismiss the interrupted-fill notice | — |
 | `0xF0` | Unpair this phone (clears token) | — |
 | `0xF1` | Factory reset | — |
+| `0xF2` | Open the phone pairing window (60 s default), so another phone can add the pump. Refused while the pump runs or updates, because the window switches it off. Minor 2 | — |
+| `0xF3` | Close the phone pairing window. Minor 2 | — |
 
 Maximum write length is 18 bytes.
 

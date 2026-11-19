@@ -43,6 +43,56 @@ void main() {
     test('rejects a short (pre-versioning) Info', () {
       expect(() => PumpInfo.parse(bytes.sublist(0, 12)), throwsFormatException);
     });
+
+    test('flags bit 0 is the phone pairing window', () {
+      expect(PumpInfo.parse(bytes).pairingOpen, isFalse);
+      final open = [...bytes]..[4] = 0x03;
+      expect(PumpInfo.parse(open).pairingOpen, isTrue);
+    });
+  });
+
+  group('pumpAdvState', () {
+    // flutter_blue_plus: company ID -> the bytes after it.
+    test('claimable bit means ready to add', () {
+      expect(
+        pumpAdvState({
+          0xFFFF: [0x01],
+        }),
+        PumpAdvState.ready,
+      );
+      expect(
+        pumpAdvState({
+          0xFFFF: [0x03],
+        }),
+        PumpAdvState.ready,
+      );
+    });
+
+    test('paired with the window closed is not ready', () {
+      expect(
+        pumpAdvState({
+          0xFFFF: [0x02],
+        }),
+        PumpAdvState.notReady,
+      );
+      expect(
+        pumpAdvState({
+          0xFFFF: [0x00],
+        }),
+        PumpAdvState.notReady,
+      );
+    });
+
+    test('older firmware without the byte is unknown', () {
+      expect(pumpAdvState({}), PumpAdvState.unknown);
+      expect(pumpAdvState({0xFFFF: []}), PumpAdvState.unknown);
+      expect(
+        pumpAdvState({
+          0x004C: [0x01],
+        }),
+        PumpAdvState.unknown,
+      );
+    });
   });
 
   group('PumpSettings', () {

@@ -330,6 +330,17 @@ static int run_command(const uint8_t *body, uint16_t len)
         pump_control_set(false, PUMP_CAUSE_SYSTEM);
         return 0;
 
+    case TANKLINK_CMD_PAIRING_OPEN:
+        /* The window switches the pump off; don't stop a fill from afar. */
+        if (pump_control_is_on() || pump_ota_is_active()) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        return pump_pair_enter_pairing_mode() == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+
+    case TANKLINK_CMD_PAIRING_CLOSE:
+        pump_pair_exit_pairing_mode();
+        return 0;
+
     case TANKLINK_CMD_TEST_BEEP:
         buzzer_play_user(true);
         return 0;
