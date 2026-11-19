@@ -403,6 +403,8 @@ class PumpSession extends ChangeNotifier {
     if (selected == null) return;
     if (connected && authed) return;
     if (connecting) return;
+    // Signed out: retrying the same key can't work; wait for Add again.
+    if (authRejected) return;
     await connectSelected();
   }
 
@@ -438,6 +440,7 @@ class PumpSession extends ChangeNotifier {
       return;
     }
     await disconnect();
+    authRejected = false;
     selectedRemoteId = pump.remoteId;
     await _persistAll();
     notifyListeners();
@@ -479,7 +482,40 @@ class PumpSession extends ChangeNotifier {
   static const _connectAttempts = 4;
   static const _connectRetryWithin = Duration(seconds: 8);
 
+  /// The connect in progress and the pump it is for. Every caller (app
+  /// start, resume, the Connect button, updates) goes through
+  /// [connectSelected], and only one connect runs at a time: two at once
+  /// disconnect each other.
+  Future<void>? _connectInFlight;
+  String? _connectInFlightFor;
+
   Future<void> connectSelected({int attempts = _connectAttempts}) async {
+    final id = selected?.remoteId;
+    final running = _connectInFlight;
+    if (running != null) {
+      if (_connectInFlightFor == id) return running;
+      try {
+        await running; // another pump: let that one finish first
+      } catch (_) {}
+    }
+    final f = _connectSelected(attempts);
+    _connectInFlight = f;
+    _connectInFlightFor = id;
+    try {
+      await f;
+    } finally {
+      if (identical(_connectInFlight, f)) {
+        _connectInFlight = null;
+        _connectInFlightFor = null;
+      }
+    }
+  }
+
+  /// The pump refused this phone's saved key: it was unpaired (from any
+  /// phone, or by a factory reset) and this phone must add it again.
+  bool authRejected = false;
+
+  Future<void> _connectSelected(int attempts) async {
     final pump = selected;
     if (pump == null) {
       status = 'No pump selected';
@@ -509,6 +545,8 @@ class PumpSession extends ChangeNotifier {
           }
           AppLog.w('ble', 'Connect attempt $attempt of $attempts failed: $e');
           await disconnect();
+          connecting = true; // disconnect() clears it; still connecting
+          notifyListeners();
           // flutter_blue_plus also waits 2 s after a disconnect on Android.
           await Future<void>.delayed(const Duration(milliseconds: 300));
         }
@@ -521,10 +559,15 @@ class PumpSession extends ChangeNotifier {
         await disconnect();
         connecting = false;
         connectFailed = true;
-        status = 'Auth failed — hold pump 5s, then Add pump again';
+        // Only a refusal means the key is wrong; a dropped link is retryable.
+        authRejected = '$e'.contains('WRITE_NOT_PERMITTED');
+        status = authRejected
+            ? 'This phone was signed out of the pump. Add it again.'
+            : 'Couldn’t connect';
         notifyListeners();
         return;
       }
+      authRejected = false;
       authed = true;
       await _startSession();
       connecting = false;
@@ -922,15 +965,6 @@ class PumpSession extends ChangeNotifier {
     );
   }
 
-  Future<void> unpairOnDevice() async {
-    if (_cmd == null || !authed) return;
-    await _cmd!.write([TankLinkUuids.cmdUnpair], withoutResponse: false);
-    final pump = selected;
-    if (pump != null) {
-      await forgetPump(pump);
-    }
-  }
-
   /// Clears BLE pairing, tank bind, and settings on the device (reboots).
   Future<void> factoryResetOnDevice() async {
     if (_cmd == null || !authed) {
@@ -1113,6 +1147,7 @@ class PumpSession extends ChangeNotifier {
 
     await _auth!.write(token, withoutResponse: false);
     authed = true;
+    authRejected = false;
     connecting = false;
     connectFailed = false;
     await _startSession();

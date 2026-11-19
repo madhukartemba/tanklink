@@ -103,7 +103,7 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xB1` | Test beep | — |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |
-| `0xF0` | Unpair this phone (clears token) | — |
+| `0xF0` | Unpair every phone: clears the one shared token, so all phones must add the pump again. The app no longer sends it (Remove only forgets the pump on that phone); factory reset does the same and more | — |
 | `0xF1` | Factory reset | — |
 | `0xF2` | Open the phone pairing window (60 s default), so another phone can add the pump. Refused while the pump runs or updates, because the window switches it off. Minor 2 | — |
 | `0xF3` | Close the phone pairing window. Minor 2 | — |

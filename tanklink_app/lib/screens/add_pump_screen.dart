@@ -212,9 +212,15 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
                         r.advertisementData.manufacturerData,
                       );
                       final id = r.device.remoteId.str;
-                      final saved = session.pumps
+                      final known = session.pumps
                           .where((p) => p.remoteId == id)
                           .firstOrNull;
+                      // Signed out of this pump: add it again, don't open it.
+                      final signedOut =
+                          known != null &&
+                          session.authRejected &&
+                          session.selectedRemoteId == id;
+                      final saved = signedOut ? null : known;
                       final claiming = _claimingId == id;
                       final busy = _claimingId != null;
                       return Material(
@@ -252,6 +258,11 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
                                   style: TextStyle(
                                     color: scheme.onSurfaceVariant,
                                   ),
+                                )
+                              : signedOut
+                              ? Text(
+                                  'Signed out · tap to add again',
+                                  style: TextStyle(color: scheme.error),
                                 )
                               : adv == PumpAdvState.ready
                               ? Text(

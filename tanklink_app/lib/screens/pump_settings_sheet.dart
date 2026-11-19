@@ -345,19 +345,16 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
             TextButton(
               style: TextButton.styleFrom(foregroundColor: scheme.error),
               onPressed: () async {
+                // Only this phone forgets the pump (and its key). The pump
+                // keeps one key for every phone, so nothing is sent to it:
+                // other phones stay signed in.
                 final ok = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: Text(
-                      ready
-                          ? 'Unpair and remove ${pump.name}?'
-                          : 'Remove ${pump.name}?',
-                    ),
-                    content: Text(
-                      ready
-                          ? 'This frees the pump so anyone nearby can pair it, '
-                                'and removes it from this phone.'
-                          : 'This removes it from this phone only.',
+                    title: Text('Remove ${pump.name} from this phone?'),
+                    content: const Text(
+                      'Other phones that have this pump keep it. To add it '
+                      'back later, use Add pump.',
                     ),
                     actions: [
                       TextButton(
@@ -372,24 +369,10 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                   ),
                 );
                 if (ok != true || !context.mounted) return;
-                if (ready) {
-                  try {
-                    await session.unpairOnDevice();
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Could not unpair: $e')),
-                      );
-                    }
-                    return;
-                  }
-                }
                 await session.forgetPump(pump);
                 if (context.mounted) Navigator.pop(context);
               },
-              child: Text(
-                ready ? 'Unpair and remove from phone' : 'Remove from phone',
-              ),
+              child: const Text('Remove from this phone'),
             ),
             if (ready) ...[
               const Divider(height: 28),

@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../ble/pump_session.dart';
 import '../../ble/tanklink_uuids.dart';
 import '../../diag/report_builder.dart';
+import '../add_pump_screen.dart';
 import '../report_problem_screen.dart';
 
 /// Small "Report" link at the bottom of an error banner.
@@ -389,17 +390,27 @@ class ConnectFailedBanner extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ),
-            _ReportLink(
-              color: scheme.primary,
-              onPressed: () => openReportScreen(
-                context,
-                ReportProblem(
-                  kind: 'connect',
-                  title: 'Connection problem: $status',
-                  seenAt: DateTime.now(),
+            if (session.authRejected)
+              TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const AddPumpScreen(),
+                  ),
+                ),
+                child: const Text('Add again'),
+              )
+            else
+              _ReportLink(
+                color: scheme.primary,
+                onPressed: () => openReportScreen(
+                  context,
+                  ReportProblem(
+                    kind: 'connect',
+                    title: 'Connection problem: $status',
+                    seenAt: DateTime.now(),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),

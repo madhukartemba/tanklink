@@ -27,8 +27,9 @@ class _FactoryResetDialogState extends State<FactoryResetDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'Erases this pump’s settings, its link to your phone, and its tank '
-            'sensor link. The pump then restarts. Type RESET to confirm.',
+            'Erases this pump’s settings, schedules and tank sensor links, and '
+            'signs out every phone that has it. The pump then restarts. Type '
+            'RESET to confirm.',
           ),
           const SizedBox(height: 16),
           TextField(
