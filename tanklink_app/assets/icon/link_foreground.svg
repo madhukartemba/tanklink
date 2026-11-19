@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <clipPath id="tank"><rect x="230" y="250" width="210" height="270" rx="46"/></clipPath>
+  </defs>
+  <g transform="translate(512 512) scale(0.8) translate(-497 -505)" fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+    <!-- tank on a stand -->
+    <g clip-path="url(#tank)" stroke="none">
+      <path d="M200 400 C250 430 290 430 335 400 S420 370 470 400 V560 H200 Z" fill="#FFFFFF" fill-opacity="0.45"/>
+      <path d="M200 415 C250 385 290 385 335 415 S420 445 470 415 V560 H200 Z" fill="#FFFFFF"/>
+    </g>
+    <rect x="230" y="250" width="210" height="270" rx="46"/>
+    <path d="M272 520 L258 600 M398 520 L412 600"/>
+    <!-- radio link, aimed from tank to pump -->
+    <path d="M520 430 A80 80 0 0 1 600 510"/>
+    <path d="M522 350 A160 160 0 0 1 680 508"/>
+    <!-- pump: housing with impeller -->
+    <circle cx="685" cy="690" r="110"/>
+    <g transform="translate(685 690)" stroke-width="24">
+      <path id="b" d="M0 0 Q48 -6 58 -50"/>
+      <use href="#b" transform="rotate(90)"/>
+      <use href="#b" transform="rotate(180)"/>
+      <use href="#b" transform="rotate(270)"/>
+      <circle r="14" fill="#FFFFFF" stroke="none"/>
+    </g>
+  </g>
+</svg>
