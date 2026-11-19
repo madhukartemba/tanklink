@@ -532,25 +532,7 @@ class PumpSession extends ChangeNotifier {
       // Direct connect often fails on Android after a cold start while another
       // phone is already linked — scan first so the stack can see advertising.
       final device = await _resolveDeviceForConnect(pump);
-      for (var attempt = 1; ; attempt++) {
-        final took = Stopwatch()..start();
-        try {
-          await _connectAndDiscover(device);
-          break;
-        } catch (e) {
-          // A slow failure is a timeout: the pump is off or out of range,
-          // and trying again only keeps the user waiting.
-          if (attempt >= attempts || took.elapsed > _connectRetryWithin) {
-            rethrow;
-          }
-          AppLog.w('ble', 'Connect attempt $attempt of $attempts failed: $e');
-          await disconnect();
-          connecting = true; // disconnect() clears it; still connecting
-          notifyListeners();
-          // flutter_blue_plus also waits 2 s after a disconnect on Android.
-          await Future<void>.delayed(const Duration(milliseconds: 300));
-        }
-      }
+      await _connectWithRetries(device, attempts);
       final tokenPump = selected ?? pump;
       try {
         await _auth!.write(tokenPump.token, withoutResponse: false);
@@ -1120,7 +1102,7 @@ class PumpSession extends ChangeNotifier {
   Future<void> _claimDevice(BluetoothDevice device) async {
     status = 'Connecting…';
     notifyListeners();
-    await _connectAndDiscover(device);
+    await _connectWithRetries(device, _connectAttempts);
 
     status = 'Claiming…';
     notifyListeners();
@@ -1459,8 +1441,38 @@ class PumpSession extends ChangeNotifier {
     }
   }
 
+  /// [_connectAndDiscover] with the retries described at [_connectAttempts].
+  /// Used for saved pumps and when adding a new one.
+  Future<void> _connectWithRetries(BluetoothDevice device, int attempts) async {
+    for (var attempt = 1; ; attempt++) {
+      final took = Stopwatch()..start();
+      try {
+        await _connectAndDiscover(device);
+        return;
+      } catch (e) {
+        // A slow failure is a timeout: the pump is off or out of range,
+        // and trying again only keeps the user waiting.
+        if (attempt >= attempts || took.elapsed > _connectRetryWithin) {
+          rethrow;
+        }
+        AppLog.w('ble', 'Connect attempt $attempt of $attempts failed: $e');
+        final wasConnecting = connecting;
+        await disconnect();
+        connecting = wasConnecting; // disconnect() clears it
+        notifyListeners();
+        // flutter_blue_plus also waits 2 s after a disconnect on Android.
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    }
+  }
+
   Future<void> _connectAndDiscover(BluetoothDevice device) async {
+    final wasScanning = scanning || FlutterBluePlus.isScanningNow;
     await stopScan();
+    // Connecting the moment a scan stops often fails on Android (133).
+    if (wasScanning) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+    }
     _device = device;
     await device.connect(
       license: License.nonprofit,

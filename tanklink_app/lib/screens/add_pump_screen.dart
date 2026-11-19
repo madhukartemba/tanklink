@@ -92,9 +92,11 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
         await session.claimDevice(device);
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Added ${session.selected?.name ?? 'pump'}')),
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar() // an earlier failure's message
+        ..showSnackBar(
+          SnackBar(content: Text('Added ${session.selected?.name ?? 'pump'}')),
+        );
       // Tank status is read during connect; prompt if this pump has no tank yet.
       if (!session.tankBound) {
         await Navigator.of(context).push<void>(
@@ -106,26 +108,41 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
     } catch (e) {
       AppLog.w('pump', 'Add pump failed: $e');
       if (!mounted) return;
+      // The snackbar can outlive this screen (a retry that works closes
+      // it), so Report uses the app's root navigator, not this context.
+      final nav = Navigator.of(context, rootNavigator: true);
+      final problem = ReportProblem(
+        kind: 'add-pump',
+        title: 'Couldn’t add pump',
+        detail: '$e',
+        seenAt: DateTime.now(),
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Couldn’t add pump: $e'),
+          content: Text(_addFailedText(e)),
           action: SnackBarAction(
             label: 'Report',
-            onPressed: () => openReportScreen(
-              context,
-              ReportProblem(
-                kind: 'add-pump',
-                title: 'Couldn’t add pump',
-                detail: '$e',
-                seenAt: DateTime.now(),
-              ),
-            ),
+            onPressed: () => nav.push(reportRoute(problem)),
           ),
         ),
       );
     } finally {
       if (mounted) setState(() => _claimingId = null);
     }
+  }
+
+  /// Plain words for the snackbar; the full error goes in the report.
+  static String _addFailedText(Object e) {
+    final s = '$e';
+    if (s.contains('connect') ||
+        s.contains('disconnected') ||
+        s.contains('TimeoutException')) {
+      return 'Couldn’t connect to the pump. Move closer and try again.';
+    }
+    if (_notInPairingMode(e)) {
+      return 'The pump isn’t in pairing mode.';
+    }
+    return 'Couldn’t add the pump. Try again.';
   }
 
   static String _nameOf(ScanResult r) => r.advertisementData.advName.isNotEmpty
