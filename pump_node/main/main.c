@@ -27,6 +27,8 @@
 #include "pump_config.h"
 #include "pump_sched.h"
 #include "pump_tanks.h"
+#include "pump_battery_log.h"
+#include "pump_history.h"
 #include "pump_errors.h"
 #include "pump_factory.h"
 #include "pump_ota.h"
@@ -82,14 +84,14 @@ static void on_start(void)
     if (pump_config_buzzer_on_button()) {
         buzzer_play_user(false);
     }
-    pump_control_set_silent(true);
+    pump_control_set_silent(true, PUMP_CAUSE_BUTTON);
 }
 
 static void on_stop(void)
 {
     if (pump_ota_is_active()) {
         /* Still allow stop for safety during OTA. */
-        pump_control_set_silent(false);
+        pump_control_set_silent(false, PUMP_CAUSE_BUTTON);
         return;
     }
     if (pump_pair_pairing_active()) {
@@ -99,7 +101,7 @@ static void on_stop(void)
     if (pump_config_buzzer_on_button()) {
         buzzer_play_user(false);
     }
-    pump_control_set_silent(false);
+    pump_control_set_silent(false, PUMP_CAUSE_BUTTON);
 }
 
 static void pair_poll_task(void *arg)
@@ -293,6 +295,20 @@ void app_main(void)
         }
     }
     ESP_ERROR_CHECK(pump_tanks_init());
+    ESP_ERROR_CHECK(pump_history_init());
+    ESP_ERROR_CHECK(pump_battery_log_init());
+    if (pump_runlog_interrupted_this_boot()) {
+        /* The selected tank cannot change while running, so it is the one. */
+        const pump_runlog_event_t *ev = pump_runlog_event();
+        const pump_fill_t fill = {
+            .started_local = ev->started_local,
+            .ran_sec = ev->ran_sec,
+            .slot = pump_tanks_active(),
+            .started_by = PUMP_CAUSE_UNKNOWN,
+            .stopped_by = PUMP_CAUSE_POWER,
+        };
+        pump_history_add(&fill);
+    }
     if (relay_control_init() != ESP_OK) {
         ESP_LOGW(TAG, "relay init failed — continuing");
     }

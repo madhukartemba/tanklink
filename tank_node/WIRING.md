@@ -24,6 +24,16 @@ RA-02: VCC→3V3, GND→GND, antenna on U.FL.
 2. **SCK (D8) → 10 kΩ → 3V3**  
 3. **MOSI (D10) → 10 kΩ → 3V3**  
 
+### Power and solar
+
+The tank runs from a 1-cell LiPo on the XIAO's **BAT+ / BAT−** pads, charged by a small solar panel:
+
+- **Solar → VIN (5 V in) → XIAO 5V pin.** The XIAO's own charger charges the LiPo from it. No separate charger board.
+- Use a panel with a **regulated 5 V output** (or a panel through a 5 V regulator). A bare "6 V" panel can rise well above 5 V in full sun.
+- USB-C does the same job when you plug it in on the bench.
+- The battery % in the app is the LiPo voltage through the 2:1 divider on D0. The pump logs each sensor's lowest and highest % per day for two weeks. The app uses the daily lows to say whether solar is keeping up, or about how long the battery has left.
+- If the daily low keeps falling, the panel isn't getting enough sun: move or clean it, or use a bigger one.
+
 ### Deep sleep
 
 Expect ~**50 µA** on BAT± with USB unplugged. Unpaired = button wake only.

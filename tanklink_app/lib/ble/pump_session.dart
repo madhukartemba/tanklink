@@ -6,12 +6,14 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../util/error_text.dart';
+import 'battery_trend.dart';
 import 'models.dart';
 import 'ota_upload.dart';
 import 'protocol.dart';
 import 'tanklink_uuids.dart';
 
 export 'models.dart';
+export 'battery_trend.dart';
 export 'protocol.dart' show TankSensor;
 
 class PumpSession extends ChangeNotifier {
@@ -44,6 +46,12 @@ class PumpSession extends ChangeNotifier {
 
   /// Paired tank sensors, up to [TankLinkUuids.sensorMax].
   List<TankSensor> sensors = [];
+
+  /// The pump's last fills, newest first.
+  List<FillRecord> fills = [];
+
+  /// Each sensor's daily battery low/high, by sensor index, oldest first.
+  Map<int, List<BatteryDay>> batteryLogs = {};
 
   /// Wall-clock estimate of each sensor's last packet, by sensor index.
   final Map<int, DateTime> _sensorHeardAt = {};
@@ -105,6 +113,8 @@ class PumpSession extends ChangeNotifier {
   BluetoothCharacteristic? _sched;
   BluetoothCharacteristic? _tanks;
   BluetoothCharacteristic? _sensorsChr;
+  BluetoothCharacteristic? _historyChr;
+  BluetoothCharacteristic? _batteryChr;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<List<int>>? _pairNotifySub;
   StreamSubscription<List<int>>? _stateNotifySub;
@@ -112,6 +122,8 @@ class PumpSession extends ChangeNotifier {
   StreamSubscription<List<int>>? _schedNotifySub;
   StreamSubscription<List<int>>? _tanksNotifySub;
   StreamSubscription<List<int>>? _sensorsNotifySub;
+  StreamSubscription<List<int>>? _historyNotifySub;
+  StreamSubscription<List<int>>? _batteryNotifySub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
   Timer? _runTicker;
   Timer? _ageTicker;
@@ -189,6 +201,10 @@ class PumpSession extends ChangeNotifier {
       sensorOnline(sensor) &&
       sensor.batteryPct > 0 &&
       sensor.batteryPct <= TankLinkUuids.tankBatteryLowPct;
+
+  /// Battery trend from the pump's daily log for [sensor].
+  BatteryOutlook batteryOutlook(TankSensor sensor) =>
+      BatteryOutlook.from(batteryLogs[sensor.index] ?? const []);
 
   /// The tank's sensor is paired and heard recently.
   bool slotOnline(TankSlot slot) {
@@ -1176,6 +1192,8 @@ class PumpSession extends ChangeNotifier {
     await _schedNotifySub?.cancel();
     await _tanksNotifySub?.cancel();
     await _sensorsNotifySub?.cancel();
+    await _historyNotifySub?.cancel();
+    await _batteryNotifySub?.cancel();
     await _connSub?.cancel();
     _pairNotifySub = null;
     _stateNotifySub = null;
@@ -1183,6 +1201,8 @@ class PumpSession extends ChangeNotifier {
     _schedNotifySub = null;
     _tanksNotifySub = null;
     _sensorsNotifySub = null;
+    _historyNotifySub = null;
+    _batteryNotifySub = null;
     _connSub = null;
     try {
       await _device?.disconnect();
@@ -1192,7 +1212,9 @@ class PumpSession extends ChangeNotifier {
     _info = null;
     _pair = _auth = _state = _cmd = _settings = null;
     _otaCtrl = _otaData = _otaStatus = _tank = _sched = _tanks = null;
-    _sensorsChr = null;
+    _sensorsChr = _historyChr = _batteryChr = null;
+    fills = [];
+    batteryLogs = {};
     sensors = [];
     _sensorHeardAt.clear();
     pumpClockValid = false;
@@ -1328,6 +1350,8 @@ class PumpSession extends ChangeNotifier {
     _sched = _chr(TankLinkUuids.sched);
     _tanks = _chr(TankLinkUuids.tanks);
     _sensorsChr = _chr(TankLinkUuids.sensors);
+    _historyChr = _chr(TankLinkUuids.history);
+    _batteryChr = _chr(TankLinkUuids.battery);
 
     await _state!.setNotifyValue(true);
     await _stateNotifySub?.cancel();
@@ -1480,6 +1504,32 @@ class PumpSession extends ChangeNotifier {
     try {
       _applySensors(TankSensor.parseList(await sensorsChr.read()));
     } catch (_) {}
+    _historyNotifySub = await _follow(_historyChr!, _historyNotifySub, (v) {
+      final list = parseFillHistory(v);
+      if (list != null) fills = list;
+    });
+    _batteryNotifySub = await _follow(_batteryChr!, _batteryNotifySub, (v) {
+      final logs = parseBatteryLog(v);
+      if (logs != null) batteryLogs = logs;
+    });
+  }
+
+  /// Subscribe to [chr], apply each value with [apply], and read it once.
+  Future<StreamSubscription<List<int>>> _follow(
+    BluetoothCharacteristic chr,
+    StreamSubscription<List<int>>? old,
+    void Function(List<int>) apply,
+  ) async {
+    await old?.cancel();
+    await chr.setNotifyValue(true);
+    final sub = chr.onValueReceived.listen((v) {
+      apply(v);
+      notifyListeners();
+    });
+    try {
+      apply(await chr.read());
+    } catch (_) {}
+    return sub;
   }
 
   void _applyTanks(TankList? list) {

@@ -23,6 +23,8 @@ extern "C" {
  *   Schedule 7f1a000c-ac01-4c8c-9b2e-74616e6b6c6e
  *   Tanks    7f1a000d-ac01-4c8c-9b2e-74616e6b6c6e
  *   Sensors  7f1a000e-ac01-4c8c-9b2e-74616e6b6c6e
+ *   History  7f1a000f-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Battery  7f1a0010-ac01-4c8c-9b2e-74616e6b6c6e
  */
 #define TANKLINK_UUID_BASE_TAIL 0x6e, 0x6c, 0x6b, 0x6e, 0x61, 0x74, 0x2e, 0x9b, \
                                 0x8c, 0x4c, 0x01, 0xac
@@ -41,6 +43,8 @@ extern "C" {
 #define TANKLINK_CHR_SCHED_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0c, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_TANKS_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0d, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_NODES_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0e, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_HISTORY_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0f, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_BATTERY_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x10, 0x00, 0x1a, 0x7f)
 
 #define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
 /* GAP name before the serial suffix is known. Adverts use PREFIX + serial. */
@@ -152,6 +156,15 @@ extern "C" {
  * index(1) id(6) mode(1) raw_flags(1) battery(1) online(1) age_sec(u16)
  * rssi(i8) snr(i8) fw(3) hw_rev(1) ble_token(16). */
 #define TANKLINK_NODES_ENTRY_LEN 35
+
+/* History: count(1), then count x fill, newest first:
+ * started_local(u32) ran_sec(u32) slot(1) started_by(1) stopped_by(1) reserved(1).
+ * Causes are pump_cause_t (pump_history.h). */
+#define TANKLINK_HISTORY_ENTRY_LEN 12
+
+/* Battery: count(1), then per sensor: index(1) days(1), then days x
+ * (day(u16, pump-local days since 1970) min_pct(1) max_pct(1)), oldest first. */
+#define TANKLINK_BATTERY_DAY_LEN 4
 
 #ifdef __cplusplus
 }

@@ -413,3 +413,39 @@ List<int> encodeTankName(String name) => String.fromCharCodes([
   for (final c in name.codeUnits)
     if (c >= 0x20 && c <= 0x7e) c,
 ]).trim().codeUnits;
+
+/// History: count, then count × 12-byte fills, newest first.
+List<FillRecord>? parseFillHistory(List<int> b) {
+  if (b.isEmpty) return null;
+  const len = TankLinkUuids.historyEntryLen;
+  return [
+    for (var i = 0, o = 1; i < b[0] && o + len <= b.length; i++, o += len)
+      FillRecord(
+        startedAt: _pumpLocalTime(_u32(b, o)),
+        ranSec: _u32(b, o + 4),
+        slot: b[o + 8],
+        startedBy: b[o + 9],
+        stoppedBy: b[o + 10],
+      ),
+  ];
+}
+
+/// Battery: count, then per sensor index(1) days(1) and days × 4 bytes.
+/// Returns days by sensor index, oldest first.
+Map<int, List<BatteryDay>>? parseBatteryLog(List<int> b) {
+  if (b.isEmpty) return null;
+  const len = TankLinkUuids.batteryDayLen;
+  final out = <int, List<BatteryDay>>{};
+  var o = 1;
+  for (var i = 0; i < b[0] && o + 2 <= b.length; i++) {
+    final index = b[o];
+    final days = b[o + 1];
+    o += 2;
+    if (o + days * len > b.length) return null;
+    out[index] = [
+      for (var d = 0; d < days; d++, o += len)
+        BatteryDay(day: _u16(b, o), minPct: b[o + 2], maxPct: b[o + 3]),
+    ];
+  }
+  return out;
+}

@@ -159,7 +159,7 @@ uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
     }
     /* Safety: never OTA while pumping — force off and block starts. */
     if (pump_control_is_on() != 0) {
-        pump_control_set(false);
+        pump_control_set(false, PUMP_CAUSE_SYSTEM);
         set_err(TANKLINK_OTA_ERR_PUMP_ON);
         return TANKLINK_OTA_ERR_PUMP_ON;
     }

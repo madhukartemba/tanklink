@@ -27,6 +27,10 @@ Check the signer before publishing:
 apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep SHA-256
 ```
 
+## The release script
+
+`scripts/release.sh --app X.Y.Z --notes DIR` does everything below, including the signer check and the `app-latest` upload. See [`firmware-release.md`](firmware-release.md#the-release-script).
+
 ## Build and manifest
 
 ```bash

@@ -51,6 +51,8 @@ typedef enum {
     SUB_SCHED,
     SUB_TANKS,
     SUB_NODES,
+    SUB_HISTORY,
+    SUB_BATTERY,
     SUB_COUNT,
 } sub_t;
 
@@ -100,11 +102,20 @@ static void clear_all_auth(void)
     }
 }
 
-/** Send [buf] to every connection subscribed to [sub]. */
+/** Pump state and OTA progress are public; everything else needs sign-in. */
+static bool sub_needs_auth(sub_t sub)
+{
+    return sub != SUB_STATE && sub != SUB_OTA_STATUS;
+}
+
+/** Send [buf] to every connection subscribed to [sub] (signed in, if it needs it). */
 static void notify_all(sub_t sub, const uint8_t *buf, size_t len)
 {
     for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
         if (!s_conns[i].in_use || !s_conns[i].subscribed[sub]) {
+            continue;
+        }
+        if (sub_needs_auth(sub) && !s_conns[i].authed) {
             continue;
         }
         struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, len);
@@ -144,6 +155,18 @@ void gatt_svr_notify_nodes(void)
 {
     uint8_t buf[GATT_NODES_MAX_LEN];
     notify_all(SUB_NODES, buf, gatt_payload_nodes(buf));
+}
+
+void gatt_svr_notify_history(void)
+{
+    uint8_t buf[GATT_HISTORY_MAX_LEN];
+    notify_all(SUB_HISTORY, buf, gatt_payload_history(buf));
+}
+
+void gatt_svr_notify_battery(void)
+{
+    uint8_t buf[GATT_BATTERY_MAX_LEN];
+    notify_all(SUB_BATTERY, buf, gatt_payload_battery(buf));
 }
 
 void gatt_svr_notify_sched(void)
@@ -296,7 +319,7 @@ static int run_command(const uint8_t *body, uint16_t len)
     switch (body[0]) {
     case TANKLINK_CMD_OFF:
     case TANKLINK_CMD_ON:
-        pump_control_set(body[0] == TANKLINK_CMD_ON);
+        pump_control_set(body[0] == TANKLINK_CMD_ON, PUMP_CAUSE_APP);
         return 0;
 
     case TANKLINK_CMD_UNPAIR:
@@ -304,7 +327,7 @@ static int run_command(const uint8_t *body, uint16_t len)
             return BLE_ATT_ERR_UNLIKELY;
         }
         clear_all_auth();
-        pump_control_set(false);
+        pump_control_set(false, PUMP_CAUSE_SYSTEM);
         return 0;
 
     case TANKLINK_CMD_TEST_BEEP:
@@ -439,6 +462,10 @@ static int on_settings(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt
 
 static int on_tank(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
+    /* Carries the selected sensor's BLE OTA token: signed-in phones only. */
+    if (!gatt_svr_is_authed_conn(conn)) {
+        return BLE_ATT_ERR_READ_NOT_PERMITTED;
+    }
     if (!is_read(ctxt)) {
         return BLE_ATT_ERR_UNLIKELY;
     }
@@ -552,6 +579,32 @@ static int on_nodes(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *c
     return reply(ctxt, buf, gatt_payload_nodes(buf));
 }
 
+static int on_history(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
+                      void *arg)
+{
+    if (!gatt_svr_is_authed_conn(conn)) {
+        return BLE_ATT_ERR_READ_NOT_PERMITTED;
+    }
+    if (!is_read(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t buf[GATT_HISTORY_MAX_LEN];
+    return reply(ctxt, buf, gatt_payload_history(buf));
+}
+
+static int on_battery(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
+                      void *arg)
+{
+    if (!gatt_svr_is_authed_conn(conn)) {
+        return BLE_ATT_ERR_READ_NOT_PERMITTED;
+    }
+    if (!is_read(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t buf[GATT_BATTERY_MAX_LEN];
+    return reply(ctxt, buf, gatt_payload_battery(buf));
+}
+
 static int on_ota_status(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
                          void *arg)
 {
@@ -631,6 +684,8 @@ static const ble_uuid128_t uuid_tank = TANKLINK_CHR_TANK_INIT;
 static const ble_uuid128_t uuid_sched = TANKLINK_CHR_SCHED_INIT;
 static const ble_uuid128_t uuid_tanks = TANKLINK_CHR_TANKS_INIT;
 static const ble_uuid128_t uuid_nodes = TANKLINK_CHR_NODES_INIT;
+static const ble_uuid128_t uuid_history = TANKLINK_CHR_HISTORY_INIT;
+static const ble_uuid128_t uuid_battery = TANKLINK_CHR_BATTERY_INIT;
 
 #define F_R BLE_GATT_CHR_F_READ
 #define F_W BLE_GATT_CHR_F_WRITE
@@ -662,6 +717,10 @@ static const struct ble_gatt_svc_def s_services[] = {
              .val_handle = &s_val_handle[SUB_TANKS]},
             {.uuid = &uuid_nodes.u, .access_cb = on_nodes, .flags = F_R | F_N,
              .val_handle = &s_val_handle[SUB_NODES]},
+            {.uuid = &uuid_history.u, .access_cb = on_history, .flags = F_R | F_N,
+             .val_handle = &s_val_handle[SUB_HISTORY]},
+            {.uuid = &uuid_battery.u, .access_cb = on_battery, .flags = F_R | F_N,
+             .val_handle = &s_val_handle[SUB_BATTERY]},
             {0},
         },
     },

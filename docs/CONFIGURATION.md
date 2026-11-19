@@ -125,6 +125,8 @@ Other data the pump saves (all cleared by factory reset or `erase-flash`):
 | `tl_tank` | Per paired sensor N: its BLE OTA token (`tok<N>`) and last packet (`last<N>`, for restoring last-seen after a restart). |
 | `tl_tanks` | Paired sensors (up to 4: MAC, float mode), tank slots (up to 8: sensor, which float, name, auto-off), and the selected tank. |
 | `tl_sched` | Fill schedules (up to 4) |
+| `tl_hist` | The last 20 fills: start, length, tank, start and stop cause |
+| `tl_bat` | Each sensor's daily battery low and high for 14 days (`b<N>`) |
 | `tl_run` | "Pump is running" record while a fill runs (refreshed each minute), and the interrupted-fill notice until it is dismissed |
 
 The tank saves its pairing and BLE OTA token in NVS namespace `tank`.

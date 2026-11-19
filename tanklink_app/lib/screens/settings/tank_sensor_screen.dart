@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../ble/pump_session.dart';
+import '../../util/format.dart';
 import '../../util/error_text.dart';
 import '../../ble/tanklink_uuids.dart';
 import 'update_tiles.dart';
@@ -335,11 +336,10 @@ class TankSensorDetailScreen extends StatelessWidget {
                 'Last heard ${session.sensorAgeLabel(sensor)}',
                 if (online)
                   'Signal ${session.sensorSignalLabel(sensor)} ($rssi dBm)',
-                'Battery ${sensor.batteryPct}%'
-                    '${session.sensorBatteryLow(sensor) ? " (low)" : ""}',
               ].join(' · '),
             ),
           ),
+          _BatteryTile(session: session, sensor: sensor),
           if (TankLinkErrors.tankTitle(sensor.fault) != null)
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -533,4 +533,47 @@ String tankSensorsSummary(PumpSession session) {
     if (away > 0) '$away out of range',
     if (session.multiTank) 'filling ${session.activeTankName}',
   ].join(' · ');
+}
+
+/// Battery level, and the solar trend from the pump's daily log.
+class _BatteryTile extends StatelessWidget {
+  const _BatteryTile({required this.session, required this.sensor});
+
+  final PumpSession session;
+  final TankSensor sensor;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final online = session.sensorOnline(sensor);
+    final low = session.sensorBatteryLow(sensor);
+    final outlook = session.batteryOutlook(sensor);
+    final days = session.batteryLogs[sensor.index] ?? const [];
+    final String detail;
+    if (outlook.trend == BatteryTrend.unknown) {
+      detail = 'The trend shows after a few days of readings.';
+    } else {
+      final first = days.first.minPct;
+      final last = days.last.minPct;
+      detail =
+          'Lowest each day, last ${days.length} days: $first% → $last%. '
+          'It charges from the solar panel.';
+    }
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        low ? Icons.battery_alert_rounded : Icons.battery_std_rounded,
+        color: low || solarFallingBehind(outlook)
+            ? scheme.error
+            : scheme.primary,
+      ),
+      title: Text(
+        !online
+            ? 'Battery · last ${sensor.batteryPct}%'
+            : 'Battery ${sensor.batteryPct}% · '
+                  '${batteryHint(sensor.batteryPct, low: low, outlook: outlook)}',
+      ),
+      subtitle: Text(detail),
+    );
+  }
 }

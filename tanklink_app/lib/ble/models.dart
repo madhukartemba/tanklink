@@ -164,3 +164,37 @@ class FillInterruption {
   final DateTime? backAt;
   final int ranSec;
 }
+
+/// One finished fill, from the pump's History characteristic.
+class FillRecord {
+  FillRecord({
+    required this.startedAt,
+    required this.ranSec,
+    required this.slot,
+    required this.startedBy,
+    required this.stoppedBy,
+  });
+
+  /// Pump-local time, null when the pump's clock was unknown.
+  final DateTime? startedAt;
+  final int ranSec;
+  final int slot;
+
+  /// [TankLinkUuids.causeApp] and the other `cause*` values.
+  final int startedBy;
+  final int stoppedBy;
+}
+
+/// A sensor's lowest and highest battery on one pump-local day.
+class BatteryDay {
+  const BatteryDay({
+    required this.day,
+    required this.minPct,
+    required this.maxPct,
+  });
+
+  /// Days since 1970 on the pump's local clock.
+  final int day;
+  final int minPct;
+  final int maxPct;
+}

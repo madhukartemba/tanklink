@@ -32,6 +32,28 @@ class TankLinkUuids {
   /// Paired tank sensors.
   static final sensors = Guid('7f1a000e-ac01-4c8c-9b2e-74616e6b6c6e');
 
+  /// The last fills, newest first.
+  static final history = Guid('7f1a000f-ac01-4c8c-9b2e-74616e6b6c6e');
+
+  /// Each sensor's daily battery low and high.
+  static final battery = Guid('7f1a0010-ac01-4c8c-9b2e-74616e6b6c6e');
+
+  /// History entry: started(u32) ran_sec(u32) slot started_by stopped_by pad.
+  static const historyEntryLen = 12;
+
+  /// Battery day: day(u16) min max.
+  static const batteryDayLen = 4;
+
+  /// Why a fill started or stopped (pump_cause_t in pump_history.h).
+  static const causeUnknown = 0;
+  static const causeApp = 1;
+  static const causeButton = 2;
+  static const causeSchedule = 3;
+  static const causeTankFull = 4;
+  static const causeAutoOff = 5;
+  static const causePower = 6;
+  static const causeSystem = 7;
+
   static const tokenLen = 16;
   static const cmdUnpair = 0xF0;
   static const cmdFactoryReset = 0xF1;

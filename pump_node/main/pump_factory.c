@@ -12,6 +12,7 @@
 #include "pump_runlog.h"
 #include "pump_sched.h"
 #include "pump_tanks.h"
+#include "pump_history.h"
 #include "relay_control.h"
 #include "status_led.h"
 
@@ -27,7 +28,7 @@ static void factory_reboot_task(void *arg)
 esp_err_t pump_factory_reset(void)
 {
     ESP_LOGW(TAG, "Factory reset — clearing pair, tank, config");
-    pump_control_set_silent(false);
+    pump_control_set_silent(false, PUMP_CAUSE_SYSTEM);
     relay_control_set_blocked(true);
 
     esp_err_t err = pump_pair_unpair();
@@ -41,6 +42,10 @@ esp_err_t pump_factory_reset(void)
     err = pump_sched_clear();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "schedule clear failed: %s", esp_err_to_name(err));
+    }
+    err = pump_history_clear();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "history clear failed: %s", esp_err_to_name(err));
     }
     err = pump_tanks_clear();
     if (err != ESP_OK) {

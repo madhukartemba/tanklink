@@ -34,7 +34,8 @@ Pump (`pump_node/main/`):
 | File | Job |
 | --- | --- |
 | `main.c` | Boot order, NimBLE host and GAP events, advertising |
-| `pump_control.c` | Pump on/off, start checks, run time, last error, schedules, per-tank auto-off |
+| `pump_control.c` | Pump on/off (each call says why: `pump_cause_t`), start checks, run time, last error, schedules, per-tank auto-off |
+| `pump_history.c`, `pump_battery_log.c` | Last 20 fills with stop reason; each sensor's daily battery low/high |
 | `gatt_svr.c` | BLE service table, one handler per characteristic, connections, notifications |
 | `gatt_payloads.c` | Byte layout of every characteristic read |
 | `relay_control.c`, `board.c` | Starter relays; button and LED wiring |
@@ -123,6 +124,8 @@ apksigner verify --print-certs tanklink_app/build/app/outputs/flutter-apk/app-re
 `test/protocol_test.dart` checks every BLE byte layout against the firmware's; update it with any protocol change. The smoke test (`widget_test.dart`) currently fails offline: it pumps the full app, and the update checker's HTTP call gets a 400 in the test environment. That failure is not from your change.
 
 ## Release checklist (agents have got this wrong before)
+
+`scripts/release.sh` does all of this (`--help`; `--dry-run` checks everything without publishing). Use it. The steps it automates:
 
 1. Bump the version in source and commit it.
 2. **Rebuild.** Never upload whatever is already in `build/`. It may be an older build.

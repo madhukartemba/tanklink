@@ -23,6 +23,9 @@
 
 static bool s_on;
 static int64_t s_on_since_us;
+/* The running fill, for the history entry written when it stops. */
+static uint32_t s_fill_started_local;
+static uint8_t s_fill_started_by;
 static uint8_t s_last_error;
 
 bool pump_control_is_on(void)
@@ -95,7 +98,7 @@ static uint8_t start_blocker(void)
     return PUMP_ERR_NONE;
 }
 
-static void set_state(bool on, bool beep)
+static void set_state(bool on, bool beep, pump_cause_t cause)
 {
     if (on) {
         const uint8_t blocker = start_blocker();
@@ -107,10 +110,23 @@ static void set_state(bool on, bool beep)
     }
     const bool changed = on != s_on;
     if (on && !s_on) {
+        int64_t now = 0;
+        s_fill_started_local = pump_clock_unix_now(&now) && now > 0 ? (uint32_t)now : 0;
+        s_fill_started_by = (uint8_t)cause;
         s_on_since_us = esp_timer_get_time();
         s_last_error = PUMP_ERR_NONE;
         pump_runlog_on_start();
         gatt_svr_notify_tank();
+    }
+    if (!on && s_on) {
+        const pump_fill_t fill = {
+            .started_local = s_fill_started_local,
+            .ran_sec = pump_control_run_seconds(),
+            .slot = pump_tanks_active(),
+            .started_by = s_fill_started_by,
+            .stopped_by = (uint8_t)cause,
+        };
+        pump_history_add(&fill);
     }
     if (!on) {
         s_on_since_us = 0;
@@ -134,14 +150,14 @@ static void set_state(bool on, bool beep)
     gatt_svr_notify_state();
 }
 
-void pump_control_set(bool on)
+void pump_control_set(bool on, pump_cause_t cause)
 {
-    set_state(on, true);
+    set_state(on, true, cause);
 }
 
-void pump_control_set_silent(bool on)
+void pump_control_set_silent(bool on, pump_cause_t cause)
 {
-    set_state(on, false);
+    set_state(on, false, cause);
 }
 
 void pump_control_toggle(void)
@@ -155,7 +171,7 @@ void pump_control_toggle(void)
         return;
     }
     /* The button handler already clicked. */
-    pump_control_set_silent(!s_on);
+    pump_control_set_silent(!s_on, PUMP_CAUSE_BUTTON);
 }
 
 /** Start a fill if a schedule is due now. Switches to its tank first. */
@@ -180,7 +196,7 @@ static void start_due_schedule(void)
         gatt_svr_notify_nodes();
     }
     ESP_LOGI(TAG, "Schedule start %02u:%02u slot %d", now.hour, now.minute, slot);
-    pump_control_set(true);
+    pump_control_set(true, PUMP_CAUSE_SCHEDULE);
 }
 
 /** Stop the pump once it has run for the active tank's auto-off time. */
@@ -194,7 +210,7 @@ static void enforce_auto_off(void)
         return;
     }
     ESP_LOGW(TAG, "Auto-off after %u min", mins);
-    pump_control_set_silent(false);
+    pump_control_set_silent(false, PUMP_CAUSE_AUTO_OFF);
     if (pump_config_buzzer_on_auto()) {
         buzzer_play(BUZZER_TONE_DOUBLE, false);
     }

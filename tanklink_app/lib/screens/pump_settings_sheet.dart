@@ -6,7 +6,9 @@ import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
 import '../update/app_self_update.dart';
 import '../update/firmware_update.dart';
+import '../util/format.dart';
 import 'error_codes_screen.dart';
+import 'fill_history_screen.dart';
 import 'schedules_screen.dart';
 import 'starter_settings_screen.dart';
 import 'settings/tank_sensor_screen.dart';
@@ -210,6 +212,30 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => const SchedulesScreen(),
+                        ),
+                      );
+                    },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.history_rounded),
+              title: const Text('Fill history'),
+              subtitle: Text(
+                !ready
+                    ? 'Connect to see past fills'
+                    : session.fills.isEmpty
+                    ? 'No fills yet'
+                    : 'Last: ${formatRunTime(session.fills.first.ranSec)} · '
+                          '${stopReasonLabel(session.fills.first.stoppedBy)}',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              enabled: ready,
+              onTap: !ready
+                  ? null
+                  : () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const FillHistoryScreen(),
                         ),
                       );
                     },

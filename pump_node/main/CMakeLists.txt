@@ -10,6 +10,8 @@ idf_component_register(
         "pump_runlog.c"
         "pump_sched.c"
         "pump_tanks.c"
+        "pump_history.c"
+        "pump_battery_log.c"
         "pump_pair.c"
         "pump_factory.c"
         "pump_ota.c"

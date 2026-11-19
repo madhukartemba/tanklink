@@ -11,17 +11,22 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "pump_history.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 bool pump_control_is_on(void);
 
-/** Start or stop the pump. Plays the start/stop beep when enabled. */
-void pump_control_set(bool on);
+/**
+ * Start or stop the pump. Plays the start/stop beep when enabled. [cause]
+ * says who asked; it goes into the fill history.
+ */
+void pump_control_set(bool on, pump_cause_t cause);
 
 /** Same, without the beep (the caller already gave feedback). */
-void pump_control_set_silent(bool on);
+void pump_control_set_silent(bool on, pump_cause_t cause);
 
 /** Button press: flip the pump, ignored while updating or unpaired. */
 void pump_control_toggle(void);

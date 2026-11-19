@@ -9,7 +9,11 @@ class WarnText {
 
 class TankLinkErrors {
   static const pump = <WarnText>[
-    WarnText(1, 'Tank is full', 'The tank is full, so the pump will not start.'),
+    WarnText(
+      1,
+      'Tank is full',
+      'The tank is full, so the pump will not start.',
+    ),
     WarnText(
       2,
       'Tank link not working',
@@ -55,14 +59,22 @@ class TankLinkErrors {
       'The tank was pressed but is not connected to a pump yet. '
           'Start setup on the pump, then hold the tank button for about 3 seconds.',
     ),
-    WarnText(2, 'Tank radio problem', 'The tank’s radio did not start. Check its wiring and power.'),
+    WarnText(
+      2,
+      'Tank radio problem',
+      'The tank’s radio did not start. Check its wiring and power.',
+    ),
     WarnText(
       3,
       'Pump not answering',
       'The tank sent a message but the pump did not reply. '
           'Check the distance and power, and make sure this tank is still set up with this pump.',
     ),
-    WarnText(4, 'Setup cancelled', 'The tank button was pressed once during setup to cancel.'),
+    WarnText(
+      4,
+      'Setup cancelled',
+      'The tank button was pressed once during setup to cancel.',
+    ),
     WarnText(
       5,
       'Setup timed out',

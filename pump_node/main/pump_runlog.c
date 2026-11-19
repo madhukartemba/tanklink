@@ -36,6 +36,7 @@ static bool s_active;
 static run_rec_t s_run;
 static int64_t s_last_refresh_us;
 static bool s_has_event;
+static bool s_interrupted_now;
 static pump_runlog_event_t s_event;
 
 static uint32_t local_now(void)
@@ -137,6 +138,7 @@ void pump_runlog_init(void)
     s_event.back_local = local_now();
     s_event.ran_sec = run.run_sec;
     s_has_event = true;
+    s_interrupted_now = true;
     save_event();
     nvs_put(NVS_KEY_RUN, NULL, 0);
     ESP_LOGW(TAG, "fill interrupted (reason %u) after ~%u s; pump stays off",
@@ -205,6 +207,11 @@ void pump_runlog_poll(bool running, uint32_t run_sec)
     if (save_ev) {
         save_event();
     }
+}
+
+bool pump_runlog_interrupted_this_boot(void)
+{
+    return s_interrupted_now;
 }
 
 const pump_runlog_event_t *pump_runlog_event(void)

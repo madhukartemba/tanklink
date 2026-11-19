@@ -2,6 +2,17 @@
 
 Android app sideload updates: [`app-release.md`](app-release.md) (`app-v*`).
 
+## The release script
+
+`scripts/release.sh` releases any of pump, tank and app in one command: it bumps the versions, commits, rebuilds, checks each binary contains its version and differs from the last release, checks the APK is signed with the upload key, pushes, and creates the GitHub releases (and refreshes `app-latest`).
+
+```bash
+mkdir -p /tmp/notes   # pump.md, tank.md, app.md for what you release
+./scripts/release.sh --pump 0.14.0 --app 1.3.0 --notes /tmp/notes -m "Pump 0.14.0, TankLink app 1.3.0: ..."
+```
+
+Run with `--dry-run` first: it does every build and check, then restores the version files without committing or publishing. Needs a clean `main` in sync with `origin`. The manual steps below are what it automates.
+
 ## Pump (`pump-v*`)
 
 1. Edit `TANKLINK_FW_MAJOR` / `_MINOR` / `_PATCH` in [`pump_node/main/tanklink_uuid.h`](../pump_node/main/tanklink_uuid.h). If the board changed, bump `PUMP_HW_REV` in `sdkconfig.defaults`. If the BLE protocol changed, bump `TANKLINK_PROTO_MAJOR` or `_MINOR` (see [`PROTOCOL.md`](PROTOCOL.md#versioning)).

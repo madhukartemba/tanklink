@@ -198,6 +198,49 @@ size_t gatt_payload_nodes(uint8_t out[GATT_NODES_MAX_LEN])
     return o;
 }
 
+size_t gatt_payload_history(uint8_t out[GATT_HISTORY_MAX_LEN])
+{
+    size_t o = 1;
+    uint8_t count = 0;
+    pump_fill_t f;
+    for (unsigned i = 0; i < PUMP_HISTORY_MAX && pump_history_get(i, &f); i++) {
+        put_u32(&out[o], f.started_local);
+        put_u32(&out[o + 4], f.ran_sec);
+        out[o + 8] = f.slot;
+        out[o + 9] = f.started_by;
+        out[o + 10] = f.stopped_by;
+        out[o + 11] = 0;
+        o += TANKLINK_HISTORY_ENTRY_LEN;
+        count++;
+    }
+    out[0] = count;
+    return o;
+}
+
+size_t gatt_payload_battery(uint8_t out[GATT_BATTERY_MAX_LEN])
+{
+    size_t o = 1;
+    uint8_t count = 0;
+    for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
+        if (!pump_tanks_node_get(n, NULL)) {
+            continue;
+        }
+        pump_batlog_day_t days[PUMP_BATLOG_DAYS];
+        const unsigned d = pump_battery_log_get(n, days);
+        out[o++] = n;
+        out[o++] = (uint8_t)d;
+        for (unsigned i = 0; i < d; i++) {
+            put_u16(&out[o], days[i].day);
+            out[o + 2] = days[i].min_pct;
+            out[o + 3] = days[i].max_pct;
+            o += TANKLINK_BATTERY_DAY_LEN;
+        }
+        count++;
+    }
+    out[0] = count;
+    return o;
+}
+
 size_t gatt_payload_ota_status(uint8_t out[GATT_OTA_STATUS_LEN])
 {
     out[0] = pump_ota_state();

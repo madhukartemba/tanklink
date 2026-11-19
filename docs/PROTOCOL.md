@@ -2,7 +2,7 @@
 
 Byte-level reference for the app ↔ pump BLE link, the app ↔ tank BLE OTA link, and the tank ↔ pump LoRa link. The C headers and handlers are the source of truth. This file just collects them in one place. If they disagree, trust the code and fix this file.
 
-All multi-byte integers are **little-endian**. "Authed" means the connection has written the correct 16-byte token to **Auth** since connecting.
+All multi-byte integers are **little-endian**. "Authed" means the connection has written the correct 16-byte token to **Auth** since connecting. Only Info, State, OtaStatus and the Pair/Auth writes work without it. Notifications of authed characteristics only go to authed connections.
 
 Source files: `pump_node/main/tanklink_uuid.h`, `pump_node/main/gatt_payloads.c`, `pump_node/main/gatt_svr.c`, `tank_node/main/tanklink_ble_uuid.h`, `tank_node/main/tank_gatt.c`, `components/tanklink_lora/include/tanklink_lora_proto.h`, `tanklink_app/lib/ble/tanklink_uuids.dart`, `tanklink_app/lib/ble/protocol.dart`.
 
@@ -51,6 +51,8 @@ All UUIDs are `7f1a00XX-ac01-4c8c-9b2e-74616e6b6c6e`.
 | 0c | Schedule | ✓ | |
 | 0d | Tanks (slot list) | ✓ | |
 | 0e | Sensors (paired tank sensors) | ✓ | |
+| 0f | History (last fills) | ✓ | |
+| 10 | Battery (daily battery per sensor) | ✓ | |
 
 Advertised names: pump `TankLink-XXXX` (last 4 hex of MAC), tank `TL-Tank-XXXX`. The tank also puts its `tank_id` in manufacturer data under company ID `0xFFFF`.
 
@@ -118,7 +120,7 @@ Write, at least 6 bytes (extra bytes from a newer app are ignored):
 - `starter_type`: 0 = none (logical on/off only), 1 = two-button starter (Start/Stop momentary relays).
 Auto-off is per tank (Cmd `0xA6`, Tanks) and the float mode per sensor (Cmd `0xA7`, Sensors).
 
-### Tank (read + notify)
+### Tank (read + notify, authed)
 
 The sensor of the **selected** tank (the one the pump fills), plus pump-wide error and interrupted-fill fields. `bound` = 0 when no sensor is paired. 54 bytes:
 
@@ -189,6 +191,27 @@ Up to 8 slots. With no sensor paired there is exactly one slot (`sensor_index` `
 After the entries, one fault byte per entry in the same order (the tank's own light code, 0 = none).
 
 Notified on every packet from any sensor, and when one goes out of range.
+
+### History (read + notify, authed)
+
+The last 20 fills, newest first: `count(1)` followed by `count` × 12 bytes:
+
+| Offset | Size | Field |
+| --- | --- | --- |
+| 0 | 4 | when it started (u32, pump-local seconds since 1970; 0 = clock unknown) |
+| 4 | 4 | how long it ran, seconds (u32) |
+| 8 | 1 | tank slot it filled |
+| 9 | 1 | started by (cause) |
+| 10 | 1 | stopped by (cause) |
+| 11 | 1 | reserved, 0 |
+
+Causes: 0 unknown, 1 app, 2 pump button, 3 schedule, 4 tank full, 5 auto-off, 6 power cut or restart, 7 update / pairing / unpair / factory reset. A fill cut by a power cut is added at the next boot with start cause 0 and stop cause 6. Notified when a fill is added. Cleared by factory reset.
+
+### Battery (read + notify, authed)
+
+Each paired sensor's lowest and highest battery % on each pump-local day, for the last 14 days. `count(1)` followed by, per sensor: `sensor_index(1) days(1)`, then `days` × `day(u16, pump-local days since 1970) min_pct(1) max_pct(1)`, oldest first.
+
+Only logged while the pump knows the time; 0 % readings (no battery sense) are skipped. A sensor's log is cleared when it is unpaired. The app turns the daily lows into a trend: on solar, a falling low means the panel isn't keeping up. Notified when a log changes.
 
 ### OTA (pump and tank) — frozen
 

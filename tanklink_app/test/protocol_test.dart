@@ -213,7 +213,11 @@ void main() {
 
     test('returns null without the fault bytes', () {
       expect(
-        TankSensor.parseList([1, TankLinkUuids.sensorMax, ...entry(index: 0, id: idA)]),
+        TankSensor.parseList([
+          1,
+          TankLinkUuids.sensorMax,
+          ...entry(index: 0, id: idA),
+        ]),
         isNull,
       );
     });
@@ -262,6 +266,49 @@ void main() {
         [TankLinkUuids.schedOpSetList, 1, 1, 6, 15, 1],
       );
     });
+  });
+
+  test('parseFillHistory reads fills newest first', () {
+    // 2026-11-18 06:00:00 pump-local, as seconds since 1970.
+    final started =
+        DateTime.utc(2026, 11, 18, 6).millisecondsSinceEpoch ~/ 1000;
+    final list = parseFillHistory([
+      2,
+      ...u32(started),
+      ...u32(1080),
+      1,
+      TankLinkUuids.causeSchedule,
+      TankLinkUuids.causeTankFull,
+      0,
+      ...u32(0),
+      ...u32(300),
+      0,
+      TankLinkUuids.causeUnknown,
+      TankLinkUuids.causePower,
+      0,
+    ])!;
+    expect(list, hasLength(2));
+    expect(list.first.startedAt, DateTime(2026, 11, 18, 6));
+    expect(list.first.ranSec, 1080);
+    expect(list.first.slot, 1);
+    expect(list.first.startedBy, TankLinkUuids.causeSchedule);
+    expect(list.first.stoppedBy, TankLinkUuids.causeTankFull);
+    expect(list.last.startedAt, isNull);
+    expect(list.last.stoppedBy, TankLinkUuids.causePower);
+  });
+
+  test('parseBatteryLog reads days per sensor', () {
+    final logs = parseBatteryLog([
+      2,
+      0, 2, 0x10, 0x52, 70, 95, 0x11, 0x52, 68, 94, // sensor 0, 2 days
+      3, 0, // sensor 3, nothing logged yet
+    ])!;
+    expect(logs.keys, [0, 3]);
+    expect(logs[0]!.map((d) => d.day), [0x5210, 0x5211]);
+    expect(logs[0]!.map((d) => d.minPct), [70, 68]);
+    expect(logs[0]!.last.maxPct, 94);
+    expect(logs[3], isEmpty);
+    expect(parseBatteryLog([1, 0, 2, 0x10]), isNull, reason: 'truncated');
   });
 
   test('encodeTankName keeps printable ASCII only', () {

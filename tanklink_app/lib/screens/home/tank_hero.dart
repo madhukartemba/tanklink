@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../ble/pump_session.dart';
+import '../../util/format.dart';
 
 /// Full-area tank status — level, signal, battery; no FW / tank ID.
 class TankHero extends StatelessWidget {
@@ -153,6 +154,11 @@ class TankHero extends StatelessWidget {
     // Offline: the last reading may be hours old, so show it as unknown
     // (like the signal) and keep the old value only as a hint.
     final batPct = session.tankBatteryPct;
+    final sensor = session.activeSensor;
+    final outlook = sensor == null
+        ? const BatteryOutlook(BatteryTrend.unknown)
+        : session.batteryOutlook(sensor);
+    final solarBehind = !offline && !lowBat && solarFallingBehind(outlook);
     final batMissing = !offline && batPct <= 0;
     final String batValue;
     final String? batDetail;
@@ -167,13 +173,7 @@ class TankHero extends StatelessWidget {
       batAccent = scheme.error;
     } else {
       batValue = '$batPct%';
-      if (lowBat) {
-        batDetail = 'Charge it soon';
-      } else if (batPct >= 60) {
-        batDetail = 'No need to charge';
-      } else {
-        batDetail = 'Fine for now';
-      }
+      batDetail = batteryHint(batPct, low: lowBat, outlook: outlook);
       batAccent = lowBat ? scheme.error : accent;
     }
     final rssi = session.tankRssiDbm;
@@ -289,14 +289,16 @@ class TankHero extends StatelessWidget {
                   ),
                 ],
               ),
-              if (offline || lowBat || batMissing) ...[
+              if (offline || lowBat || batMissing || solarBehind) ...[
                 SizedBox(height: tight ? 6 : 12),
                 Text(
                   offline
                       ? 'Check tank power, antenna, and range.'
                       : batMissing
                       ? 'Battery reading missing — check the tank ADC wiring.'
-                      : 'Tank battery is getting low.',
+                      : lowBat
+                      ? 'Tank battery is low. Check the solar panel gets sun and is clean.'
+                      : 'Solar isn’t keeping up. Check the panel gets sun and is clean.',
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,

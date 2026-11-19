@@ -37,6 +37,9 @@ void pump_runlog_on_stop(void);
 /** Call every few hundred ms. Refreshes the running record once a minute. */
 void pump_runlog_poll(bool running, uint32_t run_sec);
 
+/** True when this boot found a fill cut short (once per interruption). */
+bool pump_runlog_interrupted_this_boot(void);
+
 /** The pending notice, or NULL when there is none. */
 const pump_runlog_event_t *pump_runlog_event(void);
 

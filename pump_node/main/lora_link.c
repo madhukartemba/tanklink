@@ -12,6 +12,7 @@
 #include "nvs.h"
 #include "pump_clock.h"
 #include "pump_tanks.h"
+#include "pump_battery_log.h"
 #include "pump_errors.h"
 #include "pump_pair.h"
 #include "relay_control.h"
@@ -483,6 +484,7 @@ static void apply_tank_packet(uint8_t node, const tanklink_lora_status_t *pkt,
     rt->hw_rev = pkt->hw_rev;
     rt->rssi_dbm = rssi_dbm;
     rt->snr_db = snr_db;
+    pump_battery_log_note(node, rt->bat);
     const bool active = node == pump_tanks_active_node();
     bool full = false;
     if (active) {
@@ -490,7 +492,7 @@ static void apply_tank_packet(uint8_t node, const tanklink_lora_status_t *pkt,
         status_led_set_tank_full(full);
         /* Only the selected tank stops a fill; other tanks may well be full. */
         if (full && pump_control_is_on()) {
-            pump_control_set_silent(false);
+            pump_control_set_silent(false, PUMP_CAUSE_TANK_FULL);
         }
     }
     ESP_LOGI(TAG,
@@ -574,6 +576,7 @@ static void on_pair_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t sn
     if (added) {
         rt_reset(node);
         erase_node_keys(node);
+        pump_battery_log_clear(node);
     }
     node_rt_t *rt = &s_rt[node];
     memcpy(rt->token, buf + sizeof(tanklink_lora_status_t), TANKLINK_LORA_BLE_TOKEN_LEN);
@@ -759,6 +762,7 @@ esp_err_t lora_link_unpair_node(uint8_t node)
     }
     rt_reset(node);
     erase_node_keys(node);
+    pump_battery_log_clear(node);
     ESP_LOGI(TAG, "sensor %u unpaired", node);
     lora_link_on_active_changed();
     gatt_svr_notify_tank();
@@ -785,6 +789,7 @@ esp_err_t lora_link_unpair_all(void)
         }
         nvs_close(h);
     }
+    pump_battery_log_clear_all();
     status_led_set_tank_full(false);
     ESP_LOGI(TAG, "all sensors unpaired");
     gatt_svr_notify_tank();
