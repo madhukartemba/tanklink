@@ -130,9 +130,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   );
                 },
               ),
-              if (pump == null)
-                Expanded(child: EmptyState(scheme: scheme))
-              else ...[
+              if (pump == null) ...[
+                // App updates don't need a pump.
+                const HomeUpdateBannerSection(),
+                Expanded(child: EmptyState(scheme: scheme)),
+              ] else ...[
                 const SizedBox(height: 10),
                 PumpHeader(
                   pump: pump,

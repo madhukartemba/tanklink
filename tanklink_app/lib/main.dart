@@ -10,7 +10,7 @@ import 'package:provider/provider.dart';
 import 'ble/pump_session.dart';
 import 'diag/app_log.dart';
 import 'diag/report_sender.dart';
-import 'screens/home_screen.dart';
+import 'screens/welcome_screen.dart';
 import 'update/app_self_update.dart';
 import 'update/firmware_update.dart';
 
@@ -107,7 +107,7 @@ class TankLinkApp extends StatelessWidget {
           color: Theme.of(context).colorScheme.surface,
           child: SafeArea(top: false, child: child!),
         ),
-        home: const HomeScreen(),
+        home: const StartGate(),
       ),
     );
   }

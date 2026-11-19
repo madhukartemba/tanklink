@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../ble/pump_session.dart';
 import '../add_pump_screen.dart';
+import '../welcome_screen.dart';
 import '../report_problem_screen.dart';
 
 class TopBar extends StatelessWidget {
@@ -297,10 +298,14 @@ class EmptyState extends StatelessWidget {
               ?.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
-        Text(
-          'Hold the pump button for 5 seconds to enter pairing, then add it here.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: scheme.onSurfaceVariant),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Stand near the pump with Bluetooth on, then add it. The app shows '
+            'you how to put the pump in pairing mode.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
+          ),
         ),
         const SizedBox(height: 28),
         FilledButton.icon(
@@ -311,6 +316,11 @@ class EmptyState extends StatelessWidget {
           },
           icon: const Icon(Icons.add),
           label: const Text('Add pump'),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => openWelcome(context),
+          child: const Text('How TankLink works'),
         ),
       ],
     );
