@@ -53,7 +53,7 @@ extern "C" {
 /* Firmware version. TANKLINK_FW_VERSION is built from the three numbers. */
 #define TANKLINK_FW_MAJOR 0
 #define TANKLINK_FW_MINOR 14
-#define TANKLINK_FW_PATCH 1
+#define TANKLINK_FW_PATCH 2
 #define TANKLINK_STR_(x) #x
 #define TANKLINK_STR(x) TANKLINK_STR_(x)
 #define TANKLINK_FW_VERSION \
