@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../ble/pump_session.dart';
 import '../add_pump_screen.dart';
+import '../report_problem_screen.dart';
 
 class TopBar extends StatelessWidget {
   const TopBar({super.key, required this.onPumps, required this.onAdd});
@@ -19,6 +20,14 @@ class TopBar extends StatelessWidget {
               ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.4),
         ),
         const Spacer(),
+        // Always here, so a problem can be reported with no pump, or with
+        // one that never connects.
+        IconButton(
+          tooltip: 'Report a problem',
+          onPressed: () => openReportScreen(context),
+          icon: const Icon(Icons.bug_report_outlined),
+        ),
+        const SizedBox(width: 4),
         IconButton.filledTonal(
           tooltip: 'Pumps',
           onPressed: onPumps,

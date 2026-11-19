@@ -139,6 +139,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (session.connectFailed &&
+                            !session.connecting &&
+                            !session.connected) ...[
+                          ConnectFailedBanner(session: session),
+                          const SizedBox(height: 8),
+                        ],
                         if (linked && session.protocolMismatch) ...[
                           ProtocolMismatchBanner(session: session),
                           const SizedBox(height: 8),

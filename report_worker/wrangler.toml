@@ -1,0 +1,20 @@
+# TankLink report service. See README.md for setup.
+name = "tanklink-reports"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# On our own domain so the backend can move later without an app update.
+routes = [{ pattern = "tanklink-reports.madhukartemba.in", custom_domain = true }]
+workers_dev = false
+
+[vars]
+GITHUB_REPO = "madhukartemba/tanklink-reports"
+
+# Per-IP limit: 5 reports a minute. namespace_id is any number unique in
+# your Cloudflare account.
+[[ratelimits]]
+name = "REPORT_LIMITER"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
+# Secrets, set with `npx wrangler secret put <NAME>`: GITHUB_TOKEN, APP_KEY

@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
 import 'pair_tank_prompt_screen.dart';
+import '../diag/app_log.dart';
+import '../diag/report_builder.dart';
+import 'report_problem_screen.dart';
 
 class AddPumpScreen extends StatefulWidget {
   const AddPumpScreen({super.key});
@@ -47,9 +50,25 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
       }
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
+      AppLog.w('pump', 'Add pump failed: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Couldn’t add pump: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Couldn’t add pump: $e'),
+          action: SnackBarAction(
+            label: 'Report',
+            onPressed: () => openReportScreen(
+              context,
+              ReportProblem(
+                kind: 'add-pump',
+                title: 'Couldn’t add pump',
+                detail: '$e',
+                seenAt: DateTime.now(),
+              ),
+            ),
+          ),
+        ),
+      );
     }
   }
 
@@ -89,6 +108,25 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),
           ),
+          if (!session.scanning && session.scanResults.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => openReportScreen(
+                    context,
+                    ReportProblem(
+                      kind: 'add-pump',
+                      title: 'Pump not found when adding',
+                      seenAt: DateTime.now(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.bug_report_outlined, size: 18),
+                  label: const Text('Still can’t find it? Report a problem'),
+                ),
+              ),
+            ),
           Expanded(
             child: session.scanResults.isEmpty
                 ? Center(

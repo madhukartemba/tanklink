@@ -12,6 +12,7 @@ A local (no cloud) water-tank pump controller with three parts:
 | Tank node | [`tank_node/`](tank_node/) | Seeed XIAO ESP32-C3, ESP-IDF v6.1, battery, deep sleep | Pump over **LoRa**, app over **BLE** (OTA only) |
 | App | [`tanklink_app/`](tanklink_app/) | Flutter, `flutter_blue_plus`, Android sideload | Pump over BLE, GitHub Releases for updates |
 | Shared LoRa driver | [`components/tanklink_lora/`](components/tanklink_lora/) | SX1278 (RA-02, 433 MHz) driver + packet format | Used by both firmware nodes |
+| Report service | [`report_worker/`](report_worker/) | Cloudflare Worker | Receives "Report a problem" from the app, files issues in a private GitHub repo |
 
 Flow: the tank wakes on a float change or a 10-minute heartbeat, sends a LoRa STATUS packet with raw float pin levels, and sleeps. A pump pairs up to 4 tank sensors; each sensor's float mode says what its pins mean (full / almost-empty / second tank), giving up to 8 tanks. The pump fills one **selected** tank at a time (the user sets a valve or lever to match); only that tank's float can block a start or stop a fill. It drives the starter relays and serves state to the app over BLE. The app is the only UI besides the single pump button.
 
@@ -26,6 +27,7 @@ Flow: the tank wakes on a float change or a 10-minute heartbeat, sends a LoRa ST
 | Build options, app-set runtime settings, NVS layout, values that must match | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) |
 | Firmware releases (`pump-v*`, `tank-v*`) | [`docs/firmware-release.md`](docs/firmware-release.md) |
 | App releases (`app-v*`) | [`docs/app-release.md`](docs/app-release.md) |
+| Diagnostics and bug reports (plan and status) | [`docs/plan-diagnostics-and-bug-reports.md`](docs/plan-diagnostics-and-bug-reports.md), [`report_worker/README.md`](report_worker/README.md) |
 
 ## Code map
 
@@ -56,6 +58,8 @@ App (`tanklink_app/lib/`):
 | `update/` | GitHub release checks, downloads, update flows |
 | `screens/`, `screens/home/`, `screens/settings/` | UI. One widget family per file |
 | `util/format.dart` | Shared labels |
+| `diag/` | App log (`app_log.dart`), report text and redaction (`report_builder.dart`, unit tested), sending and offline queue (`report_sender.dart`) |
+| `screens/report_problem_screen.dart` | Report a problem; opened from Settings, error banners and failed updates |
 
 ## Shared contracts — change all copies together
 
@@ -65,6 +69,7 @@ These values are duplicated by hand. There is no codegen. If you change one, cha
 | --- | --- | --- | --- |
 | BLE UUIDs, Cmd opcodes, OTA opcodes/status, payload lengths | `pump_node/main/tanklink_uuid.h` | `tank_node/main/tanklink_ble_uuid.h` | `tanklink_app/lib/ble/tanklink_uuids.dart` |
 | LoRa packet format | `components/tanklink_lora/include/tanklink_lora_proto.h` (shared) | same | — |
+| Report body (`POST /v1/report`) | — | — | `tanklink_app/lib/diag/report_builder.dart` (`toJson`) ↔ `report_worker/src/index.js` |
 | BLE payload layouts | `pump_node/main/gatt_payloads.c` (reads) and the handlers in `gatt_svr.c` (writes) | `tank_node/main/tank_gatt.c` | `tanklink_app/lib/ble/protocol.dart` (covered by `test/protocol_test.dart`) |
 | Protocol versions | `TANKLINK_PROTO_MAJOR/MINOR` in `tanklink_uuid.h` | same names in `tanklink_ble_uuid.h` | `TankLinkUuids.protoMajor` |
 

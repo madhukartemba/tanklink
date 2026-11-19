@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import 'app_install.dart';
 import 'app_self_update.dart';
 import 'firmware_update.dart' show FwUpdatePhase;
+import '../diag/report_builder.dart';
+import '../screens/report_problem_screen.dart';
 
 String _fmtBytes(int n) {
   if (n < 1024) return '$n B';
@@ -22,6 +24,7 @@ Future<void> showAppUpdateConfirmSheet(BuildContext context) async {
   final action = await showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     showDragHandle: true,
     builder: (ctx) {
       final scheme = Theme.of(ctx).colorScheme;
@@ -138,8 +141,25 @@ Future<void> runAppSelfUpdate(BuildContext context) async {
     app.setError(e.toString());
     if (context.mounted) {
       Navigator.of(context).pop();
+      final message = app.errorMessage ?? '$e';
+      final nav = Navigator.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('App update failed: ${app.errorMessage ?? e}')),
+        SnackBar(
+          content: Text('App update failed: $message'),
+          action: SnackBarAction(
+            label: 'Report',
+            onPressed: () => nav.push(
+              reportRoute(
+                ReportProblem(
+                  kind: 'app-update',
+                  title: 'App update failed',
+                  detail: message,
+                  seenAt: DateTime.now(),
+                ),
+              ),
+            ),
+          ),
+        ),
       );
     }
   } finally {

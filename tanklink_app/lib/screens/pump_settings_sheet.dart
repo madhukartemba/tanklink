@@ -17,6 +17,7 @@ import 'settings/buzzer_settings_sheet.dart';
 import 'settings/led_brightness_tile.dart';
 import 'settings/auto_off_section.dart';
 import 'settings/factory_reset_dialog.dart';
+import 'report_problem_screen.dart';
 
 Future<void> showPumpSettingsSheet(BuildContext context) {
   // Refresh release metadata when opening settings.
@@ -29,6 +30,7 @@ Future<void> showPumpSettingsSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     showDragHandle: true,
     builder: (_) => const _PumpSettingsSheet(),
   );
@@ -164,6 +166,7 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                       showModalBottomSheet<void>(
                         context: context,
                         isScrollControlled: true,
+                        useSafeArea: true,
                         showDragHandle: true,
                         builder: (_) => const BuzzerSettingsSheet(),
                       );
@@ -254,6 +257,14 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                   ),
                 );
               },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.bug_report_outlined),
+              title: const Text('Report a problem'),
+              subtitle: const Text('Send what went wrong to the developer'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => openReportScreen(context),
             ),
             if (ready && session.pumpLastError != 0)
               ListTile(

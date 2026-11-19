@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'github_release_util.dart';
 import 'firmware_update.dart' show FwUpdatePhase;
 import 'semver.dart';
+import '../diag/app_log.dart';
 
 class AppReleaseInfo {
   AppReleaseInfo({
@@ -171,6 +172,7 @@ class AppSelfUpdate extends ChangeNotifier {
       phase = FwUpdatePhase.idle;
       notifyListeners();
     } catch (e) {
+      AppLog.w('update', 'App update check failed: $e');
       errorMessage = 'Couldn’t check for app updates';
       phase = FwUpdatePhase.error;
       notifyListeners();
@@ -243,6 +245,7 @@ class AppSelfUpdate extends ChangeNotifier {
       notifyListeners();
       return out.path;
     } catch (e) {
+      AppLog.e('update', 'Download failed', e);
       errorMessage = e.toString();
       phase = FwUpdatePhase.error;
       notifyListeners();
@@ -258,6 +261,7 @@ class AppSelfUpdate extends ChangeNotifier {
   }
 
   void setError(String message) {
+    AppLog.e('update', 'App update failed', message);
     errorMessage = message;
     phase = FwUpdatePhase.error;
     notifyListeners();

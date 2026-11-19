@@ -6,6 +6,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ble/pump_session.dart';
 import 'firmware_update.dart';
+import '../diag/report_builder.dart';
+import '../screens/report_problem_screen.dart';
 
 String _fmtBytes(int n) {
   if (n < 1024) return '$n B';
@@ -35,6 +37,7 @@ Future<void> showFirmwareConfirmSheet(BuildContext context) async {
   final action = await showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     showDragHandle: true,
     builder: (ctx) {
       final scheme = Theme.of(ctx).colorScheme;
@@ -399,6 +402,23 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),
+            ),
+            TextButton(
+              onPressed: () {
+                final nav = Navigator.of(context);
+                nav.pop();
+                nav.push(
+                  reportRoute(
+                    ReportProblem(
+                      kind: 'pump-update',
+                      title: 'Pump update failed',
+                      detail: fw.errorMessage,
+                      seenAt: DateTime.now(),
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Report'),
             ),
             FilledButton(
               onPressed: () {

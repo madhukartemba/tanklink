@@ -2,6 +2,35 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../ble/pump_session.dart';
 import '../../ble/tanklink_uuids.dart';
+import '../../diag/report_builder.dart';
+import '../report_problem_screen.dart';
+
+/// Small "Report" link at the bottom of an error banner.
+class _ReportLink extends StatelessWidget {
+  const _ReportLink({required this.color, required this.onPressed});
+
+  final Color color;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: TextButton.icon(
+        style: TextButton.styleFrom(
+          foregroundColor: color,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          minimumSize: const Size(0, 32),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.compact,
+        ),
+        onPressed: onPressed,
+        icon: const Icon(Icons.bug_report_outlined, size: 18),
+        label: const Text('Report'),
+      ),
+    );
+  }
+}
 
 /// Info notice: a fill was cut short. The pump does not restart on its own.
 class FillInterruptedBanner extends StatelessWidget {
@@ -94,6 +123,19 @@ class FillInterruptedBanner extends StatelessWidget {
                       height: 1.3,
                     ),
                   ),
+                  _ReportLink(
+                    color: scheme.onTertiaryContainer,
+                    onPressed: () => openReportScreen(
+                      context,
+                      ReportProblem(
+                        kind: 'interrupt',
+                        code: event.reason,
+                        title: _title,
+                        detail: _detail(context),
+                        seenAt: event.backAt,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -161,11 +203,18 @@ class PumpErrorBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = session.pumpErrorTitle;
     if (title == null) return const SizedBox.shrink();
+    final code = session.pumpLastError;
     return _CodeBanner(
       title: title,
       detail: session.pumpErrorDetail,
-      code: session.pumpLastError,
+      code: code,
       onClear: session.clearPumpError,
+      problem: ReportProblem(
+        kind: 'pump-err',
+        code: code,
+        title: 'Pump error $code: $title',
+        detail: session.pumpErrorDetail,
+      ),
     );
   }
 }
@@ -179,10 +228,17 @@ class TankFaultBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = session.tankFaultTitle;
     if (title == null) return const SizedBox.shrink();
+    final code = session.tankFault;
     return _CodeBanner(
       title: title,
       detail: session.tankFaultDetail,
-      code: session.tankFault,
+      code: code,
+      problem: ReportProblem(
+        kind: 'tank-err',
+        code: code,
+        title: 'Tank sensor code $code: $title',
+        detail: session.tankFaultDetail,
+      ),
     );
   }
 }
@@ -192,12 +248,14 @@ class _CodeBanner extends StatelessWidget {
     required this.title,
     required this.detail,
     required this.code,
+    required this.problem,
     this.onClear,
   });
 
   final String title;
   final String? detail;
   final int code;
+  final ReportProblem problem;
   final VoidCallback? onClear;
 
   @override
@@ -236,6 +294,10 @@ class _CodeBanner extends StatelessWidget {
                       ),
                     ),
                   ],
+                  _ReportLink(
+                    color: scheme.onErrorContainer,
+                    onPressed: () => openReportScreen(context, problem),
+                  ),
                 ],
               ),
             ),
@@ -253,6 +315,54 @@ class _CodeBanner extends StatelessWidget {
                 onPressed: onClear,
                 icon: Icon(Icons.close_rounded, color: scheme.onErrorContainer),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The last connect attempt failed or the pump dropped the link.
+class ConnectFailedBanner extends StatelessWidget {
+  const ConnectFailedBanner({super.key, required this.session});
+
+  final PumpSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final status = session.status;
+    return Material(
+      color: scheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+        child: Row(
+          children: [
+            Icon(
+              Icons.bluetooth_disabled_rounded,
+              color: scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                status,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+            _ReportLink(
+              color: scheme.primary,
+              onPressed: () => openReportScreen(
+                context,
+                ReportProblem(
+                  kind: 'connect',
+                  title: 'Connection problem: $status',
+                  seenAt: DateTime.now(),
+                ),
+              ),
+            ),
           ],
         ),
       ),

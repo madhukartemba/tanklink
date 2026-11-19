@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../diag/app_log.dart';
 import '../util/error_text.dart';
 import 'battery_trend.dart';
 import 'models.dart';
@@ -20,7 +21,17 @@ class PumpSession extends ChangeNotifier {
   final List<SavedPump> pumps = [];
   String? selectedRemoteId;
 
-  String status = 'Starting…';
+  String _status = 'Starting…';
+
+  /// The status line under the pump name. Every change is logged, so the
+  /// app log shows what the user saw.
+  String get status => _status;
+  set status(String v) {
+    if (v == _status) return;
+    _status = v;
+    AppLog.i('pump', 'Status: $v');
+  }
+
   String firmware = '';
 
   /// From Info. 0 until the pump has been read.
@@ -474,7 +485,7 @@ class PumpSession extends ChangeNotifier {
       try {
         await _auth!.write(tokenPump.token, withoutResponse: false);
       } catch (e) {
-        debugPrint('auth write failed: $e');
+        AppLog.w('ble', 'Auth write failed: $e');
         await disconnect();
         connecting = false;
         connectFailed = true;
@@ -488,7 +499,7 @@ class PumpSession extends ChangeNotifier {
       connectFailed = false;
       notifyListeners();
     } catch (e) {
-      debugPrint('connectSelected failed: $e');
+      AppLog.w('ble', 'Connect failed: $e');
       await disconnect();
       connecting = false;
       connectFailed = true;
@@ -735,6 +746,7 @@ class PumpSession extends ChangeNotifier {
 
   void _applyTankStatus(TankStatus? t) {
     if (t == null) return;
+    _logTankStatusChanges(t);
     tankBound = t.bound;
     tankPairing = t.pairing;
     tankIdHex = t.tankIdHex;
@@ -1256,6 +1268,26 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _logTankStatusChanges(TankStatus t) {
+    if (t.pumpLastError != pumpLastError) {
+      AppLog.w('pump', 'Pump error ${t.pumpLastError} (was $pumpLastError)');
+    }
+    final fault = t.bound ? t.tankFault : 0;
+    if (fault != tankFault) {
+      AppLog.w('tank', 'Tank sensor code $fault (was $tankFault)');
+    }
+    if (t.bound && t.online != tankOnline) {
+      AppLog.i('tank', t.online ? 'Tank online' : 'Tank offline');
+    }
+    final i = t.interruption;
+    if (i != null && fillInterruption == null) {
+      AppLog.w(
+        'pump',
+        'Fill interrupted: reason ${i.reason}, ran ${i.ranSec}s',
+      );
+    }
+  }
+
   Future<void> _connectAndDiscover(BluetoothDevice device) async {
     await stopScan();
     _device = device;
@@ -1268,6 +1300,7 @@ class PumpSession extends ChangeNotifier {
     await _connSub?.cancel();
     _connSub = device.connectionState.listen((s) {
       connected = s == BluetoothConnectionState.connected;
+      AppLog.i('ble', 'Connection: ${s.name}');
       if (!connected) {
         authed = false;
         _clockSyncTimer?.cancel();
