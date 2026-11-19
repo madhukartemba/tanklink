@@ -473,7 +473,13 @@ class PumpSession extends ChangeNotifier {
     }
   }
 
-  Future<void> connectSelected() async {
+  /// Android often fails a BLE connect once (status 133, or a link that
+  /// drops before services are read) and then succeeds right after, so a
+  /// failed connect is retried [attempts] times before showing an error.
+  static const _connectAttempts = 4;
+  static const _connectRetryWithin = Duration(seconds: 8);
+
+  Future<void> connectSelected({int attempts = _connectAttempts}) async {
     final pump = selected;
     if (pump == null) {
       status = 'No pump selected';
@@ -490,7 +496,23 @@ class PumpSession extends ChangeNotifier {
       // Direct connect often fails on Android after a cold start while another
       // phone is already linked — scan first so the stack can see advertising.
       final device = await _resolveDeviceForConnect(pump);
-      await _connectAndDiscover(device);
+      for (var attempt = 1; ; attempt++) {
+        final took = Stopwatch()..start();
+        try {
+          await _connectAndDiscover(device);
+          break;
+        } catch (e) {
+          // A slow failure is a timeout: the pump is off or out of range,
+          // and trying again only keeps the user waiting.
+          if (attempt >= attempts || took.elapsed > _connectRetryWithin) {
+            rethrow;
+          }
+          AppLog.w('ble', 'Connect attempt $attempt of $attempts failed: $e');
+          await disconnect();
+          // flutter_blue_plus also waits 2 s after a disconnect on Android.
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+        }
+      }
       final tokenPump = selected ?? pump;
       try {
         await _auth!.write(tokenPump.token, withoutResponse: false);
@@ -1241,7 +1263,8 @@ class PumpSession extends ChangeNotifier {
     for (var i = 0; i < 20; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 800));
       try {
-        await connectSelected();
+        // One attempt each: this loop already retries while the pump boots.
+        await connectSelected(attempts: 1);
         if (authed && connected) return;
       } catch (_) {}
     }
