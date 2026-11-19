@@ -52,7 +52,7 @@ semver_ok() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 # Highest released version for a tag prefix, or empty.
 last_release() {
   gh release list --limit 200 --json tagName -q '.[].tagName' |
-    sed -n "s/^$1//p" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' |
+    sed -n "s/^$1//p" | { grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true; } |
     sort -t. -k1,1n -k2,2n -k3,3n | tail -1
 }
 # True when $1 > $2.
@@ -166,7 +166,10 @@ STAGE="$(mktemp -d "${TMPDIR:-/tmp}/tanklink-release.XXXXXX")"
 
 build_fw() { # pump|tank
   step "Building $1 firmware"
-  (cd "${1}_node" && bash -c '. "$IDF_PATH/export.sh" >/dev/null && idf.py build' | tail -3)
+  # Full log to a file; the tail only. pipefail still catches a failed build.
+  (cd "${1}_node" && bash -c '. "$IDF_PATH/export.sh" >/dev/null 2>&1 && idf.py build' \
+    >"$STAGE/$1-build.log" 2>&1) || { tail -30 "$STAGE/$1-build.log"; die "$1 build failed"; }
+  grep -E "Project build complete" "$STAGE/$1-build.log" | head -1 || true
 }
 
 check_sha_changed() { # component sha prefix manifest_name
@@ -194,13 +197,14 @@ done
 
 if [[ -n "$APP_VER" ]]; then
   step "Building app"
-  (cd tanklink_app && flutter build apk --release | tail -1)
+  (cd tanklink_app && flutter build apk --release 2>&1 | awk 'END {print}')
   APK=tanklink_app/build/app/outputs/flutter-apk/app-release.apk
-  cert="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+  cert="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | awk 'NR == 1')"
   [[ "$cert" == "$APP_CERT_SHA256" ]] || die "APK signer $cert is not the upload key"
   echo "  signed with the upload key"
   if [[ -n "${AAPT2:-}" ]]; then
-    badge="$("$AAPT2" dump badging "$APK" | head -1)"
+    # awk reads to the end: head would SIGPIPE aapt2 and trip pipefail.
+    badge="$("$AAPT2" dump badging "$APK" 2>/dev/null | awk 'NR == 1')"
     [[ "$badge" == *"versionCode='$APP_BUILD'"* && "$badge" == *"versionName='$APP_VER'"* ]] ||
       die "APK reports the wrong version: $badge"
     echo "  version $APP_VER ($APP_BUILD)"
