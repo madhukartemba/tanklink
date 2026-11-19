@@ -66,7 +66,7 @@ Menu: **Pump Board**. The values below are the ones in `sdkconfig.defaults`.
 | `PUMP_LORA_FREQ_HZ` | `433000000` | **Must match the tank** |
 | `PUMP_TANK_PAIR_TIMEOUT_MS` | `60000` | LoRa tank-pair window opened from the app |
 | `PUMP_HW_REV` | `1` | Board revision, reported in Info and matched against firmware manifests. Bump when the board changes |
-| `PUMP_TANK_STALE_SEC` | `1500` | Tank counts as out of range after this long with no packet. **Must match the app** (`tankStaleSec`) |
+| `PUMP_TANK_STALE_SEC` | `750` | Tank counts as out of range after this long with no packet. **Must match the app** (`tankStaleSec`) |
 
 Other `sdkconfig.defaults` settings: USB Serial/JTAG console, 4 MB flash, the custom `partitions_ota.csv` (two OTA slots), and NimBLE with up to 5 connections and MTU 512.
 
@@ -89,7 +89,7 @@ Menu: **TankLink Tank Node**. The values below are the ones in `sdkconfig.defaul
 | `TANK_LORA_CS_GPIO` / `RST` / `DIO0` | `20` / `9` / `6` | |
 | `TANK_LORA_FREQ_HZ` | `433000000` | **Must match the pump** |
 | **Timing** | | |
-| `TANK_HEARTBEAT_SEC` | `600` | Deep-sleep wake interval when paired. Keep it well under the pump's `PUMP_TANK_STALE_SEC` (1500) |
+| `TANK_HEARTBEAT_SEC` | `300` | Deep-sleep wake interval when paired. Keep it well under the pump's `PUMP_TANK_STALE_SEC` (750, about 2.5×) |
 | `TANK_TX_RETRIES` | `5` | Send attempts until the pump ACKs |
 | `TANK_ACK_TIMEOUT_MS` | `800` | Wait per attempt |
 | `TANK_BUTTON_HOLD_MS` | `3000` | Hold = LoRa pairing. Starts at 3 s, without waiting for release |
@@ -138,8 +138,8 @@ The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, 
 | Value | Where | Current |
 | --- | --- | --- |
 | LoRa frequency | `PUMP_LORA_FREQ_HZ`, `TANK_LORA_FREQ_HZ` | 433 MHz |
-| Tank stale window | `PUMP_TANK_STALE_SEC`, app `TankLinkUuids.tankStaleSec` | 1500 s |
-| Tank heartbeat vs stale window | `TANK_HEARTBEAT_SEC` must be well below `PUMP_TANK_STALE_SEC` | 600 s vs 1500 s |
+| Tank stale window | `PUMP_TANK_STALE_SEC`, app `TankLinkUuids.tankStaleSec` | 750 s |
+| Tank heartbeat vs stale window | `TANK_HEARTBEAT_SEC` must be well below `PUMP_TANK_STALE_SEC` | 300 s vs 750 s |
 | BLE UUIDs, opcodes, payloads | see [`AGENTS.md`](../AGENTS.md#shared-contracts--change-all-copies-together) | — |
 | BLE protocol major | `TANKLINK_PROTO_MAJOR` (pump, tank), app `TankLinkUuids.protoMajor` | 1 |
 | LoRa protocol major | `TANKLINK_LORA_VER` (shared header) | 5 |

@@ -147,7 +147,7 @@ const uint8_t *lora_link_tank_ble_token(void)
 #else
 
 #ifndef CONFIG_PUMP_TANK_STALE_SEC
-#define CONFIG_PUMP_TANK_STALE_SEC 1500
+#define CONFIG_PUMP_TANK_STALE_SEC 750
 #endif
 
 /** Radio-side state of one paired sensor, indexed like pump_tanks nodes. */

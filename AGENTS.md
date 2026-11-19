@@ -14,7 +14,7 @@ A local (no cloud) water-tank pump controller with three parts:
 | Shared LoRa driver | [`components/tanklink_lora/`](components/tanklink_lora/) | SX1278 (RA-02, 433 MHz) driver + packet format | Used by both firmware nodes |
 | Report service | [`report_worker/`](report_worker/) | Cloudflare Worker | Receives "Report a problem" from the app (issues in a private GitHub repo) and serves the cached release list for update checks |
 
-Flow: the tank wakes on a float change or a 10-minute heartbeat, sends a LoRa STATUS packet with raw float pin levels, and sleeps. A pump pairs up to 4 tank sensors; each sensor's float mode says what its pins mean (full / almost-empty / second tank), giving up to 8 tanks. The pump fills one **selected** tank at a time (the user sets a valve or lever to match); only that tank's float can block a start or stop a fill. It drives the starter relays and serves state to the app over BLE. The app is the only UI besides the single pump button.
+Flow: the tank wakes on a float change or a 5-minute heartbeat, sends a LoRa STATUS packet with raw float pin levels, and sleeps. A pump pairs up to 4 tank sensors; each sensor's float mode says what its pins mean (full / almost-empty / second tank), giving up to 8 tanks. The pump fills one **selected** tank at a time (the user sets a valve or lever to match); only that tank's float can block a start or stop a fill. It drives the starter relays and serves state to the app over BLE. The app is the only UI besides the single pump button.
 
 ## Docs map
 

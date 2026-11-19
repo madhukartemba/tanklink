@@ -181,10 +181,11 @@ menu "Pump Board"
         int "Tank offline after no packet (seconds)"
         depends on PUMP_ENABLE_LORA
         range 10 7200
-        default 1500
+        default 750
         help
             Mark tank out of range if no LoRa packet within this window
-            (about 2.5× the default 600s heartbeat).
+            (about 2.5× the tank's 300 s heartbeat). Must match the app's
+            TankLinkUuids.tankStaleSec.
 
     config PUMP_RELAY_ACTIVE_HIGH
         bool "Relays active high"

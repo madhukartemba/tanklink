@@ -141,7 +141,7 @@ class TankLinkUuids {
   static const tankBatteryLowPct = 20;
 
   /// Match pump CONFIG_PUMP_TANK_STALE_SEC — used for live last-seen / online.
-  static const tankStaleSec = 1500;
+  static const tankStaleSec = 750;
 
   static const otaOpStart = 0x01;
   static const otaOpAbort = 0x02;
