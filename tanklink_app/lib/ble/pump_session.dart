@@ -104,6 +104,11 @@ class PumpSession extends ChangeNotifier {
   int? simPumpError;
   int? simTankFault;
 
+  /// Debug builds only: a made-up battery log (daily lows, oldest first) and
+  /// percentage for every tank sensor, to try the battery trend lines.
+  List<int>? simBatteryLows;
+  int? simBatteryPct;
+
   /// Set when a fill was cut short by a power cut or restart, until dismissed.
   FillInterruption? fillInterruption;
   bool pumpClockValid = false;
@@ -792,6 +797,33 @@ class PumpSession extends ChangeNotifier {
     if (!kDebugMode) return;
     if (simPumpError != null) pumpLastError = simPumpError!;
     if (simTankFault != null) tankFault = simTankFault!;
+    if (simBatteryPct != null) tankBatteryPct = simBatteryPct!;
+    final lows = simBatteryLows;
+    if (lows != null) {
+      final today = DateTime.now().millisecondsSinceEpoch ~/ 86400000;
+      final days = [
+        for (var i = 0; i < lows.length; i++)
+          BatteryDay(
+            day: today - (lows.length - 1 - i),
+            minPct: lows[i],
+            maxPct: (lows[i] + 15).clamp(0, 100),
+          ),
+      ];
+      // Every sensor slot (a pump pairs up to 4).
+      batteryLogs = {for (var i = 0; i < 4; i++) i: days};
+    }
+  }
+
+  /// Debug builds only. Null lows put the pump's real battery log back
+  /// (from its next battery notify or reconnect).
+  void simulateBattery({List<int>? lows, int? pct}) {
+    if (!kDebugMode) return;
+    simBatteryLows = lows;
+    simBatteryPct = pct;
+    AppLog.w('debug', 'Simulated battery ${pct ?? '-'}% lows ${lows ?? '-'}');
+    if (lows == null) batteryLogs = {};
+    _applySimulatedErrors();
+    notifyListeners();
   }
 
   /// Debug builds only. Null leaves that code to the pump again.
@@ -1551,8 +1583,12 @@ class PumpSession extends ChangeNotifier {
       notifyListeners();
     });
     try {
-      _applyTanks(TankList.parse(await chr.read()));
-    } catch (_) {}
+      final v = await chr.read();
+      AppLog.i('pump', 'Tank list: ${v.length} bytes');
+      _applyTanks(TankList.parse(v));
+    } catch (e) {
+      AppLog.w('pump', 'Tank list read failed: $e');
+    }
     final sensorsChr = _sensorsChr!;
     await _sensorsNotifySub?.cancel();
     await sensorsChr.setNotifyValue(true);
@@ -1562,7 +1598,9 @@ class PumpSession extends ChangeNotifier {
     });
     try {
       _applySensors(TankSensor.parseList(await sensorsChr.read()));
-    } catch (_) {}
+    } catch (e) {
+      AppLog.w('pump', 'Sensor list read failed: $e');
+    }
     _historyNotifySub = await _follow(_historyChr!, _historyNotifySub, (v) {
       final list = parseFillHistory(v);
       if (list != null) fills = list;
@@ -1570,6 +1608,7 @@ class PumpSession extends ChangeNotifier {
     _batteryNotifySub = await _follow(_batteryChr!, _batteryNotifySub, (v) {
       final logs = parseBatteryLog(v);
       if (logs != null) batteryLogs = logs;
+      _applySimulatedErrors();
     });
   }
 
@@ -1592,7 +1631,10 @@ class PumpSession extends ChangeNotifier {
   }
 
   void _applyTanks(TankList? list) {
-    if (list == null) return;
+    if (list == null) {
+      AppLog.w('pump', 'Tank list did not parse');
+      return;
+    }
     activeSlot = list.activeSlot;
     tanks = list.slots;
   }

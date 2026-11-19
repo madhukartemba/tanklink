@@ -466,7 +466,25 @@ Future<void> _simulateErrorDialog(
               tank: w.code,
             ),
           ),
+        const Divider(),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(24, 4, 24, 4),
+          child: Text('Tank battery (last 7 days)'),
+        ),
+        for (final b in _batteryScenarios)
+          pick(b.$1, () => session.simulateBattery(lows: b.$2, pct: b.$2.last)),
+        pick('Real battery again', () => session.simulateBattery()),
       ],
     ),
   );
 }
+
+/// Name and daily lows (oldest first). The last low is also the current %.
+const _batteryScenarios = <(String, List<int>)>[
+  ('Charging from solar', [40, 45, 50, 55, 60, 65, 70]),
+  ('Solar keeping up', [80, 81, 79, 80, 81, 80, 80]),
+  ('Slowly draining (weeks left)', [90, 88, 86, 84, 82, 80, 78]),
+  ('Draining fast (warning)', [60, 54, 48, 42, 36, 30, 24]),
+  ('Battery low', [32, 28, 24, 20, 16, 12, 8]),
+  ('Too few days for a trend', [70, 70]),
+];
