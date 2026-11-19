@@ -103,8 +103,7 @@ Future<List<dynamic>> fetchGitHubReleases({
 /// The report service (`report_worker/`) serves this repo's release list,
 /// cached, so phones don't each use GitHub's hourly allowance. GitHub is
 /// asked directly only when it can't be reached.
-const releasesServiceUrl =
-    'https://tanklink-reports.madhukartemba.in/v1/releases';
+const releasesServiceUrl = 'https://tanklink.madhukartemba.in/v1/releases';
 const _releasesServiceRepo = 'madhukartemba/tanklink';
 
 Future<List<dynamic>> _fetchReleases(

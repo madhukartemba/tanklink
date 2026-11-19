@@ -1,6 +1,6 @@
 # TankLink report service
 
-A Cloudflare Worker at `https://tanklink-reports.madhukartemba.in` with two jobs.
+A Cloudflare Worker at `https://tanklink.madhukartemba.in` with two jobs. Apps 1.4.0 and 1.4.1 use the older name `tanklink-reports.madhukartemba.in`, which points at the same Worker; keep it until nobody runs those versions.
 
 ## Release list for update checks (`GET /v1/releases`)
 
@@ -10,6 +10,10 @@ Every app's pump, tank and app update check asks here instead of GitHub. The Wor
 - If GitHub fails, the last copy is served for up to a day.
 - If the Worker can't be reached, the app asks GitHub directly (`releasesServiceUrl` in `tanklink_app/lib/update/github_release_util.dart`).
 - A fine-grained token can read any public repo, so the reports token works here too.
+
+## Install link (`GET /app`)
+
+Redirects (302) to `TankLink.apk` of the newest `app-v*` release, read from the same cached release list. The install QR code ([`docs/app-qr.svg`](../docs/app-qr.svg)) points here. If the list can't be read, it redirects to the `app-latest` APK.
 
 ## Problem reports (`POST /v1/report`)
 
@@ -37,8 +41,8 @@ The app only knows the URL (`ReportSender.endpoint` in `tanklink_app/lib/diag/re
    ```
 
    `APP_KEY` is any long random string (`openssl rand -hex 24`). Put the same value in `ReportSender.appKey` in the app.
-4. `routes` in `wrangler.toml` puts it on `tanklink-reports.madhukartemba.in` (the domain's DNS is on Cloudflare; deploy creates the record). Keep this URL: every installed app has it built in.
-5. `npx wrangler deploy`. `ReportSender.endpoint` in the app is `https://tanklink-reports.madhukartemba.in/v1/report`.
+4. `routes` in `wrangler.toml` puts it on `tanklink.madhukartemba.in` and the older `tanklink-reports.madhukartemba.in` (the domain's DNS is on Cloudflare; deploy creates the records). Keep both: installed apps have them built in.
+5. `npx wrangler deploy`. In the app, `ReportSender.endpoint` is `https://tanklink.madhukartemba.in/v1/report` and `releasesServiceUrl` is `https://tanklink.madhukartemba.in/v1/releases`.
 
 ## Try it
 

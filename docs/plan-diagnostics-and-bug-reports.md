@@ -25,7 +25,7 @@ Goal: when something fails on a user's pump, tank or phone, you get enough detai
 
 ## Phase 1 — App log and "Report a problem" (app only, next app release)
 
-**Status:** built on branch `report-a-problem`, not released. The Worker is live at `https://tanklink-reports.madhukartemba.in` and the app points at it. Left: try it on a phone, then release with the next app version.
+**Status:** released in app 1.4.0. The Worker is live at `https://tanklink.madhukartemba.in` (apps 1.4.0–1.4.1 use the older `tanklink-reports.` name, which still works).
 
 Ships alone; already useful for app-side failures (BLE, updates, crashes).
 
@@ -64,7 +64,7 @@ Lives in this repo as `report_worker/` (`wrangler.toml`, `src/index.ts`, README 
 - Private repo `tanklink-reports`. Labels are created by the Worker as needed.
 - Fine-grained GitHub token limited to that repo: Issues read/write, Contents read/write. Stored as a Worker secret (`wrangler secret put GITHUB_TOKEN`), never in the app.
 - App key stored as a Worker secret too, and as a constant in the app. It can be pulled out of the APK; it only stops casual spam. Rotate it by shipping a new app if it gets abused.
-- Route the Worker to `tanklink-reports.madhukartemba.in`. The app only knows this URL, so the backend can later move to your own server without an app update.
+- Route the Worker to `tanklink.madhukartemba.in`. The app only knows this URL, so the backend can later move to your own server without an app update.
 
 **`POST /v1/report`** — JSON `{app_key, fingerprint, title, labels[], summary, report_text}`
 1. Reject if the app key is wrong, the body is over 200 KB, or the IP has sent more than 10 reports in the last hour (Cloudflare rate-limiting rule, no code).

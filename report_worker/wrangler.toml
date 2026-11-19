@@ -4,7 +4,13 @@ main = "src/index.js"
 compatibility_date = "2026-10-01"
 
 # On our own domain so the backend can move later without an app update.
-routes = [{ pattern = "tanklink-reports.madhukartemba.in", custom_domain = true }]
+# tanklink.madhukartemba.in is the name apps use from 1.4.2 on.
+# tanklink-reports. is built into apps 1.4.0 and 1.4.1: keep it until
+# nobody runs those.
+routes = [
+  { pattern = "tanklink.madhukartemba.in", custom_domain = true },
+  { pattern = "tanklink-reports.madhukartemba.in", custom_domain = true },
+]
 workers_dev = false
 
 [vars]

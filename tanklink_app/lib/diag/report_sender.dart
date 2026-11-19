@@ -25,7 +25,7 @@ class ReportSender {
 
   /// The report service (`report_worker/`). While either is empty, sending
   /// is off and the screen offers only "Save or share".
-  static const endpoint = 'https://tanklink-reports.madhukartemba.in/v1/report';
+  static const endpoint = 'https://tanklink.madhukartemba.in/v1/report';
 
   /// Must match the Worker's APP_KEY secret. Anyone can read it from the
   /// APK or this repo; it only stops casual spam (the Worker also caps size

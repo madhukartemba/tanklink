@@ -21,6 +21,10 @@
  * with GITHUB_TOKEN: 5,000 an hour) however many phones there are. If
  * GitHub fails, the last copy is served for up to a day. Supports
  * If-None-Match with GitHub's ETag.
+ *
+ * GET /app → 302 to TankLink.apk of the newest app-v* release (from the
+ * same cached list). The install QR code points here, so it never has to
+ * change. Falls back to the app-latest release's APK.
  */
 
 const MAX_BODY_BYTES = 200 * 1024;
@@ -31,12 +35,17 @@ const GH_API = "https://api.github.com";
 const RELEASES_FRESH_SEC = 600;
 const RELEASES_KEEP_SEC = 86400;
 const RELEASES_PER_PAGE = 30;
+const APP_FALLBACK_URL =
+  "https://github.com/madhukartemba/tanklink/releases/download/app-latest/TankLink.apk";
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/health") {
       return json({ ok: true });
+    }
+    if (url.pathname === "/app" || url.pathname === "/app/") {
+      return appDownload(env);
     }
     if (url.pathname === "/v1/releases") {
       if (request.method !== "GET") {
@@ -155,6 +164,53 @@ async function fileReport(env, r) {
 
 /** Cached release list of env.RELEASES_REPO (see the header comment). */
 async function releases(request, env) {
+  const cached = await cachedReleases(env);
+  if (!cached) return json({ error: "releases unavailable" }, 502);
+  const etag = cached.headers.get("etag");
+  const headers = {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": `public, max-age=${RELEASES_FRESH_SEC}`,
+    ...(etag ? { etag } : {}),
+  };
+  if (etag && request.headers.get("if-none-match") === etag) {
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(cached.body, { headers });
+}
+
+/** 302 to the newest app release's APK (see the header comment). */
+async function appDownload(env) {
+  let target = APP_FALLBACK_URL;
+  try {
+    const cached = await cachedReleases(env);
+    if (cached) {
+      let best = null;
+      for (const r of await cached.json()) {
+        if (r.draft || r.prerelease) continue;
+        const m = /^app-v(\d+)\.(\d+)\.(\d+)$/.exec(r.tag_name || "");
+        const apk = (r.assets || []).find((a) => a.name === "TankLink.apk");
+        if (!m || !apk) continue;
+        const v = [Number(m[1]), Number(m[2]), Number(m[3])];
+        if (!best || newer(v, best.v)) best = { v, url: apk.browser_download_url };
+      }
+      if (best) target = best.url;
+    }
+  } catch (e) {
+    console.error("app redirect failed", e && e.message);
+  }
+  return new Response(null, {
+    status: 302,
+    headers: { location: target, "cache-control": "no-store" },
+  });
+}
+
+function newer(a, b) {
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
+  return false;
+}
+
+/** The cached list as a Response (refreshed when stale), or null. */
+async function cachedReleases(env) {
   const cache = caches.default;
   // One cache entry, whatever query the app sends: this is not a proxy.
   const key = new Request(`https://cache.tanklink/releases/${env.RELEASES_REPO}`);
@@ -188,21 +244,10 @@ async function releases(request, env) {
       await cache.put(key, cached.clone());
     } catch (e) {
       console.error("releases refresh failed", e && e.message);
-      if (!cached) return json({ error: "releases unavailable" }, 502);
-      // Serve the older copy below.
+      // Fall through to the older copy, if any.
     }
   }
-
-  const etag = cached.headers.get("etag");
-  const headers = {
-    "content-type": "application/json; charset=utf-8",
-    "cache-control": `public, max-age=${RELEASES_FRESH_SEC}`,
-    ...(etag ? { etag } : {}),
-  };
-  if (etag && request.headers.get("if-none-match") === etag) {
-    return new Response(null, { status: 304, headers });
-  }
-  return new Response(cached.body, { headers });
+  return cached || null;
 }
 
 async function gh(env, method, path, body, { allow404 = false } = {}) {
