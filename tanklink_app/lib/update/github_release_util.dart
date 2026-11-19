@@ -72,7 +72,8 @@ Future<List<dynamic>>? _releasesInFlight;
 DateTime? _releasesAt;
 List<dynamic>? _releases;
 
-/// The repo's release list. Pump, tank and app checks all use it, so:
+/// The repo's release list, from the release service ([releasesServiceUrl])
+/// or else GitHub. Pump, tank and app checks all use it, so:
 /// - calls within a minute of each other share one request;
 /// - the last list and its ETag are saved, and GitHub is asked "changed
 ///   since?" (saves data; for apps that don't sign in, a 304 still counts
@@ -99,34 +100,60 @@ Future<List<dynamic>> fetchGitHubReleases({
       .whenComplete(() => _releasesInFlight = null);
 }
 
+/// The report service (`report_worker/`) serves this repo's release list,
+/// cached, so phones don't each use GitHub's hourly allowance. GitHub is
+/// asked directly only when it can't be reached.
+const releasesServiceUrl =
+    'https://tanklink-reports.madhukartemba.in/v1/releases';
+const _releasesServiceRepo = 'madhukartemba/tanklink';
+
 Future<List<dynamic>> _fetchReleases(
   String owner,
   String repo,
   int perPage,
 ) async {
-  final uri = Uri.parse(
-    'https://api.github.com/repos/$owner/$repo/releases?per_page=$perPage',
-  );
   final cache = await _ReleaseCache.open(owner, repo);
   final saved = await cache.read();
+  Map<String, String> headers() => {
+    ...githubApiHeaders,
+    if (saved != null) 'If-None-Match': saved.etag,
+  };
+
+  Future<List<dynamic>?> accept(http.Response res) async {
+    if (res.statusCode == 304 && saved != null) {
+      return jsonDecode(saved.body) as List<dynamic>;
+    }
+    if (res.statusCode == 200) {
+      final etag = res.headers['etag'];
+      if (etag != null && etag.isNotEmpty) await cache.write(etag, res.body);
+      return jsonDecode(res.body) as List<dynamic>;
+    }
+    return null;
+  }
+
+  if ('$owner/$repo' == _releasesServiceRepo) {
+    try {
+      final res = await http
+          .get(Uri.parse(releasesServiceUrl), headers: headers())
+          .timeout(const Duration(seconds: 15));
+      final list = await accept(res);
+      if (list != null) return list;
+      AppLog.w('update', 'Release service answered ${res.statusCode}');
+    } catch (e) {
+      AppLog.w('update', 'Release service unreachable: $e');
+    }
+  }
+
   final res = await http
       .get(
-        uri,
-        headers: {
-          ...githubApiHeaders,
-          if (saved != null) 'If-None-Match': saved.etag,
-        },
+        Uri.parse(
+          'https://api.github.com/repos/$owner/$repo/releases?per_page=$perPage',
+        ),
+        headers: headers(),
       )
       .timeout(githubRequestTimeout);
-
-  if (res.statusCode == 304 && saved != null) {
-    return jsonDecode(saved.body) as List<dynamic>;
-  }
-  if (res.statusCode == 200) {
-    final etag = res.headers['etag'];
-    if (etag != null) await cache.write(etag, res.body);
-    return jsonDecode(res.body) as List<dynamic>;
-  }
+  final list = await accept(res);
+  if (list != null) return list;
   final limited =
       (res.statusCode == 403 || res.statusCode == 429) &&
       res.headers['x-ratelimit-remaining'] == '0';

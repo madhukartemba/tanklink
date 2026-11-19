@@ -14,6 +14,13 @@
  *   report_text  string   the full report the user previewed
  *
  * Response: 200 {"id": "K7Q2MX"} | 4xx/5xx {"error": "..."}
+ *
+ * GET /v1/releases → the TankLink repo's GitHub release list, exactly as
+ * GitHub's API returns it, cached for RELEASES_FRESH_SEC. Every phone's
+ * update check comes here, so GitHub sees a handful of calls an hour (made
+ * with GITHUB_TOKEN: 5,000 an hour) however many phones there are. If
+ * GitHub fails, the last copy is served for up to a day. Supports
+ * If-None-Match with GitHub's ETag.
  */
 
 const MAX_BODY_BYTES = 200 * 1024;
@@ -21,12 +28,21 @@ const MAX_TITLE = 120;
 const MAX_SUMMARY = 4000;
 const MAX_LABELS = 8;
 const GH_API = "https://api.github.com";
+const RELEASES_FRESH_SEC = 600;
+const RELEASES_KEEP_SEC = 86400;
+const RELEASES_PER_PAGE = 30;
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/health") {
       return json({ ok: true });
+    }
+    if (url.pathname === "/v1/releases") {
+      if (request.method !== "GET") {
+        return json({ error: "method not allowed" }, 405);
+      }
+      return releases(request, env);
     }
     if (url.pathname !== "/v1/report") {
       return json({ error: "not found" }, 404);
@@ -135,6 +151,58 @@ async function fileReport(env, r) {
     });
   }
   return id;
+}
+
+/** Cached release list of env.RELEASES_REPO (see the header comment). */
+async function releases(request, env) {
+  const cache = caches.default;
+  // One cache entry, whatever query the app sends: this is not a proxy.
+  const key = new Request(`https://cache.tanklink/releases/${env.RELEASES_REPO}`);
+  let cached = await cache.match(key);
+  const fetchedAt = Number(cached?.headers.get("x-fetched-at") || 0);
+  const fresh = cached && Date.now() - fetchedAt < RELEASES_FRESH_SEC * 1000;
+
+  if (!fresh) {
+    try {
+      const res = await fetch(
+        `${GH_API}/repos/${env.RELEASES_REPO}/releases?per_page=${RELEASES_PER_PAGE}`,
+        {
+          headers: {
+            authorization: `Bearer ${env.GITHUB_TOKEN}`,
+            accept: "application/vnd.github+json",
+            "x-github-api-version": "2022-11-28",
+            "user-agent": "tanklink-report-worker",
+          },
+        },
+      );
+      if (!res.ok) throw new Error(`GitHub releases → ${res.status}`);
+      const body = await res.text();
+      cached = new Response(body, {
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          etag: res.headers.get("etag") || "",
+          "x-fetched-at": String(Date.now()),
+          "cache-control": `max-age=${RELEASES_KEEP_SEC}`,
+        },
+      });
+      await cache.put(key, cached.clone());
+    } catch (e) {
+      console.error("releases refresh failed", e && e.message);
+      if (!cached) return json({ error: "releases unavailable" }, 502);
+      // Serve the older copy below.
+    }
+  }
+
+  const etag = cached.headers.get("etag");
+  const headers = {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": `public, max-age=${RELEASES_FRESH_SEC}`,
+    ...(etag ? { etag } : {}),
+  };
+  if (etag && request.headers.get("if-none-match") === etag) {
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(cached.body, { headers });
 }
 
 async function gh(env, method, path, body, { allow404 = false } = {}) {

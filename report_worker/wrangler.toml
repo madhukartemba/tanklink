@@ -9,6 +9,8 @@ workers_dev = false
 
 [vars]
 GITHUB_REPO = "madhukartemba/tanklink-reports"
+# Public repo whose release list GET /v1/releases serves (cached).
+RELEASES_REPO = "madhukartemba/tanklink"
 
 # Per-IP limit: 5 reports a minute. namespace_id is any number unique in
 # your Cloudflare account.

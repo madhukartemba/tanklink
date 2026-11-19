@@ -12,7 +12,7 @@ A local (no cloud) water-tank pump controller with three parts:
 | Tank node | [`tank_node/`](tank_node/) | Seeed XIAO ESP32-C3, ESP-IDF v6.1, battery, deep sleep | Pump over **LoRa**, app over **BLE** (OTA only) |
 | App | [`tanklink_app/`](tanklink_app/) | Flutter, `flutter_blue_plus`, Android sideload | Pump over BLE, GitHub Releases for updates |
 | Shared LoRa driver | [`components/tanklink_lora/`](components/tanklink_lora/) | SX1278 (RA-02, 433 MHz) driver + packet format | Used by both firmware nodes |
-| Report service | [`report_worker/`](report_worker/) | Cloudflare Worker | Receives "Report a problem" from the app, files issues in a private GitHub repo |
+| Report service | [`report_worker/`](report_worker/) | Cloudflare Worker | Receives "Report a problem" from the app (issues in a private GitHub repo) and serves the cached release list for update checks |
 
 Flow: the tank wakes on a float change or a 10-minute heartbeat, sends a LoRa STATUS packet with raw float pin levels, and sleeps. A pump pairs up to 4 tank sensors; each sensor's float mode says what its pins mean (full / almost-empty / second tank), giving up to 8 tanks. The pump fills one **selected** tank at a time (the user sets a valve or lever to match); only that tank's float can block a start or stop a fill. It drives the starter relays and serves state to the app over BLE. The app is the only UI besides the single pump button.
 
@@ -89,7 +89,7 @@ Versioning rule (details in [`docs/PROTOCOL.md`](docs/PROTOCOL.md#versioning)):
 | Tank | `TANK_FW_MAJOR/MINOR/PATCH` in `tank_node/main/tank_version.h` (same) | `tank-vX.Y.Z` |
 | App | `version: X.Y.Z+N` in `tanklink_app/pubspec.yaml`; `N` (Android versionCode) must go up every release | `app-vX.Y.Z` |
 
-The app finds updates by listing GitHub releases and picking the **highest semver** per tag prefix, not the newest by date. For firmware it skips any release whose manifest `proto_major` differs from the app's or whose `hw_revs` doesn't list the connected board. It verifies the `sha256` in each release's manifest JSON before installing or flashing.
+The app finds updates by listing GitHub releases (through the report service's cached `GET /v1/releases`, or GitHub directly if that can't be reached) and picking the **highest semver** per tag prefix, not the newest by date. For firmware it skips any release whose manifest `proto_major` differs from the app's or whose `hw_revs` doesn't list the connected board. It verifies the `sha256` in each release's manifest JSON before installing or flashing.
 
 ## Building
 

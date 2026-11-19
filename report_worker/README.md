@@ -1,6 +1,19 @@
 # TankLink report service
 
-A Cloudflare Worker that receives "Report a problem" submissions from the app and files them in a private GitHub repo:
+A Cloudflare Worker at `https://tanklink-reports.madhukartemba.in` with two jobs.
+
+## Release list for update checks (`GET /v1/releases`)
+
+Every app's pump, tank and app update check asks here instead of GitHub. The Worker fetches the `madhukartemba/tanklink` release list (`RELEASES_REPO` in `wrangler.toml`) with `GITHUB_TOKEN` and keeps it for 10 minutes, so GitHub sees about 6 calls an hour however many phones there are. Without it, phones that share an internet connection share GitHub's limit of 60 calls an hour for apps that don't sign in.
+
+- The response is GitHub's JSON as is, with GitHub's ETag; `If-None-Match` gets a 304.
+- If GitHub fails, the last copy is served for up to a day.
+- If the Worker can't be reached, the app asks GitHub directly (`releasesServiceUrl` in `tanklink_app/lib/update/github_release_util.dart`).
+- A fine-grained token can read any public repo, so the reports token works here too.
+
+## Problem reports (`POST /v1/report`)
+
+Receives "Report a problem" submissions from the app and files them in a private GitHub repo:
 
 - the full report is saved as `reports/YYYY/MM/<id>.txt`
 - one issue per distinct problem; a report with the same fingerprint as an open issue adds a comment instead

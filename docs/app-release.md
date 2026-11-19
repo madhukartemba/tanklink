@@ -60,7 +60,7 @@ QR and direct download (always the file last uploaded to `app-latest`):
 
 The QR image is [`docs/app-latest-qr.svg`](app-latest-qr.svg). It is the smallest symbol that URL can make (version 5, low error correction, 4-module quiet zone).
 
-The app lists releases via the GitHub API, picks the newest `app-v*` tag, verifies `app-manifest.json` **sha256**, downloads **TankLink.apk**, and opens the system install UI.
+The app lists releases through the report service (`GET /v1/releases` in [`report_worker/`](../report_worker/), a 10-minute cached copy of the GitHub API list; GitHub directly if it can't be reached), picks the newest `app-v*` tag, verifies `app-manifest.json` **sha256**, downloads **TankLink.apk**, and opens the system install UI.
 
 ## Versioning
 
