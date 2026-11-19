@@ -30,14 +30,16 @@ void tank_led_boot(void);
 /** One soft fade pulse — successful full TX / pair ACK. */
 void tank_led_success(void);
 void tank_led_failure(void);
+/**
+ * Slow, smooth breathe while LoRa pairing is open. Runs in its own task on
+ * the real clock, so radio work can't stall or speed it up. Stop it before
+ * any other LED effect.
+ */
 void tank_led_pairing_flash_start(void);
-/** Non-blocking-ish flash step; call often while pairing. */
-void tank_led_pairing_flash_tick(void);
 void tank_led_pairing_flash_stop(void);
 
-/** Soft breathe while BLE OTA image is transferring (same cadence as pair). */
+/** Quicker breathe while a BLE OTA image is transferring. Same task. */
 void tank_led_ota_pulse_start(void);
-void tank_led_ota_pulse_tick(void);
 void tank_led_ota_pulse_stop(void);
 
 /**

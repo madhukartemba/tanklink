@@ -1,8 +1,11 @@
 #include "tank_led.h"
 
+#include <math.h>
+
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
@@ -18,8 +21,14 @@
 static bool s_ok;
 static int s_gpio = -1;
 static uint8_t s_pct;
-static bool s_pair_active;
-static int64_t s_pair_phase_ms;
+
+/* Breathing animation (pairing, OTA): one task drives it from the clock. */
+#define BREATHE_PAIR_MS 2400
+#define BREATHE_OTA_MS 1400
+#define BREATHE_STEP_MS 20
+static TaskHandle_t s_anim_task;
+static volatile bool s_anim_on;
+static volatile uint32_t s_anim_period_ms;
 
 void tank_led_force_off_pin(int gpio)
 {
@@ -193,49 +202,70 @@ void tank_led_failure(void)
     }
 }
 
-void tank_led_pairing_flash_start(void)
+/** Cosine breathe: dark to full and back over one period, eased at both
+ * ends. The phase comes from the clock, so a busy radio loop can't make it
+ * stall or race. */
+static void anim_task(void *arg)
 {
-    s_pair_active = true;
-    s_pair_phase_ms = 0;
+    (void)arg;
+    const int64_t t0 = esp_timer_get_time();
+    while (s_anim_on) {
+        const uint32_t period = s_anim_period_ms;
+        const uint32_t ms = (uint32_t)((esp_timer_get_time() - t0) / 1000) % period;
+        const float v = 0.5f - 0.5f * cosf(2.0f * (float)M_PI * (float)ms / (float)period);
+        tank_led_set_brightness((uint8_t)(2.0f + v * 98.0f));
+        vTaskDelay(pdMS_TO_TICKS(BREATHE_STEP_MS));
+    }
+    s_anim_task = NULL;
+    vTaskDelete(NULL);
 }
 
-void tank_led_pairing_flash_tick(void)
+static void anim_start(uint32_t period_ms)
 {
-    if (!s_pair_active) {
+    if (!s_ok) {
         return;
     }
-    s_pair_phase_ms += 20;
-    /* Soft breathe ~1.2s period. */
-    const int period = 1200;
-    int t = (int)(s_pair_phase_ms % period);
-    uint8_t pct;
-    if (t < period / 2) {
-        pct = (uint8_t)(t * 100 / (period / 2));
-    } else {
-        pct = (uint8_t)(100 - (t - period / 2) * 100 / (period / 2));
+    s_anim_period_ms = period_ms;
+    if (s_anim_task) {
+        return; /* already breathing: just the new speed */
     }
-    tank_led_set_brightness(pct);
+    s_anim_on = true;
+    /* Above the main task, so it keeps time while the radio waits. */
+    if (xTaskCreate(anim_task, "led_anim", 2048, NULL, 5, &s_anim_task) != pdPASS) {
+        s_anim_on = false;
+        s_anim_task = NULL;
+        ESP_LOGW(TAG, "LED animation task not started");
+    }
+}
+
+static void anim_stop(void)
+{
+    s_anim_on = false;
+    /* Wait for the task to finish its step, so nothing writes after this. */
+    for (int i = 0; i < 20 && s_anim_task; i++) {
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    tank_led_off();
+}
+
+void tank_led_pairing_flash_start(void)
+{
+    anim_start(BREATHE_PAIR_MS);
 }
 
 void tank_led_pairing_flash_stop(void)
 {
-    s_pair_active = false;
-    tank_led_off();
+    anim_stop();
 }
 
 void tank_led_ota_pulse_start(void)
 {
-    tank_led_pairing_flash_start();
-}
-
-void tank_led_ota_pulse_tick(void)
-{
-    tank_led_pairing_flash_tick();
+    anim_start(BREATHE_OTA_MS);
 }
 
 void tank_led_ota_pulse_stop(void)
 {
-    tank_led_pairing_flash_stop();
+    anim_stop();
 }
 
 void tank_led_show_error(uint8_t code)

@@ -116,7 +116,6 @@ static bool pair_should_cancel(void *ctx)
         } else if ((now - c->up_since_us) / 1000 >= 80) {
             c->armed = true;
         }
-        tank_led_pairing_flash_tick();
         return false;
     }
     if (down) {
@@ -126,7 +125,6 @@ static bool pair_should_cancel(void *ctx)
         c->saw_down = false;
         return true;
     }
-    tank_led_pairing_flash_tick();
     return false;
 }
 

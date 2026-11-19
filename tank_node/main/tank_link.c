@@ -141,8 +141,6 @@ static bool wait_ack(uint16_t seq, uint32_t timeout_ms,
             ESP_LOGI(TAG, "ACK seq=%u", seq);
             return true;
         }
-        /* Continues LoRa pairing breathe if active; no-op during OTA/status. */
-        tank_led_pairing_flash_tick();
         vTaskDelay(pdMS_TO_TICKS(20));
     }
     ESP_LOGW(TAG, "ACK timeout seq=%u", seq);

@@ -296,7 +296,6 @@ tank_ble_window_result_t tank_ble_wait_ota_window(tank_button_hold_t *carry)
             continue;
         }
         if (tank_ota_is_active()) {
-            tank_led_ota_pulse_tick();
             tank_button_hold_reset(&hold);
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
