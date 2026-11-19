@@ -40,6 +40,23 @@ class MainActivity : FlutterActivity() {
                     startActivity(intent)
                     result.success(true)
                 }
+                "openUrl" -> {
+                    // https links only, opened in the browser (or GitHub app).
+                    val url = call.argument<String>("url")
+                    if (url == null || !url.startsWith("https://")) {
+                        result.error("bad_arg", "https url required", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        startActivity(
+                            Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                        result.success(true)
+                    } catch (e: android.content.ActivityNotFoundException) {
+                        result.error("no_app", "no app can open links", null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

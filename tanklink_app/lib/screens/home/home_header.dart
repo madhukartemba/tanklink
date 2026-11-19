@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../ble/pump_session.dart';
+import '../about_dialog.dart';
 import '../add_pump_screen.dart';
 import '../welcome_screen.dart';
 import '../report_problem_screen.dart';
@@ -15,10 +16,18 @@ class TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(
-          'TankLink',
-          style: Theme.of(context).textTheme.titleLarge
-              ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.4),
+        // Tap for the About popup.
+        InkWell(
+          onTap: () => showAboutTankLink(context),
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Text(
+              'TankLink',
+              style: Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.4),
+            ),
+          ),
         ),
         const Spacer(),
         // Always here, so a problem can be reported with no pump, or with
