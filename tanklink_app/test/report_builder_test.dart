@@ -68,7 +68,7 @@ void main() {
       expect(a.fingerprint, b.fingerprint);
       expect(
         a.labels,
-        containsAll(['pump-err', 'pump-err-3', 'app-1.3.0+21', 'pump-0.13.2']),
+        containsAll(['pump-err', 'pump-err-3', 'app-1.3.0', 'pump-0.13.2']),
       );
       expect(a.summary, contains('Tank stopped reporting'));
       expect(a.summary, contains('Error: Pump error 3: Tank offline'));

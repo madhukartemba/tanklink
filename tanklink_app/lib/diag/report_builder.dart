@@ -99,7 +99,8 @@ BuiltReport buildReport({
   final labels = <String>[
     problem.kind,
     if (problem.code != null) '${problem.kind}-${problem.code}',
-    'app-${versions.app}',
+    // Version name only: GitHub labels drop the '+' of '1.3.0+21'.
+    'app-${versions.app.split('+').first}',
     if (versions.pump.isNotEmpty) 'pump-${versions.pump}',
     if (versions.tank.isNotEmpty) 'tank-${versions.tank}',
   ];
