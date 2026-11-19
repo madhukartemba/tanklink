@@ -29,7 +29,7 @@ apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk | g
 
 ## The release script
 
-`scripts/release.sh --app X.Y.Z --notes DIR` does everything below, including the signer check and the `app-latest` upload. See [`firmware-release.md`](firmware-release.md#the-release-script).
+`scripts/release.sh --app X.Y.Z --notes DIR` does everything below, including the signer check. See [`firmware-release.md`](firmware-release.md#the-release-script).
 
 ## Build and manifest
 
@@ -48,17 +48,10 @@ cp tanklink_app/build/app/outputs/flutter-apk/app-release.apk /tmp/TankLink.apk
    - **`TankLink.apk`** (release-signed APK)
    - **`app-manifest.json`** from `tanklink_app/build/app-manifest.json`
 3. Mark as **latest** production release (not draft/prerelease).
-4. Replace the APK on the fixed **`app-latest`** release, so the older QR code below stays current. Do not mark that release as Latest (`--latest=false` is already set). The in-app updater only reads `app-v*` tags, so this tag is ignored there.
-
-```bash
-gh release upload app-latest /tmp/TankLink.apk --clobber
-```
 
 ### Install QR code
 
-Use **[`docs/app-qr.svg`](app-qr.svg)**: `https://tanklink.madhukartemba.in/app`. The report service ([`report_worker/`](../report_worker/)) answers with a redirect to `TankLink.apk` of the newest `app-v*` release, so it needs no upload step and the code never has to change. If the service can't read the release list it redirects to the `app-latest` APK. Version 3, medium error correction, 4-module quiet zone.
-
-The older code, [`docs/app-latest-qr.svg`](app-latest-qr.svg), points straight at `https://github.com/madhukartemba/tanklink/releases/download/app-latest/TankLink.apk` (the file last uploaded to `app-latest`). Codes already printed or shared use it, so the release script keeps updating `app-latest`.
+Use **[`docs/app-qr.svg`](app-qr.svg)**: `https://tanklink.madhukartemba.in/app`. The report service ([`report_worker/`](../report_worker/)) answers with a redirect to `TankLink.apk` of the newest `app-v*` release, so it needs no upload step and the code never has to change. If the service can't read the release list it redirects to the GitHub releases page. Version 3, medium error correction, 4-module quiet zone.
 
 The app lists releases through the report service (`GET /v1/releases` in [`report_worker/`](../report_worker/), a 10-minute cached copy of the GitHub API list; GitHub directly if it can't be reached), picks the newest `app-v*` tag, verifies `app-manifest.json` **sha256**, downloads **TankLink.apk**, and opens the system install UI.
 

@@ -25,7 +25,7 @@
  *
  * GET /app → 302 to TankLink.apk of the newest app-v* release (from the
  * same cached list). The install QR code points here, so it never has to
- * change. Falls back to the app-latest release's APK.
+ * change. Falls back to the GitHub releases page.
  */
 
 const MAX_BODY_BYTES = 200 * 1024;
@@ -39,8 +39,7 @@ const GH_API = "https://api.github.com";
 const RELEASES_FRESH_SEC = 600;
 const RELEASES_KEEP_SEC = 86400;
 const RELEASES_PER_PAGE = 30;
-const APP_FALLBACK_URL =
-  "https://github.com/madhukartemba/tanklink/releases/download/app-latest/TankLink.apk";
+const APP_FALLBACK_URL = "https://github.com/madhukartemba/tanklink/releases";
 
 export default {
   async fetch(request, env) {

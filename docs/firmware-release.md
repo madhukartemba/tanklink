@@ -4,7 +4,7 @@ Android app sideload updates: [`app-release.md`](app-release.md) (`app-v*`).
 
 ## The release script
 
-`scripts/release.sh` releases any of pump, tank and app in one command: it bumps the versions, commits, rebuilds, checks each binary contains its version and differs from the last release, checks the APK is signed with the upload key, pushes, and creates the GitHub releases (and refreshes `app-latest`).
+`scripts/release.sh` releases any of pump, tank and app in one command: it bumps the versions, commits, rebuilds, checks each binary contains its version and differs from the last release, checks the APK is signed with the upload key, pushes, and creates the GitHub releases.
 
 ```bash
 mkdir -p /tmp/notes   # pump.md, tank.md, app.md for what you release

@@ -13,7 +13,7 @@ Every app's pump, tank and app update check asks here instead of GitHub. The Wor
 
 ## Install link (`GET /app`)
 
-Redirects (302) to `TankLink.apk` of the newest `app-v*` release, read from the same cached release list. The install QR code ([`docs/app-qr.svg`](../docs/app-qr.svg)) points here. If the list can't be read, it redirects to the `app-latest` APK.
+Redirects (302) to `TankLink.apk` of the newest `app-v*` release, read from the same cached release list. The install QR code ([`docs/app-qr.svg`](../docs/app-qr.svg)) points here. If the list can't be read, it redirects to the GitHub releases page.
 
 ## Problem reports (`POST /v1/report`)
 

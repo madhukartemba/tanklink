@@ -244,9 +244,7 @@ step "Publishing"
   "$STAGE/tank/tank_node.bin" "$STAGE/tank/firmware-manifest.json"
 if [[ -n "$APP_VER" ]]; then
   publish app "TankLink app $APP_VER" "$STAGE/app/TankLink.apk" "$STAGE/app/app-manifest.json"
-  # The install QR always downloads the APK on app-latest.
-  gh release upload app-latest "$STAGE/app/TankLink.apk" --clobber
-  echo "  app-latest now serves $APP_VER"
+  # The install QR (tanklink.madhukartemba.in/app) finds this release itself.
 fi
 
 step "Done"
