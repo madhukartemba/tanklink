@@ -67,3 +67,5 @@ venv/
 .history/
 ~*.lck
 fp-info-cache
+
+.cursor/
