@@ -41,7 +41,7 @@ void tank_led_ota_pulse_tick(void);
 void tank_led_ota_pulse_stop(void);
 
 /**
- * LED error code: N long hard blinks, pause, repeat twice.
+ * LED error code: N short flashes with a long dark gap, shown twice.
  * Soft pulses are reserved for boot / TX / success / pairing (see docs/ERROR_CODES.md).
  */
 void tank_led_show_error(uint8_t code);

@@ -29,7 +29,7 @@ extern "C" {
  * releases whose manifest carries it, so this follows the pump's major.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 0
+#define TANKLINK_PROTO_MINOR 1
 
 /* proto_major proto_minor hw_rev paired tank_id(6) fw_major fw_minor fw_patch */
 #define TANKLINK_TANK_INFO_LEN 13

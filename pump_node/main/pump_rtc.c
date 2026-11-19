@@ -140,7 +140,7 @@ esp_err_t pump_rtc_init(void)
         ESP_LOGW(TAG, "DS3231 not found on SDA=%d SCL=%d (%s)", CONFIG_PUMP_RTC_SDA_GPIO,
                  CONFIG_PUMP_RTC_SCL_GPIO, esp_err_to_name(err));
         diagnose_wiring();
-        return err;
+        return ESP_ERR_NOT_FOUND;
     }
     i2c_device_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,

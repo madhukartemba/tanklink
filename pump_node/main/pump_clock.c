@@ -3,7 +3,10 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "pump_control.h"
+#include "pump_errors.h"
 #include "pump_rtc.h"
+#include "status_led.h"
 
 #define TAG "CLOCK"
 /* Re-anchor to the DS3231 this often so ESP32 crystal drift never builds up. */
@@ -15,6 +18,34 @@ static int64_t s_anchor_us;
 static int64_t s_anchor_unix;
 static bool s_rtc_ok;
 static int64_t s_last_rtc_read_us;
+static uint8_t s_fault;
+static bool s_faults_armed;
+
+static bool clock_fault_code(uint8_t code)
+{
+    return code == PUMP_ERR_I2C || code == PUMP_ERR_RTC_MISSING ||
+           code == PUMP_ERR_RTC_LOST || code == PUMP_ERR_RTC_COMM;
+}
+
+static void publish_fault(uint8_t code)
+{
+    const uint8_t prev = s_fault;
+    s_fault = code;
+    if (!s_faults_armed || code == prev) {
+        return;
+    }
+    const uint8_t cur = pump_control_last_error();
+    if (code == 0) {
+        if (clock_fault_code(cur)) {
+            pump_control_clear_error();
+        }
+        return;
+    }
+    if (cur == PUMP_ERR_NONE || clock_fault_code(cur)) {
+        pump_control_set_error(code);
+        status_led_show_error(code);
+    }
+}
 
 static bool valid_date(int y, unsigned m, unsigned d)
 {
@@ -100,8 +131,8 @@ static void anchor(int64_t unix_sec)
     portEXIT_CRITICAL(&s_lock);
 }
 
-/* Read the DS3231 and anchor to it. Returns true when the RTC time was used. */
-static bool load_from_rtc(void)
+/* Read the DS3231 and anchor to it. ESP_ERR_INVALID_STATE means the oscillator stopped. */
+static esp_err_t load_from_rtc(void)
 {
     s_last_rtc_read_us = esp_timer_get_time();
     pump_civil_time_t t;
@@ -109,28 +140,58 @@ static bool load_from_rtc(void)
     if (err == ESP_ERR_INVALID_STATE) {
         s_rtc_ok = false;
         ESP_LOGW(TAG, "RTC lost power (oscillator stopped); waiting for phone time");
-        return false;
+        return err;
     }
     if (err != ESP_OK || !valid_civil(&t)) {
         ESP_LOGW(TAG, "RTC read failed (%s)", esp_err_to_name(err));
-        return false;
+        return err != ESP_OK ? err : ESP_ERR_INVALID_RESPONSE;
     }
     s_rtc_ok = true;
     anchor(civil_to_unix(&t));
-    return true;
+    return ESP_OK;
 }
 
 void pump_clock_init(void)
 {
-    if (pump_rtc_init() != ESP_OK) {
-        ESP_LOGI(TAG, "no RTC; clock starts when the phone sends the time");
+    const esp_err_t err = pump_rtc_init();
+    if (err == ESP_ERR_NOT_SUPPORTED) {
         return;
     }
-    if (load_from_rtc()) {
+    if (err == ESP_ERR_NOT_FOUND) {
+        ESP_LOGI(TAG, "no RTC; clock starts when the phone sends the time");
+        s_fault = PUMP_ERR_RTC_MISSING;
+        return;
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "I2C init failed");
+        s_fault = PUMP_ERR_I2C;
+        return;
+    }
+    const esp_err_t rd = load_from_rtc();
+    if (rd == ESP_OK) {
         pump_civil_time_t t;
         pump_clock_now(&t);
         ESP_LOGI(TAG, "clock from RTC %04d-%02u-%02u %02u:%02u:%02u", t.year, t.month,
                  t.day, t.hour, t.minute, t.second);
+    } else if (rd == ESP_ERR_INVALID_STATE) {
+        s_fault = PUMP_ERR_RTC_LOST;
+    } else {
+        s_fault = PUMP_ERR_RTC_COMM;
+    }
+}
+
+uint8_t pump_clock_fault(void)
+{
+    return s_fault;
+}
+
+void pump_clock_arm_faults(void)
+{
+    s_faults_armed = true;
+    if (s_fault != 0) {
+        const uint8_t code = s_fault;
+        s_fault = 0;
+        publish_fault(code);
     }
 }
 
@@ -142,7 +203,14 @@ void pump_clock_poll(void)
     if (esp_timer_get_time() - s_last_rtc_read_us < RTC_RESYNC_US) {
         return;
     }
-    (void)load_from_rtc();
+    const esp_err_t err = load_from_rtc();
+    if (err == ESP_OK) {
+        publish_fault(0);
+    } else if (err == ESP_ERR_INVALID_STATE) {
+        publish_fault(PUMP_ERR_RTC_LOST);
+    } else {
+        publish_fault(PUMP_ERR_RTC_COMM);
+    }
 }
 
 bool pump_clock_rtc_present(void)
@@ -180,8 +248,10 @@ esp_err_t pump_clock_set(int year, unsigned month, unsigned day,
         if (err == ESP_OK) {
             s_rtc_ok = true;
             s_last_rtc_read_us = esp_timer_get_time();
+            publish_fault(0);
         } else {
             ESP_LOGW(TAG, "RTC write failed: %s", esp_err_to_name(err));
+            publish_fault(PUMP_ERR_RTC_COMM);
         }
     }
     return ESP_OK;

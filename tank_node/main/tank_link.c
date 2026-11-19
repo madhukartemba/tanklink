@@ -24,6 +24,17 @@
 static uint16_t s_seq;
 static bool s_radio_ok;
 static uint8_t s_tank_id[TANKLINK_LORA_TANK_ID_LEN];
+static uint8_t s_fault;
+
+uint8_t tank_link_fault(void)
+{
+    return s_fault;
+}
+
+void tank_link_set_fault(uint8_t code)
+{
+    s_fault = code;
+}
 
 static uint16_t next_seq(void)
 {
@@ -205,11 +216,17 @@ static esp_err_t send_with_ack(const uint8_t *payload, size_t len, uint16_t seq,
 }
 
 esp_err_t tank_link_send_status(const tank_inputs_t *in, uint8_t battery_pct,
-                                bool button_event)
+                                bool button_event,
+                                tank_link_should_cancel_fn should_cancel, void *ctx)
 {
-    tanklink_lora_status_t pkt;
-    fill_status(&pkt, in, battery_pct, button_event, false);
-    esp_err_t err = send_with_ack((const uint8_t *)&pkt, sizeof(pkt), pkt.seq, NULL, NULL);
+    uint8_t buf[sizeof(tanklink_lora_status_t) + 1];
+    tanklink_lora_status_t *pkt = (tanklink_lora_status_t *)buf;
+    fill_status(pkt, in, battery_pct, button_event, false);
+    buf[sizeof(*pkt)] = s_fault;
+    esp_err_t err = send_with_ack(buf, sizeof(buf), pkt->seq, should_cancel, ctx);
+    if (err == ESP_ERR_INVALID_STATE && should_cancel) {
+        return err;
+    }
     if (err == ESP_OK) {
         tank_led_success();
     } else {
@@ -224,10 +241,11 @@ esp_err_t tank_link_send_pair_request(uint8_t battery_pct,
 {
     tank_inputs_t in;
     tank_board_read(&in);
-    uint8_t buf[TANKLINK_LORA_PAIR_LEN];
+    uint8_t buf[TANKLINK_LORA_PAIR_LEN + 1];
     tanklink_lora_status_t *pkt = (tanklink_lora_status_t *)buf;
     fill_status(pkt, &in, battery_pct, true, true);
     memcpy(buf + sizeof(tanklink_lora_status_t), tank_ble_token_bytes(),
            TANKLINK_LORA_BLE_TOKEN_LEN);
+    buf[TANKLINK_LORA_PAIR_LEN] = s_fault;
     return send_with_ack(buf, sizeof(buf), pkt->seq, should_cancel, ctx);
 }

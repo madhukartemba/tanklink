@@ -1,74 +1,10 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../util/error_text.dart';
+
 /// Keep in sync with docs/ERROR_CODES.md when adding light codes.
 class ErrorCodesScreen extends StatelessWidget {
   const ErrorCodesScreen({super.key});
-
-  static const _tankCodes = <({int code, String name, String detail})>[
-    (
-      code: 1,
-      name: 'Not set up',
-      detail:
-          'The tank was pressed but is not connected to a pump yet. '
-          'Start setup on the pump, then hold the tank button for about 5 seconds.',
-    ),
-    (
-      code: 2,
-      name: 'Radio problem',
-      detail: 'The tank’s radio did not start. Check its wiring and power.',
-    ),
-    (
-      code: 3,
-      name: 'Pump not answering',
-      detail:
-          'The tank sent a message but the pump did not reply. '
-          'Check the distance and power, and make sure this tank is still set up with this pump.',
-    ),
-    (
-      code: 4,
-      name: 'Setup cancelled',
-      detail: 'You pressed the button once during setup to cancel.',
-    ),
-    (
-      code: 5,
-      name: 'Setup timed out',
-      detail: 'The pump did not confirm setup in time. Start setup again and hold the button.',
-    ),
-  ];
-
-  static const _pumpCodes = <({int code, String name, String detail})>[
-    (
-      code: 1,
-      name: 'Tank full',
-      detail:
-          'The pump will not start because the tank is full. '
-          'It also stops if the tank becomes full while it is running.',
-    ),
-    (
-      code: 2,
-      name: 'Radio problem',
-      detail: 'The pump’s radio did not start. Check its wiring and power.',
-    ),
-    (
-      code: 3,
-      name: 'Tank out of range',
-      detail:
-          'The pump has not heard from the tank for a while. '
-          'Check the tank’s power and distance. This clears when the tank is heard again.',
-    ),
-    (
-      code: 4,
-      name: 'Busy',
-      detail: 'The pump cannot start during an update or setup. Try again in a moment.',
-    ),
-    (
-      code: 5,
-      name: 'Not set up',
-      detail:
-          'The start button was pressed, but this pump is not connected to a phone yet. '
-          'Set it up in the app first.',
-    ),
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -81,23 +17,25 @@ class ErrorCodesScreen extends StatelessWidget {
           Text('Tank light', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 6),
           Text(
-            'The light blinks slowly in groups of long blinks, with a pause between groups. '
-            'One short press gives a single blink. Setup shows a slow glow. '
-            'A successful send gives one soft flash.',
+            'Count the short flashes. There is a long pause, then the same count again. '
+            'A tap opens an update window. Hold the button for 3 seconds and setup starts '
+            'while you are still holding it. A successful send gives one soft flash.',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
-          for (final e in _tankCodes) _CodeCard(entry: e, scheme: scheme),
+          for (final e in TankLinkErrors.tank)
+            _CodeCard(entry: e, scheme: scheme),
           const SizedBox(height: 20),
           Text('Pump light', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 6),
           Text(
-            'Red blinks, with the number of blinks showing the warning. '
-            'The app also shows the latest warning on the home screen.',
+            'Count the short red flashes. The same count plays twice, with a long pause between. '
+            'The app shows the same warning on the home screen.',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
-          for (final e in _pumpCodes) _CodeCard(entry: e, scheme: scheme),
+          for (final e in TankLinkErrors.pump)
+            _CodeCard(entry: e, scheme: scheme),
           const SizedBox(height: 20),
           Text(
             'Reset the pump',
@@ -128,9 +66,9 @@ class ErrorCodesScreen extends StatelessWidget {
           Text('Setup tip', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 6),
           Text(
-            'Hold the tank button until the light glows steadily, then keep holding until it starts to glow and fade. '
-            'Press once to cancel. A short press gives one soft flash if it works, '
-            'or code 3 blinks if the pump does not answer.',
+            'Hold the tank button for 3 seconds. The light brightens as you hold, then glows and fades '
+            'while setup runs — you do not have to let go first. Press once to cancel. '
+            'A short press gives one soft flash if the pump answers, or code 3 flashes if it does not.',
             style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
           ),
         ],
@@ -142,7 +80,7 @@ class ErrorCodesScreen extends StatelessWidget {
 class _CodeCard extends StatelessWidget {
   const _CodeCard({required this.entry, required this.scheme});
 
-  final ({int code, String name, String detail}) entry;
+  final WarnText entry;
   final ColorScheme scheme;
 
   @override

@@ -32,10 +32,35 @@ bool tank_board_woke_from_button(void);
 bool tank_board_woke_from_float(void);
 bool tank_board_woke_from_timer(void);
 
+/** Button-hold watcher. A gap shorter than the release debounce stays a hold. */
+typedef struct {
+    int64_t hold_start_us;
+    int64_t up_since_us;
+    bool active;
+} tank_button_hold_t;
+
+typedef enum {
+    TANK_HOLD_NONE = 0,    /* button is up, and was not just released */
+    TANK_HOLD_HOLDING,     /* down, or a bounce shorter than the release gap */
+    TANK_HOLD_RELEASED,    /* released before the threshold */
+    TANK_HOLD_REACHED,     /* held for the threshold; still down */
+} tank_button_hold_event_t;
+
+void tank_button_hold_reset(tank_button_hold_t *hold);
+
 /**
- * Track hold with optional progress callback (pct 0–100).
- * *is_hold if held >= hold_threshold_ms (waits for release after).
- * Short press: returns after release with *is_hold=false.
+ * Call about every 20 ms. *held_ms and *pct (0–100) are filled when the
+ * button is part of a press. TANK_HOLD_REACHED fires as soon as the threshold
+ * is met and does not wait for release.
+ */
+tank_button_hold_event_t tank_button_hold_poll(tank_button_hold_t *hold,
+                                               uint32_t threshold_ms,
+                                               uint32_t *held_ms, uint8_t *pct);
+
+/**
+ * Returns as soon as the hold threshold is met (*is_hold true).
+ * A shorter press returns after release with *is_hold false.
+ * If the button is already up, that is a short press (held 0).
  */
 void tank_board_classify_button(uint32_t hold_threshold_ms, bool *is_hold,
                                uint32_t *held_ms,

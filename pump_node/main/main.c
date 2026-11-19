@@ -310,6 +310,8 @@ void app_main(void)
         pump_control_set_error(PUMP_ERR_LORA_MISSING);
         status_led_show_error(PUMP_ERR_LORA_MISSING);
     }
+    /* Clock-chip faults were recorded at boot, before the LED existed. */
+    pump_clock_arm_faults();
     if (pump_ota_init() != ESP_OK) {
         ESP_LOGW(TAG, "OTA init failed — continuing");
     }

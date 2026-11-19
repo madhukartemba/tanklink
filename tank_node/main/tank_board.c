@@ -2,9 +2,13 @@
 
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
+
+/** Release shorter than this is contact bounce, not the end of a press. */
+#define BUTTON_RELEASE_MS 80
 
 #define TAG "TANK_BOARD"
 
@@ -150,12 +154,30 @@ esp_sleep_wakeup_cause_t tank_board_wakeup_cause(void)
     return ESP_SLEEP_WAKEUP_UNDEFINED;
 }
 
+static bool wakeup_mask_has_button(void)
+{
+    uint64_t mask = esp_sleep_get_gpio_wakeup_status();
+    while (mask) {
+        const unsigned bit = (unsigned)__builtin_ctzll(mask);
+        mask &= mask - 1;
+        if ((int)esp_sleep_wakeup_io_bit2num(bit) == pin_btn()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool tank_board_woke_from_button(void)
 {
     if (!(esp_sleep_get_wakeup_causes() & BIT(ESP_SLEEP_WAKEUP_GPIO))) {
         return false;
     }
-    return gpio_get_level(pin_btn()) == 0;
+    /* A short tap is already released by the time we read the pin. The wake
+     * mask still names the button, so it is not treated as a float change. */
+    if (gpio_get_level(pin_btn()) == 0) {
+        return true;
+    }
+    return wakeup_mask_has_button();
 }
 
 bool tank_board_woke_from_float(void)
@@ -163,16 +185,74 @@ bool tank_board_woke_from_float(void)
     if (!(esp_sleep_get_wakeup_causes() & BIT(ESP_SLEEP_WAKEUP_GPIO))) {
         return false;
     }
-    if (gpio_get_level(pin_btn()) == 0) {
-        return false;
-    }
-    /* Either edge is a float wake. The button path owns a held button. */
-    return true;
+    return !tank_board_woke_from_button();
 }
 
 bool tank_board_woke_from_timer(void)
 {
     return (esp_sleep_get_wakeup_causes() & BIT(ESP_SLEEP_WAKEUP_TIMER)) != 0;
+}
+
+void tank_button_hold_reset(tank_button_hold_t *hold)
+{
+    if (hold) {
+        hold->hold_start_us = 0;
+        hold->up_since_us = 0;
+        hold->active = false;
+    }
+}
+
+tank_button_hold_event_t tank_button_hold_poll(tank_button_hold_t *hold,
+                                               uint32_t threshold_ms,
+                                               uint32_t *held_ms, uint8_t *pct)
+{
+    if (held_ms) {
+        *held_ms = 0;
+    }
+    if (pct) {
+        *pct = 0;
+    }
+    if (!hold) {
+        return TANK_HOLD_NONE;
+    }
+    if (threshold_ms < 1) {
+        threshold_ms = 1;
+    }
+    const bool down = tank_board_button_down();
+    const int64_t now = esp_timer_get_time();
+    if (down) {
+        hold->up_since_us = 0;
+        if (!hold->active) {
+            hold->active = true;
+            hold->hold_start_us = now;
+        }
+        uint32_t ms = (uint32_t)((now - hold->hold_start_us) / 1000);
+        if (held_ms) {
+            *held_ms = ms;
+        }
+        const uint8_t p = ms >= threshold_ms ? 100 : (uint8_t)(ms * 100u / threshold_ms);
+        if (pct) {
+            *pct = p;
+        }
+        return ms >= threshold_ms ? TANK_HOLD_REACHED : TANK_HOLD_HOLDING;
+    }
+    if (!hold->active) {
+        return TANK_HOLD_NONE;
+    }
+    if (hold->up_since_us == 0) {
+        hold->up_since_us = now;
+    }
+    const uint32_t ms = (uint32_t)((hold->up_since_us - hold->hold_start_us) / 1000);
+    if (held_ms) {
+        *held_ms = ms;
+    }
+    if ((now - hold->up_since_us) / 1000 < BUTTON_RELEASE_MS) {
+        return TANK_HOLD_HOLDING;
+    }
+    hold->active = false;
+    hold->hold_start_us = 0;
+    hold->up_since_us = 0;
+    return TANK_HOLD_RELEASED;
 }
 
 void tank_board_classify_button(uint32_t hold_threshold_ms, bool *is_hold,
@@ -186,38 +266,33 @@ void tank_board_classify_button(uint32_t hold_threshold_ms, bool *is_hold,
     if (held_ms) {
         *held_ms = 0;
     }
-    if (hold_threshold_ms < 1) {
-        hold_threshold_ms = 1;
+    tank_button_hold_t hold;
+    tank_button_hold_reset(&hold);
+    if (!tank_board_button_down()) {
+        return;
     }
-    uint32_t t0 = xTaskGetTickCount();
-    while (gpio_get_level(pin_btn()) == 0) {
-        uint32_t ms = (xTaskGetTickCount() - t0) * portTICK_PERIOD_MS;
+    for (;;) {
+        uint32_t ms = 0;
+        uint8_t pct = 0;
+        const tank_button_hold_event_t ev =
+            tank_button_hold_poll(&hold, hold_threshold_ms, &ms, &pct);
         if (held_ms) {
             *held_ms = ms;
         }
-        if (on_progress) {
-            uint8_t pct = (uint8_t)((ms >= hold_threshold_ms)
-                                        ? 100
-                                        : (ms * 100u / hold_threshold_ms));
+        if (on_progress && (ev == TANK_HOLD_HOLDING || ev == TANK_HOLD_REACHED)) {
             on_progress(pct, ctx);
         }
-        if (ms >= hold_threshold_ms) {
-            /* Enter hold/pair as soon as threshold is met — do not wait for
-             * release (pairing mode waits for release before accepting cancel). */
+        if (ev == TANK_HOLD_REACHED) {
             if (is_hold) {
                 *is_hold = true;
             }
-            if (held_ms) {
-                *held_ms = ms;
-            }
+            return;
+        }
+        if (ev == TANK_HOLD_RELEASED) {
             return;
         }
         vTaskDelay(pdMS_TO_TICKS(20));
     }
-    if (held_ms) {
-        *held_ms = (xTaskGetTickCount() - t0) * portTICK_PERIOD_MS;
-    }
-    vTaskDelay(pdMS_TO_TICKS(30));
 }
 
 bool tank_board_wait_click(uint32_t timeout_ms)

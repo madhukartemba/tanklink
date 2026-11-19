@@ -56,6 +56,7 @@ The app only offers a release whose `proto_major` equals its own and whose `hw_r
 - From **0.2.7**: success/fail LED on every status TX again; short press during the BLE window sends LoRa again; hold still pairs.
 - From **0.2.8**: wake on any float change (both edges); tank sends raw FULL/EMPTY pin levels; interpretation and empty-float on/off are decided by the pump (Settings → Empty float, pump 0.8.2+).
 - From **0.2.9**: button and both float pins stay internally pulled up in deep sleep (IDF no longer installs a pull-down when a pin is armed to wake on HIGH), so opening a closed float can wake the chip.
+- From **0.3.2**: a tap opens the BLE window even if the button is already up; pairing starts at 3 s without waiting for release, including during the BLE window. Error flashes are short with a long gap. Battery-sense failure is code 6 and is sent on LoRa.
 
 ## First flash after OTA partition change
 

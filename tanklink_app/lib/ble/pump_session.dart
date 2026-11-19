@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../util/error_text.dart';
 import 'models.dart';
 import 'ota_upload.dart';
 import 'protocol.dart';
@@ -75,6 +76,9 @@ class PumpSession extends ChangeNotifier {
 
   /// Last pump NeoPixel / start-deny error (0 = none).
   int pumpLastError = 0;
+
+  /// Selected tank sensor's own light code, 0 when it has none.
+  int tankFault = 0;
 
   /// Set when a fill was cut short by a power cut or restart, until dismissed.
   FillInterruption? fillInterruption;
@@ -293,39 +297,13 @@ class PumpSession extends ChangeNotifier {
     return 'Weak';
   }
 
-  String? get pumpErrorTitle {
-    switch (pumpLastError) {
-      case TankLinkUuids.pumpErrTankFull:
-        return 'Tank is full';
-      case TankLinkUuids.pumpErrLoraMissing:
-        return 'Tank link not working';
-      case TankLinkUuids.pumpErrTankOffline:
-        return 'Tank out of range';
-      case TankLinkUuids.pumpErrBlocked:
-        return 'Pump start blocked';
-      case TankLinkUuids.pumpErrNotPaired:
-        return 'Pump not set up';
-      default:
-        return null;
-    }
-  }
+  String? get pumpErrorTitle => TankLinkErrors.pumpTitle(pumpLastError);
 
-  String? get pumpErrorDetail {
-    switch (pumpLastError) {
-      case TankLinkUuids.pumpErrTankFull:
-        return 'The tank is full, so the pump will not start.';
-      case TankLinkUuids.pumpErrLoraMissing:
-        return 'The pump cannot talk to the tank sensor. Check its wiring.';
-      case TankLinkUuids.pumpErrTankOffline:
-        return 'The pump has not heard from the tank sensor recently. Check its power and distance.';
-      case TankLinkUuids.pumpErrBlocked:
-        return 'The pump is busy with an update or setup. Wait a moment and try again.';
-      case TankLinkUuids.pumpErrNotPaired:
-        return 'Set up this pump in the app first.';
-      default:
-        return null;
-    }
-  }
+  String? get pumpErrorDetail => TankLinkErrors.pumpDetail(pumpLastError);
+
+  String? get tankFaultTitle => TankLinkErrors.tankTitle(tankFault);
+
+  String? get tankFaultDetail => TankLinkErrors.tankDetail(tankFault);
 
   bool get canStartPump {
     if (!authed || !connected) return false;
@@ -755,11 +733,13 @@ class PumpSession extends ChangeNotifier {
     tankRssiDbm = t.rssiDbm;
     tankSnrDb = t.snrDb;
     pumpLastError = t.pumpLastError;
+    tankFault = t.tankFault;
     tankHwRev = t.hwRev;
     fillInterruption = t.interruption;
     tankBleToken = t.bleToken;
     if (!tankBound) {
       tankOnline = false;
+      tankFault = 0;
       _tankLastHeardAt = null;
       tankRssiDbm = null;
       tankSnrDb = null;
@@ -1238,6 +1218,7 @@ class PumpSession extends ChangeNotifier {
     bleRssiDbm = null;
     tankSnrDb = null;
     pumpLastError = 0;
+    tankFault = 0;
     fillInterruption = null;
     pumpProtoMajor = 0;
     pumpProtoMinor = 0;

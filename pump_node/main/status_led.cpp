@@ -188,7 +188,7 @@ class ProgressFill final : public pixelengine::Animation {
     float center_ = 0.0f;
 };
 
-/** Hard whole-strip blinks for numbered error codes (matches tank LED pattern). */
+/** Short red flashes for numbered error codes (same count pattern as the tank). */
 class ErrorBlink final : public pixelengine::Animation {
    public:
     ErrorBlink(size_t led_count, uint8_t code)
@@ -218,7 +218,7 @@ class ErrorBlink final : public pixelengine::Animation {
 
         switch (stage_) {
         case Stage::PauseBefore:
-            if (elapsed >= 0.50f) {
+            if (elapsed >= 0.80f) {
                 stage_ = Stage::BlinkOn;
                 blink_i_ = 0;
                 rep_ = 0;
@@ -227,13 +227,13 @@ class ErrorBlink final : public pixelengine::Animation {
             break;
         case Stage::BlinkOn:
             on = true;
-            if (elapsed >= 0.42f) {
+            if (elapsed >= 0.16f) {
                 stage_ = Stage::BlinkOff;
                 t0_ = now;
             }
             break;
         case Stage::BlinkOff:
-            if (elapsed >= 0.28f) {
+            if (elapsed >= 0.70f) {
                 blink_i_++;
                 if (blink_i_ >= code_) {
                     rep_++;
@@ -250,7 +250,7 @@ class ErrorBlink final : public pixelengine::Animation {
             }
             break;
         case Stage::GroupPause:
-            if (elapsed >= 0.90f) {
+            if (elapsed >= 1.40f) {
                 blink_i_ = 0;
                 stage_ = Stage::BlinkOn;
                 t0_ = now;

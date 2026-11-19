@@ -149,6 +149,7 @@ class TankStatus {
     required this.bleToken,
     required this.interruption,
     required this.hwRev,
+    required this.tankFault,
   });
 
   final bool bound;
@@ -172,6 +173,9 @@ class TankStatus {
   final FillInterruption? interruption;
   final int hwRev;
 
+  /// The selected tank sensor's own light code, 0 when it has none.
+  final int tankFault;
+
   static TankStatus? parse(List<int> b) {
     if (b.length < TankLinkUuids.tankStatusLen) return null;
     final fw = '${b[8]}.${b[9]}.${b[10]}';
@@ -193,6 +197,7 @@ class TankStatus {
       bleToken: token.any((v) => v != 0) ? token : null,
       interruption: _parseInterruption(b),
       hwRev: b[TankLinkUuids.tankStatusHwRevAt],
+      tankFault: b[TankLinkUuids.tankStatusFaultAt],
     );
   }
 
@@ -256,6 +261,7 @@ class TankSensor {
     required this.firmware,
     required this.hwRev,
     required this.bleToken,
+    required this.fault,
   });
 
   /// Index the pump uses for it (stable while it stays paired).
@@ -282,18 +288,25 @@ class TankSensor {
   /// Null when the pump has no token for it.
   final Uint8List? bleToken;
 
+  /// This sensor's own light code, 0 when it reported none.
+  final int fault;
+
   /// Last four hex digits, as printed on the board's BLE name.
   String get shortId => serialFromDeviceId(idHex);
 
   bool get otaReady => bleToken != null;
 
-  /// count max, then count × [TankLinkUuids.sensorEntryLen] entries.
+  /// count max, then count × [TankLinkUuids.sensorEntryLen] entries, then one
+  /// fault byte per entry.
   static List<TankSensor>? parseList(List<int> b) {
     if (b.length < 2) return null;
     const len = TankLinkUuids.sensorEntryLen;
+    final count = b[0];
+    final faultsAt = 2 + count * len;
+    if (b.length < faultsAt + count) return null;
     final out = <TankSensor>[];
-    var o = 2;
-    for (var i = 0; i < b[0] && o + len <= b.length; i++, o += len) {
+    for (var i = 0; i < count; i++) {
+      final o = 2 + i * len;
       final fw = '${b[o + 15]}.${b[o + 16]}.${b[o + 17]}';
       final age = _u16(b, o + 11);
       final token = Uint8List.fromList(b.sublist(o + 19, o + 35));
@@ -311,6 +324,7 @@ class TankSensor {
           firmware: fw == '0.0.0' ? '' : fw,
           hwRev: b[o + 18],
           bleToken: token.any((v) => v != 0) ? token : null,
+          fault: b[faultsAt + i],
         ),
       );
     }

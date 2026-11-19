@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"
+#include "tank_board.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,9 +25,10 @@ typedef enum {
 
 /**
  * Block until the advertise window ends, a short press, or hold-to-pair.
- * A short press does not stop advertising.
+ * A short press does not stop advertising. [hold] carries a press that
+ * started before the call (for example during LoRa TX); NULL starts fresh.
  */
-tank_ble_window_result_t tank_ble_wait_ota_window(void);
+tank_ble_window_result_t tank_ble_wait_ota_window(tank_button_hold_t *hold);
 
 /** Convenience: start + wait once. */
 tank_ble_window_result_t tank_ble_run_ota_window(uint32_t timeout_ms);

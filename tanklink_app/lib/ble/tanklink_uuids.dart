@@ -87,13 +87,28 @@ class TankLinkUuids {
   static const pumpErrTankOffline = 3;
   static const pumpErrBlocked = 4;
   static const pumpErrNotPaired = 5;
+  static const pumpErrI2c = 6;
+  static const pumpErrRtcMissing = 7;
+  static const pumpErrRtcLost = 8;
+  static const pumpErrRtcComm = 9;
+
+  /// Tank sensor light codes, carried in the tank status and sensor list.
+  static const tankErrNotPaired = 1;
+  static const tankErrLoraMissing = 2;
+  static const tankErrNoAck = 3;
+  static const tankErrPairCancelled = 4;
+  static const tankErrPairTimeout = 5;
+  static const tankErrBattery = 6;
 
   /// Tank characteristic: base fields, the tank BLE token at 19, then the
   /// interrupted-fill fields at 35.
   static const tankStatusTokenAt = 19;
   static const tankStatusInterruptAt = 35;
   static const tankStatusHwRevAt = 52;
-  static const tankStatusLen = 53;
+
+  /// Selected tank sensor's own light code (0 = none).
+  static const tankStatusFaultAt = 53;
+  static const tankStatusLen = 54;
 
   static const interruptNone = 0;
   static const interruptPowerLost = 1;

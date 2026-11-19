@@ -88,6 +88,7 @@ void main() {
       b[35] = reason;
       b.setRange(48, 52, u32(600));
       b[TankLinkUuids.tankStatusHwRevAt] = 1;
+      b[TankLinkUuids.tankStatusFaultAt] = TankLinkUuids.tankErrBattery;
       return b;
     }
 
@@ -105,6 +106,7 @@ void main() {
       expect(t.bleToken, hasLength(16));
       expect(t.interruption, isNull);
       expect(t.hwRev, 1);
+      expect(t.tankFault, TankLinkUuids.tankErrBattery);
     });
 
     test('reads an interrupted fill', () {
@@ -186,6 +188,7 @@ void main() {
         TankLinkUuids.sensorMax,
         ...entry(index: 0, id: idA),
         ...entry(index: 3, id: idB, age: 0xffff),
+        0, TankLinkUuids.tankErrBattery, // fault per entry
       ])!;
       expect(list, hasLength(2));
       final a = list.first;
@@ -204,6 +207,15 @@ void main() {
       expect(a.bleToken, token);
       expect(list.last.index, 3);
       expect(list.last.ageSec, isNull);
+      expect(a.fault, 0);
+      expect(list.last.fault, TankLinkUuids.tankErrBattery);
+    });
+
+    test('returns null without the fault bytes', () {
+      expect(
+        TankSensor.parseList([1, TankLinkUuids.sensorMax, ...entry(index: 0, id: idA)]),
+        isNull,
+      );
     });
 
     test('entry length matches the constant', () {

@@ -13,6 +13,10 @@ extern "C" {
 #define PUMP_ERR_TANK_OFFLINE  3 /* Bound tank has no recent heartbeat */
 #define PUMP_ERR_BLOCKED       4 /* Start denied — OTA / pairing lockout */
 #define PUMP_ERR_NOT_PAIRED    5 /* Start ignored — pump not claimed */
+#define PUMP_ERR_I2C           6 /* I2C bus for the clock did not start */
+#define PUMP_ERR_RTC_MISSING   7 /* DS3231 did not answer */
+#define PUMP_ERR_RTC_LOST      8 /* DS3231 oscillator stopped (lost power) */
+#define PUMP_ERR_RTC_COMM      9 /* DS3231 read or write failed */
 
 #ifdef __cplusplus
 }

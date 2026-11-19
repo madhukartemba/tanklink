@@ -2,7 +2,7 @@
 
 Battery-powered tank sensor: FULL + almost-empty floats, button, LED, battery ADC, RA-02 LoRa.
 
-See `main/tank_version.h`. Paired: deep sleep **10 min** heartbeat. Unpaired: button wake only. Short press → status + BLE OTA ~10 s. Hold ~5 s → LoRa PAIR.
+See `main/tank_version.h`. Paired: deep sleep **10 min** heartbeat. Unpaired: button wake only. Short press (including a tap that is already released) → status + BLE OTA ~10 s. Hold 3 s → LoRa PAIR starts while the button is still held. Holding 3 s during the BLE window also starts pairing.
 
 **Wiring:** [WIRING.md](WIRING.md) · [docs/PINMAPS.md](../docs/PINMAPS.md)
 

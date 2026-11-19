@@ -129,6 +129,10 @@ uint8_t lora_link_tank_hw_rev(void)
 {
     return 0;
 }
+uint8_t lora_link_tank_fault(void)
+{
+    return 0;
+}
 bool lora_link_tank_has_ble_token(void)
 {
     return false;
@@ -159,6 +163,7 @@ typedef struct {
     uint8_t bat;
     uint8_t fw[3];
     uint8_t hw_rev;
+    uint8_t fault;
     uint8_t last_saved_flags;
     int16_t rssi_dbm;
     int8_t snr_db;
@@ -455,14 +460,23 @@ static void notify_after_packet(bool active)
     gatt_svr_notify_nodes();
 }
 
+static uint8_t packet_fault(const uint8_t *buf, size_t n, uint8_t type)
+{
+    if (type == TANKLINK_LORA_TYPE_PAIR) {
+        return n > TANKLINK_LORA_PAIR_LEN ? buf[TANKLINK_LORA_PAIR_LEN] : 0;
+    }
+    return n > sizeof(tanklink_lora_status_t) ? buf[sizeof(tanklink_lora_status_t)] : 0;
+}
+
 static void apply_tank_packet(uint8_t node, const tanklink_lora_status_t *pkt,
-                              int16_t rssi_dbm, int8_t snr_db)
+                              int16_t rssi_dbm, int8_t snr_db, uint8_t fault)
 {
     node_rt_t *rt = &s_rt[node];
     rt->heard = true;
     rt->last_rx_us = esp_timer_get_time();
     rt->flags = pkt->flags;
     rt->bat = pkt->battery_pct;
+    rt->fault = fault;
     rt->fw[0] = pkt->fw_major;
     rt->fw[1] = pkt->fw_minor;
     rt->fw[2] = pkt->fw_patch;
@@ -481,22 +495,22 @@ static void apply_tank_packet(uint8_t node, const tanklink_lora_status_t *pkt,
     }
     ESP_LOGI(TAG,
              "sensor %u RX type=%u flags=0x%02x bat=%u%% seq=%u fw=%u.%u.%u%s full=%d "
-             "rssi=%d snr=%d",
+             "fault=%u rssi=%d snr=%d",
              node, pkt->type, pkt->flags, pkt->battery_pct, pkt->seq, pkt->fw_major,
              pkt->fw_minor, pkt->fw_patch, active ? " (selected)" : "", (int)full,
-             (int)rssi_dbm, (int)snr_db);
+             fault, (int)rssi_dbm, (int)snr_db);
     note_last_changed(node);
     notify_after_packet(active);
 }
 
 /** A packet from a paired sensor: state changes once per seq, signal always. */
 static void handle_packet(uint8_t node, const tanklink_lora_status_t *pkt, int16_t rssi,
-                          int8_t snr)
+                          int8_t snr, uint8_t fault)
 {
     node_rt_t *rt = &s_rt[node];
     if (pkt->seq != rt->last_seq) {
         rt->last_seq = pkt->seq;
-        apply_tank_packet(node, pkt, rssi, snr);
+        apply_tank_packet(node, pkt, rssi, snr, fault);
     } else {
         rt->rssi_dbm = rssi;
         rt->snr_db = snr;
@@ -571,7 +585,7 @@ static void on_pair_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t sn
     ESP_LOGI(TAG, "sensor %u %s %02x:%02x:%02x:%02x:%02x:%02x", node,
              added ? "paired" : "re-paired", pkt->tank_id[0], pkt->tank_id[1],
              pkt->tank_id[2], pkt->tank_id[3], pkt->tank_id[4], pkt->tank_id[5]);
-    handle_packet(node, pkt, rssi, snr);
+    handle_packet(node, pkt, rssi, snr, packet_fault(buf, n, pkt->type));
     /* A first sensor becomes the selected tank's sensor; slots may have changed. */
     lora_link_on_active_changed();
     gatt_svr_notify_tank();
@@ -579,8 +593,9 @@ static void on_pair_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t sn
     gatt_svr_notify_nodes();
 }
 
-static void on_status_packet(const tanklink_lora_status_t *pkt, int16_t rssi, int8_t snr)
+static void on_status_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t snr)
 {
+    const tanklink_lora_status_t *pkt = (const tanklink_lora_status_t *)buf;
     const int node = pump_tanks_node_find(pkt->tank_id);
     if (node < 0) {
         ESP_LOGW(TAG, "STATUS ignored — sensor %02x%02x not paired", pkt->tank_id[4],
@@ -588,7 +603,7 @@ static void on_status_packet(const tanklink_lora_status_t *pkt, int16_t rssi, in
         return;
     }
     send_ack(pkt);
-    handle_packet((uint8_t)node, pkt, rssi, snr);
+    handle_packet((uint8_t)node, pkt, rssi, snr, packet_fault(buf, n, pkt->type));
 }
 
 /** Notice sensors dropping out of range (and coming back). */
@@ -641,7 +656,7 @@ static void lora_task(void *arg)
             if (pkt->type == TANKLINK_LORA_TYPE_PAIR) {
                 on_pair_packet(buf, n, rssi, snr);
             } else if (pkt->type == TANKLINK_LORA_TYPE_STATUS) {
-                on_status_packet(pkt, rssi, snr);
+                on_status_packet(buf, n, rssi, snr);
             }
         } else if (err != ESP_ERR_NOT_FOUND && err != ESP_ERR_INVALID_CRC) {
             vTaskDelay(pdMS_TO_TICKS(20));
@@ -795,6 +810,7 @@ bool lora_link_node_status(uint8_t node, lora_node_status_t *out)
     out->battery_pct = rt->bat;
     memcpy(out->fw, rt->fw, sizeof(out->fw));
     out->hw_rev = rt->hw_rev;
+    out->fault = rt->fault;
     out->rssi_dbm = rt->heard ? rt->rssi_dbm : 0;
     out->snr_db = rt->heard ? rt->snr_db : 0;
     out->has_ble_token = rt->has_token;
@@ -900,6 +916,11 @@ uint8_t lora_link_tank_hw_rev(void)
 {
     const node_rt_t *rt = active_rt();
     return rt ? rt->hw_rev : 0;
+}
+uint8_t lora_link_tank_fault(void)
+{
+    const node_rt_t *rt = active_rt();
+    return rt ? rt->fault : 0;
 }
 
 #endif /* CONFIG_PUMP_ENABLE_LORA */

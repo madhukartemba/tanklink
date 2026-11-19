@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../ble/pump_session.dart';
+import '../../util/error_text.dart';
 import '../../ble/tanklink_uuids.dart';
 import 'update_tiles.dart';
 
@@ -184,6 +185,7 @@ class _SensorTile extends StatelessWidget {
                 '${session.sensorBatteryLow(sensor) ? " (low)" : ""}'
           else
             'Out of range',
+          ?TankLinkErrors.tankTitle(sensor.fault),
           session.sensorAgeLabel(sensor),
         ].where((s) => s.isNotEmpty).join(' · '),
       ),
@@ -338,6 +340,13 @@ class TankSensorDetailScreen extends StatelessWidget {
               ].join(' · '),
             ),
           ),
+          if (TankLinkErrors.tankTitle(sensor.fault) != null)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.error_outline_rounded, color: scheme.error),
+              title: Text(TankLinkErrors.tankTitle(sensor.fault)!),
+              subtitle: Text(TankLinkErrors.tankDetail(sensor.fault) ?? ''),
+            ),
           if (!online)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -485,7 +494,7 @@ class _TankPairDialog extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'On the tank sensor, press and hold the button for about 5 seconds.',
+                'On the tank sensor, hold the button for about 3 seconds.',
               ),
               const SizedBox(height: 16),
               if (session.tankPairing)

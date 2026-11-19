@@ -26,6 +26,14 @@ void pump_clock_init(void);
 /** Call every few hundred ms. Re-reads the RTC about once an hour. */
 void pump_clock_poll(void);
 
+/**
+ * Remember a clock-chip fault and, once pump_clock_arm_faults() has run,
+ * show it like any other pump error. 0 clears a clock fault that is still
+ * the current error.
+ */
+uint8_t pump_clock_fault(void);
+void pump_clock_arm_faults(void);
+
 /** DS3231 answered at boot. */
 bool pump_clock_rtc_present(void);
 

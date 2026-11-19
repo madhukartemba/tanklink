@@ -47,6 +47,7 @@ typedef struct {
     int8_t snr_db;
     bool has_ble_token;
     uint8_t ble_token[TANKLINK_LORA_BLE_TOKEN_LEN];
+    uint8_t fault; /* tank LED code from the packet, 0 = none */
 } lora_node_status_t;
 
 /** Snapshot of one paired sensor. False if [node] is not paired. */
@@ -81,6 +82,8 @@ uint8_t lora_link_tank_fw_minor(void);
 uint8_t lora_link_tank_fw_patch(void);
 /** Tank board revision from its last packet (0 = unknown). */
 uint8_t lora_link_tank_hw_rev(void);
+/** Selected tank's own fault code (0 = none). */
+uint8_t lora_link_tank_fault(void);
 
 #ifdef __cplusplus
 }

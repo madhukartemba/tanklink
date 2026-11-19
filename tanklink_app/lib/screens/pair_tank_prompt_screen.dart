@@ -72,8 +72,8 @@ class _PairTankPromptScreenState extends State<PairTankPromptScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'You will hold the tank button for about 5 seconds while its light '
-              'gets brighter, then wait for it to glow and fade until setup finishes.',
+              'You will hold the tank button for about 3 seconds. Its light '
+              'gets brighter, then glows and fades while you are still holding it.',
               style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
             ),
             if (_error != null) ...[
@@ -121,8 +121,8 @@ class _ListeningDialog extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'On the tank, press and hold the button until its light is fully '
-                'bright and starts to glow and fade. Press once to cancel on the tank.',
+                'On the tank, hold the button for about 3 seconds. Setup starts '
+                'as soon as the light begins to glow and fade. Press once to cancel.',
               ),
               const SizedBox(height: 16),
               if (session.tankPairing) const LinearProgressIndicator(),

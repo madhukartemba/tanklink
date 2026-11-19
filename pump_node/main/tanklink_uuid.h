@@ -49,7 +49,7 @@ extern "C" {
 /* Firmware version. TANKLINK_FW_VERSION is built from the three numbers. */
 #define TANKLINK_FW_MAJOR 0
 #define TANKLINK_FW_MINOR 13
-#define TANKLINK_FW_PATCH 1
+#define TANKLINK_FW_PATCH 2
 #define TANKLINK_STR_(x) #x
 #define TANKLINK_STR(x) TANKLINK_STR_(x)
 #define TANKLINK_FW_VERSION \
@@ -69,7 +69,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 0
+#define TANKLINK_PROTO_MINOR 1
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -122,12 +122,14 @@ extern "C" {
  * bound(1) pairing(1) id(6) fw(3) flags(1) bat(1) online(1) age_sec_le(2)
  * rssi_dbm_i8(1) snr_db_i8(1) last_error(1) ble_token(16), then the
  * interrupted fill: reason(1) started(u32) last_seen(u32) back(u32)
- * ran_sec(u32), then tank_hw_rev(1) = 53 bytes. Times are pump-local seconds
- * since 1970, 0 = unknown.
+ * ran_sec(u32), then tank_hw_rev(1), then tank_fault(1) = 54 bytes. Times are
+ * pump-local seconds since 1970, 0 = unknown. tank_fault is the sensor's own
+ * LED code (0 = none).
  */
 #define TANKLINK_TANK_STATUS_TOKEN_LEN 35
 #define TANKLINK_TANK_STATUS_HW_AT 52
-#define TANKLINK_TANK_STATUS_LEN 53
+#define TANKLINK_TANK_STATUS_FAULT_AT 53
+#define TANKLINK_TANK_STATUS_LEN 54
 
 /* Schedule char write opcodes (authenticated). */
 #define TANKLINK_SCHED_OP_SET_CLOCK 0x01

@@ -62,7 +62,7 @@ class TankHero extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Hold the tank button about 5 seconds',
+              'Hold the tank button for 3 seconds',
               textAlign: TextAlign.center,
               style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
             ),

@@ -159,10 +159,50 @@ class PumpErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final title = session.pumpErrorTitle;
-    final detail = session.pumpErrorDetail;
     if (title == null) return const SizedBox.shrink();
+    return _CodeBanner(
+      title: title,
+      detail: session.pumpErrorDetail,
+      code: session.pumpLastError,
+      onClear: session.clearPumpError,
+    );
+  }
+}
+
+class TankFaultBanner extends StatelessWidget {
+  const TankFaultBanner({super.key, required this.session});
+
+  final PumpSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = session.tankFaultTitle;
+    if (title == null) return const SizedBox.shrink();
+    return _CodeBanner(
+      title: title,
+      detail: session.tankFaultDetail,
+      code: session.tankFault,
+    );
+  }
+}
+
+class _CodeBanner extends StatelessWidget {
+  const _CodeBanner({
+    required this.title,
+    required this.detail,
+    required this.code,
+    this.onClear,
+  });
+
+  final String title;
+  final String? detail;
+  final int code;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Material(
       color: scheme.errorContainer.withValues(alpha: 0.85),
       borderRadius: BorderRadius.circular(16),
@@ -187,7 +227,7 @@ class PumpErrorBanner extends StatelessWidget {
                   if (detail != null) ...[
                     const SizedBox(height: 2),
                     Text(
-                      detail,
+                      detail!,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -200,18 +240,19 @@ class PumpErrorBanner extends StatelessWidget {
               ),
             ),
             Text(
-              '${session.pumpLastError}',
+              '$code',
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
                 color: scheme.onErrorContainer,
                 fontWeight: FontWeight.w800,
               ),
             ),
-            IconButton(
-              tooltip: 'Clear error',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => session.clearPumpError(),
-              icon: Icon(Icons.close_rounded, color: scheme.onErrorContainer),
-            ),
+            if (onClear != null)
+              IconButton(
+                tooltip: 'Clear error',
+                visualDensity: VisualDensity.compact,
+                onPressed: onClear,
+                icon: Icon(Icons.close_rounded, color: scheme.onErrorContainer),
+              ),
           ],
         ),
       ),

@@ -4,24 +4,25 @@ Human-readable codes used by the tank sensor LED, pump NeoPixel, and the phone a
 
 ## Tank sensor LED codes
 
-The status LED shows the **error number** as **long hard blinks** (on/off, not soft pulses), twice, with a longer pause between the two groups. Soft fade pulses are used for boot, **one** success pulse after a full TX+ACK, and pairing — not for error codes. Per-retry TX pulses are not used.
+The status LED shows the **error number** as **short flashes** with a long dark gap between them, twice. A longer dark gap separates the two counts, so you can count the flashes. Soft fade pulses are used for boot, **one** success pulse after a full TX+ACK, and pairing — not for error codes. Per-retry TX pulses are not used.
 
 | Code | Name | When |
 | --- | --- | --- |
-| **1** | Not paired | Short button press while this tank is not paired to a pump. Hold ~3 s with the pump’s “Pair tank sensor” window open to pair. |
+| **1** | Not paired | Short button press while this tank is not paired to a pump. Hold 3 s with the pump’s “Pair tank sensor” window open to pair. |
 | **2** | LoRa missing | Radio did not initialize (wiring / power / module). |
 | **3** | No ACK | Paired, but the pump did not acknowledge a status TX (out of range, pump off, or wrong bind). |
 | **4** | Pairing cancelled | Pairing mode was cancelled with a short button press. |
 | **5** | Pairing timed out | Hold-to-pair window expired without a successful pump ACK. |
+| **6** | Battery sense | The battery ADC did not start. The code is sent to the pump on later packets and shown in the app. |
 
 ### Button / LED behaviour (tank)
 
 | Action | LED |
 | --- | --- |
 | Boot | Soft fade pulses |
-| Hold to pair | Brightness ramps 0→100 over ~5 s, then soft breathing pulses (~30 s window) |
+| Hold to pair | Brightness ramps 0→100 over 3 s. Pairing starts at 3 s, while the button is still held, then soft breathing pulses (~30 s window) |
 | Pairing success | Soft success pulse |
-| Short press (paired) | One short blink (BLE OTA listen ~10 s); after TX+ACK: **one** soft success pulse; on failure code **3**. Another short press during the window sends LoRa again; hold still enters pairing |
+| Short press (paired) | One short blink (BLE OTA listen ~10 s), including a tap that is already released when the chip wakes. After TX+ACK: **one** soft success pulse; on failure code **3**. Another short press during the window sends LoRa again. Holding 3 s during the window starts pairing without waiting for release |
 | Heartbeat / float / boot TX (paired) | After full TX+ACK: **one** soft success pulse; on failure code **3** |
 | Short press (unpaired) | Code **1** long blinks |
 | Cancel pairing | Code **4** long blinks |
@@ -31,7 +32,7 @@ Pairing mode lasts **30 s** by default (`CONFIG_TANK_PAIR_WINDOW_MS`). Press t
 
 ## Pump NeoPixel codes
 
-Same blink pattern as the tank: **N long hard red blinks**, pause, repeat twice. Soft animations (idle glow, pump-on wave, blue/amber pairing) are unrelated to these codes. The last code is also shown in the app on the home screen.
+Same flash pattern as the tank: **N short red flashes**, a long pause, then the same count again. Soft animations (idle glow, pump-on wave, blue/amber pairing) are unrelated to these codes. The last code is also shown in the app on the home screen. A tank sensor's own code is a second banner.
 
 | Code | Name | When |
 | --- | --- | --- |
@@ -40,6 +41,10 @@ Same blink pattern as the tank: **N long hard red blinks**, pause, repeat twice.
 | **3** | Tank offline | The selected tank's sensor missed its heartbeat window (out of range / power). Cleared when a packet returns or another tank is selected. |
 | **4** | Blocked | Start denied during OTA or while BLE pairing lockout is active. |
 | **5** | Not paired | Local Start held while the pump has no phone owner token. |
+| **6** | I2C failed | The I2C bus for the DS3231 did not start. |
+| **7** | Clock chip missing | The I2C bus started, but the DS3231 did not answer. |
+| **8** | Clock lost power | The DS3231 oscillator-stopped flag is set. Cleared when the phone sets the time. |
+| **9** | Clock chip not answering | A later read or write of the DS3231 failed. |
 
 ### Factory reset (not an error code)
 

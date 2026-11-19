@@ -99,6 +99,7 @@ size_t gatt_payload_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
         put_u32(&o[13], ev->ran_sec);
     }
     out[TANKLINK_TANK_STATUS_HW_AT] = lora_link_tank_hw_rev();
+    out[TANKLINK_TANK_STATUS_FAULT_AT] = lora_link_tank_fault();
     return TANKLINK_TANK_STATUS_LEN;
 }
 
@@ -161,6 +162,7 @@ size_t gatt_payload_nodes(uint8_t out[GATT_NODES_MAX_LEN])
     out[1] = PUMP_NODE_MAX;
     size_t o = 2;
     uint8_t count = 0;
+    uint8_t faults[PUMP_NODE_MAX];
     for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
         pump_tank_node_t node;
         lora_node_status_t st;
@@ -184,10 +186,15 @@ size_t gatt_payload_nodes(uint8_t out[GATT_NODES_MAX_LEN])
         } else {
             memset(&e[19], 0, TANKLINK_TOKEN_LEN);
         }
+        faults[count] = st.fault;
         o += TANKLINK_NODES_ENTRY_LEN;
         count++;
     }
     out[0] = count;
+    if (count > 0) {
+        memcpy(&out[o], faults, count);
+        o += count;
+    }
     return o;
 }
 

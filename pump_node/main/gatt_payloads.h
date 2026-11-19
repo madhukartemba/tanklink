@@ -24,7 +24,8 @@ extern "C" {
 #define GATT_OTA_STATUS_LEN 6
 #define GATT_SCHED_MAX_LEN (4 + PUMP_SCHED_MAX * 4 + 1)
 #define GATT_TANKS_MAX_LEN (2 + PUMP_TANK_SLOT_MAX * TANKLINK_TANKS_ENTRY_LEN)
-#define GATT_NODES_MAX_LEN (2 + PUMP_NODE_MAX * TANKLINK_NODES_ENTRY_LEN)
+/* Entry list, then one fault byte per entry. */
+#define GATT_NODES_MAX_LEN (2 + PUMP_NODE_MAX * (TANKLINK_NODES_ENTRY_LEN + 1))
 
 /** Info (frozen layout). [authed] is whether the reading connection is signed in. */
 size_t gatt_payload_info(uint8_t out[TANKLINK_INFO_LEN], bool authed);

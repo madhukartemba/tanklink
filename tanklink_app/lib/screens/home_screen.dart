@@ -154,6 +154,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           PumpErrorBanner(session: session),
                           const SizedBox(height: 8),
                         ],
+                        if (ready && session.tankFaultTitle != null) ...[
+                          TankFaultBanner(session: session),
+                          const SizedBox(height: 8),
+                        ],
                         Expanded(
                           child: TankHero(session: session, ready: ready),
                         ),

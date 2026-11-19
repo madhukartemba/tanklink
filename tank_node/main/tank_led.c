@@ -243,20 +243,22 @@ void tank_led_show_error(uint8_t code)
     if (code < 1) {
         code = 1;
     }
-    if (code > 8) {
-        code = 8;
+    if (code > 9) {
+        code = 9;
     }
+    /* Short flash, long dark gap, so each flash is easy to count.
+     * The same count is shown twice, with a longer gap between the two. */
     tank_led_off();
-    vTaskDelay(pdMS_TO_TICKS(200));
     for (int pass = 0; pass < 2; pass++) {
+        vTaskDelay(pdMS_TO_TICKS(800));
         for (int i = 0; i < code; i++) {
             tank_led_set_brightness(100);
-            vTaskDelay(pdMS_TO_TICKS(420));
+            vTaskDelay(pdMS_TO_TICKS(160));
             tank_led_off();
-            vTaskDelay(pdMS_TO_TICKS(220));
+            vTaskDelay(pdMS_TO_TICKS(700));
         }
         if (pass == 0) {
-            vTaskDelay(pdMS_TO_TICKS(700));
+            vTaskDelay(pdMS_TO_TICKS(1400));
         }
     }
 }

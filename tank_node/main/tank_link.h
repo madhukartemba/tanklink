@@ -18,11 +18,23 @@ bool tank_link_radio_ok(void);
 const uint8_t *tank_link_tank_id(void);
 
 /**
+ * Fault byte sent after every STATUS / PAIR (0 = none). Only faults that are
+ * still true when a packet goes out belong here (battery sense, code 6). It
+ * lives in RAM and is found again on every wake. See tank_errors.h.
+ */
+uint8_t tank_link_fault(void);
+void tank_link_set_fault(uint8_t code);
+
+/**
  * Send status and wait for pump ACK. Retries up to Kconfig attempts.
- * Returns ESP_OK if ACK received.
+ * Returns ESP_OK if ACK received. should_cancel may abort with
+ * ESP_ERR_INVALID_STATE (no error blink). A trailing fault byte follows
+ * the status body.
  */
 esp_err_t tank_link_send_status(const tank_inputs_t *in, uint8_t battery_pct,
-                                bool button_event);
+                                bool button_event,
+                                tank_link_should_cancel_fn should_cancel,
+                                void *ctx);
 
 /**
  * PAIR with ACK retries. Optional cancel returns true to abort (ESP_ERR_INVALID_STATE).

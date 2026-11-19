@@ -120,7 +120,7 @@ Auto-off is per tank (Cmd `0xA6`, Tanks) and the float mode per sensor (Cmd `0xA
 
 ### Tank (read + notify)
 
-The sensor of the **selected** tank (the one the pump fills), plus pump-wide error and interrupted-fill fields. `bound` = 0 when no sensor is paired. 53 bytes:
+The sensor of the **selected** tank (the one the pump fills), plus pump-wide error and interrupted-fill fields. `bound` = 0 when no sensor is paired. 54 bytes:
 
 | Offset | Size | Field |
 | --- | --- | --- |
@@ -142,6 +142,7 @@ The sensor of the **selected** tank (the one the pump fills), plus pump-wide err
 | 44 | 4 | when the pump came back (u32, same format; filled in after the next phone time sync if the clock was unknown at boot) |
 | 48 | 4 | how long it ran before the cut, seconds (u32, ±1 min) |
 | 52 | 1 | tank board revision (0 = not heard yet) |
+| 53 | 1 | selected tank's own fault code (see `ERROR_CODES.md`, 0 = none) |
 
 For tank OTA the app authenticates to the tank with that sensor's token from the Sensors characteristic.
 
@@ -184,6 +185,8 @@ Up to 8 slots. With no sensor paired there is exactly one slot (`sensor_index` `
 | 15 | 3 | firmware major, minor, patch |
 | 18 | 1 | board revision |
 | 19 | 16 | BLE OTA token (zeros if unknown) |
+
+After the entries, one fault byte per entry in the same order (the tank's own light code, 0 = none).
 
 Notified on every packet from any sensor, and when one goes out of range.
 
@@ -238,7 +241,7 @@ Flags: bit 0 = sensor 1 pin HIGH, bit 1 = sensor 2 pin HIGH, bit 2 = button, bit
 
 Exchange:
 
-1. The tank sends STATUS (or PAIR when the button is held ~5 s).
+1. The tank sends STATUS (or PAIR when the button has been held 3 s). STATUS appends one fault byte after the 18-byte body. PAIR appends that byte after the BLE token.
 2. The pump accepts PAIR only while its tank-pair window is open (Cmd `0xA1`). It accepts STATUS only from a paired `tank_id` (up to 4).
 3. The pump replies ACK with the same layout, `type = 0x03`, and the same `seq`. The tank retries up to 5 times without an ACK, with a random 40–440 ms gap so two tanks that collided don't retry in step. It only accepts an ACK carrying its own `tank_id` (seq is per tank).
 4. The pump ignores repeated `seq` values for state changes but still updates RSSI/SNR.

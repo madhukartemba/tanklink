@@ -278,14 +278,18 @@ esp_err_t tank_ble_start_ota_window(uint32_t timeout_ms)
     return ESP_OK;
 }
 
-tank_ble_window_result_t tank_ble_wait_ota_window(void)
+tank_ble_window_result_t tank_ble_wait_ota_window(tank_button_hold_t *carry)
 {
     if (!s_window_active) {
         return TANK_BLE_WINDOW_DONE;
     }
 
-    bool saw_down = false;
-    int64_t hold_start_us = 0;
+    tank_button_hold_t hold;
+    if (carry) {
+        hold = *carry;
+    } else {
+        tank_button_hold_reset(&hold);
+    }
     while (s_window_active) {
         if (tank_ota_state() == TANKLINK_OTA_ST_REBOOTING) {
             vTaskDelay(pdMS_TO_TICKS(200));
@@ -293,8 +297,7 @@ tank_ble_window_result_t tank_ble_wait_ota_window(void)
         }
         if (tank_ota_is_active()) {
             tank_led_ota_pulse_tick();
-            saw_down = false;
-            hold_start_us = 0;
+            tank_button_hold_reset(&hold);
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
@@ -303,28 +306,30 @@ tank_ble_window_result_t tank_ble_wait_ota_window(void)
             break;
         }
 
-        const bool down = tank_board_button_down();
-        const int64_t now = esp_timer_get_time();
-        if (down) {
-            if (!saw_down) {
-                saw_down = true;
-                hold_start_us = now;
-            } else if ((now - hold_start_us) / 1000 >= CONFIG_TANK_BUTTON_HOLD_MS) {
-                s_window_active = false;
-                ble_gap_adv_stop();
-                tank_led_off();
-                return TANK_BLE_WINDOW_PAIR;
+        uint32_t held_ms = 0;
+        uint8_t pct = 0;
+        const tank_button_hold_event_t ev =
+            tank_button_hold_poll(&hold, CONFIG_TANK_BUTTON_HOLD_MS, &held_ms, &pct);
+        if (ev == TANK_HOLD_HOLDING || ev == TANK_HOLD_REACHED) {
+            tank_led_set_brightness(pct);
+            /* A hold started near the end of the window still gets to finish. */
+            const int64_t need =
+                esp_timer_get_time() + (int64_t)CONFIG_TANK_BUTTON_HOLD_MS * 1000;
+            if (s_window_deadline_us < need) {
+                s_window_deadline_us = need;
             }
-        } else if (saw_down) {
-            const int64_t held_ms = (now - hold_start_us) / 1000;
-            saw_down = false;
-            hold_start_us = 0;
-            if (held_ms >= 40) {
-                /* Another LoRa TX; keep advertising and refresh the listen window. */
-                s_window_deadline_us = now + (int64_t)s_window_ms * 1000;
-                ESP_LOGI(TAG, "short press during OTA window — LoRa TX");
-                return TANK_BLE_WINDOW_CLICK;
-            }
+        }
+        if (ev == TANK_HOLD_REACHED) {
+            s_window_active = false;
+            ble_gap_adv_stop();
+            ESP_LOGI(TAG, "hold during OTA window — pairing");
+            return TANK_BLE_WINDOW_PAIR;
+        }
+        if (ev == TANK_HOLD_RELEASED && held_ms >= 40) {
+            tank_led_off();
+            s_window_deadline_us = esp_timer_get_time() + (int64_t)s_window_ms * 1000;
+            ESP_LOGI(TAG, "short press during OTA window — LoRa TX");
+            return TANK_BLE_WINDOW_CLICK;
         }
         vTaskDelay(pdMS_TO_TICKS(20));
     }
@@ -342,5 +347,5 @@ tank_ble_window_result_t tank_ble_run_ota_window(uint32_t timeout_ms)
     if (tank_ble_start_ota_window(timeout_ms) != ESP_OK) {
         return TANK_BLE_WINDOW_DONE;
     }
-    return tank_ble_wait_ota_window();
+    return tank_ble_wait_ota_window(NULL);
 }

@@ -96,6 +96,8 @@ static void hold_progress(uint8_t pct, void *ctx)
 }
 
 typedef struct {
+    bool armed;
+    int64_t up_since_us;
     bool saw_down;
     bool clicked;
 } cancel_ctx_t;
@@ -104,6 +106,19 @@ static bool pair_should_cancel(void *ctx)
 {
     cancel_ctx_t *c = (cancel_ctx_t *)ctx;
     const bool down = tank_board_button_down();
+    const int64_t now = esp_timer_get_time();
+    /* The hold that started pairing is not a cancel. Arm after it is released. */
+    if (!c->armed) {
+        if (down) {
+            c->up_since_us = 0;
+        } else if (c->up_since_us == 0) {
+            c->up_since_us = now;
+        } else if ((now - c->up_since_us) / 1000 >= 80) {
+            c->armed = true;
+        }
+        tank_led_pairing_flash_tick();
+        return false;
+    }
     if (down) {
         c->saw_down = true;
     } else if (c->saw_down) {
@@ -112,6 +127,31 @@ static bool pair_should_cancel(void *ctx)
         return true;
     }
     tank_led_pairing_flash_tick();
+    return false;
+}
+
+typedef struct {
+    tank_button_hold_t hold;
+    bool pair;
+} pair_hold_ctx_t;
+
+static bool status_hold_cancel(void *ctx)
+{
+    pair_hold_ctx_t *c = (pair_hold_ctx_t *)ctx;
+    uint32_t held = 0;
+    uint8_t pct = 0;
+    const tank_button_hold_event_t ev =
+        tank_button_hold_poll(&c->hold, CONFIG_TANK_BUTTON_HOLD_MS, &held, &pct);
+    if (ev == TANK_HOLD_REACHED) {
+        c->pair = true;
+        tank_led_set_brightness(100);
+        return true;
+    }
+    if (ev == TANK_HOLD_HOLDING) {
+        tank_led_set_brightness(pct);
+    } else if (ev == TANK_HOLD_RELEASED) {
+        tank_led_off();
+    }
     return false;
 }
 
@@ -137,12 +177,6 @@ static esp_err_t run_pairing_mode(uint8_t bat)
     save_paired(false);
     tank_led_pairing_flash_start();
     cancel_ctx_t cancel = {0};
-    /* Ignore the release that ended the hold. */
-    while (tank_board_button_down()) {
-        tank_led_pairing_flash_tick();
-        vTaskDelay(pdMS_TO_TICKS(20));
-    }
-    vTaskDelay(pdMS_TO_TICKS(40));
 
     const int64_t deadline =
         esp_timer_get_time() + (int64_t)CONFIG_TANK_PAIR_WINDOW_MS * 1000;
@@ -161,7 +195,7 @@ static esp_err_t run_pairing_mode(uint8_t bat)
             /* Extra STATUS so the pump marks online even if PAIR apply was missed. */
             tank_inputs_t in;
             tank_board_read(&in);
-            (void)tank_link_send_status(&in, bat, false);
+            (void)tank_link_send_status(&in, bat, false, NULL, NULL);
             ESP_LOGI(TAG, "paired OK");
             return ESP_OK;
         }
@@ -224,19 +258,34 @@ static void handle_button_gesture(void)
         ESP_LOGW(TAG, "BLE OTA window failed: %s", esp_err_to_name(ble_err));
     }
 
-    esp_err_t err = tank_link_send_status(&in, bat, true);
+    pair_hold_ctx_t hold = {0};
+    esp_err_t err = tank_link_send_status(&in, bat, true, status_hold_cancel, &hold);
     ESP_LOGI(TAG, "status result: %s", esp_err_to_name(err));
     save_last_flags(now_flags);
+    if (hold.pair) {
+        tank_ble_stop();
+        (void)run_pairing_mode(bat);
+        return;
+    }
 
     if (ble_err == ESP_OK) {
+        /* A hold that began during the send keeps counting in the window. */
+        tank_button_hold_t carry = hold.hold;
         for (;;) {
-            const tank_ble_window_result_t w = tank_ble_wait_ota_window();
+            const tank_ble_window_result_t w = tank_ble_wait_ota_window(&carry);
             if (w == TANK_BLE_WINDOW_CLICK) {
                 tank_board_read(&in);
                 bat = tank_battery_percent();
-                err = tank_link_send_status(&in, bat, true);
+                pair_hold_ctx_t again = {0};
+                err = tank_link_send_status(&in, bat, true, status_hold_cancel, &again);
                 ESP_LOGI(TAG, "repeat status: %s", esp_err_to_name(err));
                 save_last_flags(flags_from_inputs(&in));
+                if (again.pair) {
+                    tank_ble_stop();
+                    (void)run_pairing_mode(bat);
+                    return;
+                }
+                carry = again.hold;
                 continue;
             }
             if (w == TANK_BLE_WINDOW_PAIR) {
@@ -272,6 +321,7 @@ void app_main(void)
     }
     if (tank_battery_init() != ESP_OK) {
         ESP_LOGW(TAG, "battery ADC unavailable — pct=0");
+        tank_link_set_fault(TANK_ERR_BATTERY);
     }
     if (tank_link_init() != ESP_OK) {
         ESP_LOGW(TAG, "LoRa unavailable — TX will fail soft");
@@ -293,13 +343,16 @@ void app_main(void)
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
         tank_led_boot();
         if (load_paired() && tank_link_radio_ok()) {
-            err = tank_link_send_status(&in, bat, false);
+            err = tank_link_send_status(&in, bat, false, NULL, NULL);
             ESP_LOGI(TAG, "boot status: %s", esp_err_to_name(err));
             save_last_flags(now_flags);
         }
+        if (tank_link_fault() == TANK_ERR_BATTERY) {
+            tank_led_show_error(TANK_ERR_BATTERY);
+        }
     } else if (tank_board_woke_from_timer()) {
         if (load_paired() && tank_link_radio_ok()) {
-            err = tank_link_send_status(&in, bat, false);
+            err = tank_link_send_status(&in, bat, false, NULL, NULL);
             ESP_LOGI(TAG, "heartbeat: %s", esp_err_to_name(err));
             save_last_flags(now_flags);
         }
@@ -312,7 +365,7 @@ void app_main(void)
                 ESP_LOGI(TAG, "flags 0x%02x -> 0x%02x", last_flags, now_flags);
             }
             if (load_paired() && tank_link_radio_ok()) {
-                err = tank_link_send_status(&in, bat, false);
+                err = tank_link_send_status(&in, bat, false, NULL, NULL);
                 ESP_LOGI(TAG, "float status: %s", esp_err_to_name(err));
                 save_last_flags(now_flags);
             } else {
@@ -321,7 +374,7 @@ void app_main(void)
         }
     } else {
         if (load_paired() && tank_link_radio_ok()) {
-            err = tank_link_send_status(&in, bat, false);
+            err = tank_link_send_status(&in, bat, false, NULL, NULL);
             save_last_flags(now_flags);
             (void)err;
         }

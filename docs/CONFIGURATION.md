@@ -92,7 +92,7 @@ Menu: **TankLink Tank Node**. The values below are the ones in `sdkconfig.defaul
 | `TANK_HEARTBEAT_SEC` | `600` | Deep-sleep wake interval when paired. Keep it well under the pump's `PUMP_TANK_STALE_SEC` (1500) |
 | `TANK_TX_RETRIES` | `5` | Send attempts until the pump ACKs |
 | `TANK_ACK_TIMEOUT_MS` | `800` | Wait per attempt |
-| `TANK_BUTTON_HOLD_MS` | `5000` | Hold = LoRa pairing |
+| `TANK_BUTTON_HOLD_MS` | `3000` | Hold = LoRa pairing. Starts at 3 s, without waiting for release |
 | `TANK_PAIR_WINDOW_MS` | `30000` | How long the tank keeps trying to pair |
 | `TANK_BLE_OTA_WINDOW_MS` | `10000` | BLE advertise window after a short press, for OTA |
 | `TANK_BUTTON_AWAKE_MS` | `10000` | Stay awake after a short press |
