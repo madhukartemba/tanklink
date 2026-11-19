@@ -1,7 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
+import '../diag/app_log.dart';
 import 'semver.dart';
 
 const githubRequestTimeout = Duration(seconds: 25);
@@ -38,21 +42,132 @@ class TaggedReleaseAssets {
   final int sizeBytes;
 }
 
+/// How often the app looks for updates while it is open. A check younger
+/// than [updateRecheckAfter] is reused (a minute less than the interval, so
+/// a timer tick never lands just short of it).
+const updateCheckInterval = Duration(minutes: 15);
+const updateRecheckAfter = Duration(minutes: 14);
+
+/// GitHub refused because this connection used up its hourly allowance
+/// (60 calls an hour for apps that don't sign in, shared by everything on
+/// the same internet connection).
+class GitHubRateLimitException implements Exception {
+  GitHubRateLimitException(this.resetAt);
+  final DateTime? resetAt;
+
+  String get message {
+    final reset = resetAt;
+    if (reset == null) return 'Update check limit reached. Try again later.';
+    final mins = reset.difference(DateTime.now()).inMinutes + 1;
+    return mins <= 1
+        ? 'Update check limit reached. Try again in a minute.'
+        : 'Update check limit reached. Try again in $mins min.';
+  }
+
+  @override
+  String toString() => message;
+}
+
+Future<List<dynamic>>? _releasesInFlight;
+DateTime? _releasesAt;
+List<dynamic>? _releases;
+
+/// The repo's release list. Pump, tank and app checks all use it, so:
+/// - calls within a minute of each other share one request;
+/// - the last list and its ETag are saved, and GitHub is asked "changed
+///   since?" (saves data; for apps that don't sign in, a 304 still counts
+///   against the hourly limit, checked 2026-11-19);
+/// - when GitHub refuses (limit reached), the saved list is used instead.
 Future<List<dynamic>> fetchGitHubReleases({
   required String owner,
   required String repo,
   int perPage = 30,
-}) async {
+}) {
+  final recent = _releases;
+  final at = _releasesAt;
+  if (recent != null &&
+      at != null &&
+      DateTime.now().difference(at) < const Duration(minutes: 1)) {
+    return Future.value(recent);
+  }
+  return _releasesInFlight ??= _fetchReleases(owner, repo, perPage)
+      .then((list) {
+        _releases = list;
+        _releasesAt = DateTime.now();
+        return list;
+      })
+      .whenComplete(() => _releasesInFlight = null);
+}
+
+Future<List<dynamic>> _fetchReleases(
+  String owner,
+  String repo,
+  int perPage,
+) async {
   final uri = Uri.parse(
     'https://api.github.com/repos/$owner/$repo/releases?per_page=$perPage',
   );
+  final cache = await _ReleaseCache.open(owner, repo);
+  final saved = await cache.read();
   final res = await http
-      .get(uri, headers: githubApiHeaders)
+      .get(
+        uri,
+        headers: {
+          ...githubApiHeaders,
+          if (saved != null) 'If-None-Match': saved.etag,
+        },
+      )
       .timeout(githubRequestTimeout);
-  if (res.statusCode != 200) {
-    throw StateError('GitHub API ${res.statusCode}');
+
+  if (res.statusCode == 304 && saved != null) {
+    return jsonDecode(saved.body) as List<dynamic>;
   }
-  return jsonDecode(res.body) as List<dynamic>;
+  if (res.statusCode == 200) {
+    final etag = res.headers['etag'];
+    if (etag != null) await cache.write(etag, res.body);
+    return jsonDecode(res.body) as List<dynamic>;
+  }
+  final limited =
+      (res.statusCode == 403 || res.statusCode == 429) &&
+      res.headers['x-ratelimit-remaining'] == '0';
+  if (limited) {
+    AppLog.w('update', 'GitHub rate limit reached');
+    if (saved != null) return jsonDecode(saved.body) as List<dynamic>;
+    final reset = int.tryParse(res.headers['x-ratelimit-reset'] ?? '');
+    throw GitHubRateLimitException(
+      reset == null ? null : DateTime.fromMillisecondsSinceEpoch(reset * 1000),
+    );
+  }
+  throw StateError('GitHub API ${res.statusCode}');
+}
+
+/// The last release list and its ETag, in the app support dir.
+class _ReleaseCache {
+  _ReleaseCache(this._file);
+  final File _file;
+
+  static Future<_ReleaseCache> open(String owner, String repo) async {
+    final dir = await getApplicationSupportDirectory();
+    return _ReleaseCache(
+      File(p.join(dir.path, 'releases_${owner}_$repo.json')),
+    );
+  }
+
+  Future<({String etag, String body})?> read() async {
+    try {
+      if (!await _file.exists()) return null;
+      final j = jsonDecode(await _file.readAsString()) as Map<String, dynamic>;
+      return (etag: j['etag'] as String, body: j['body'] as String);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> write(String etag, String body) async {
+    try {
+      await _file.writeAsString(jsonEncode({'etag': etag, 'body': body}));
+    } catch (_) {}
+  }
 }
 
 /// Highest semver among releases whose tag starts with [tagPrefix] and includes both assets.

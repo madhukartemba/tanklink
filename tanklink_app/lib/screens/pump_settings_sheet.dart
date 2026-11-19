@@ -20,12 +20,14 @@ import 'settings/factory_reset_dialog.dart';
 import 'report_problem_screen.dart';
 
 Future<void> showPumpSettingsSheet(BuildContext context) {
-  // Refresh release metadata when opening settings.
-  context.read<PumpFirmwareUpdate>().checkForUpdates(force: true);
+  // Refresh release metadata when opening settings, unless it was checked
+  // in the last few minutes (opening settings often must not use up
+  // GitHub's hourly limit).
+  context.read<PumpFirmwareUpdate>().checkForUpdates();
   context.read<PumpFirmwareUpdate>().clearSnooze();
-  context.read<TankFirmwareUpdate>().checkForUpdates(force: true);
+  context.read<TankFirmwareUpdate>().checkForUpdates();
   context.read<TankFirmwareUpdate>().clearSnooze();
-  context.read<AppSelfUpdate>().checkForUpdates(force: true);
+  context.read<AppSelfUpdate>().checkForUpdates();
   context.read<AppSelfUpdate>().clearSnooze();
   return showModalBottomSheet<void>(
     context: context,

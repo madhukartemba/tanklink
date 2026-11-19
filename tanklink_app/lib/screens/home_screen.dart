@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +8,7 @@ import '../ble/pump_session.dart';
 import '../update/app_self_update.dart';
 import '../update/home_update_banner.dart';
 import '../update/firmware_update.dart';
+import '../update/github_release_util.dart';
 import 'add_pump_screen.dart';
 import 'pump_list_screen.dart';
 import 'pump_settings_sheet.dart';
@@ -22,30 +25,49 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  /// Looks for updates every [updateCheckInterval] while the app is in the
+  /// foreground, so an app left open for days still finds new releases.
+  Timer? _updateTimer;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<PumpFirmwareUpdate>().checkForUpdates();
-      context.read<TankFirmwareUpdate>().checkForUpdates();
-      context.read<AppSelfUpdate>().checkForUpdates();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startUpdateChecks());
   }
 
   @override
   void dispose() {
+    _updateTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _checkForUpdates() {
+    if (!mounted) return;
+    context.read<PumpFirmwareUpdate>().checkForUpdates();
+    context.read<TankFirmwareUpdate>().checkForUpdates();
+    context.read<AppSelfUpdate>().checkForUpdates();
+  }
+
+  /// Checks now (skipped if checked in the last few minutes), then on a timer.
+  void _startUpdateChecks() {
+    _checkForUpdates();
+    _updateTimer?.cancel();
+    _updateTimer = Timer.periodic(
+      updateCheckInterval,
+      (_) => _checkForUpdates(),
+    );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       context.read<PumpSession>().onAppResumed();
-      context.read<PumpFirmwareUpdate>().checkForUpdates();
-      context.read<TankFirmwareUpdate>().checkForUpdates();
-      context.read<AppSelfUpdate>().checkForUpdates();
+      _startUpdateChecks();
+    } else if (state == AppLifecycleState.paused) {
+      _updateTimer?.cancel();
+      _updateTimer = null;
     }
   }
 

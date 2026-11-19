@@ -79,7 +79,6 @@ class FirmwareUpdate extends ChangeNotifier {
   static const repoOwner = 'madhukartemba';
   static const repoName = 'tanklink';
   static const manifestAsset = 'firmware-manifest.json';
-  static const _recheckAfter = Duration(hours: 20);
 
   final FirmwareChannel channel;
 
@@ -99,6 +98,10 @@ class FirmwareUpdate extends ChangeNotifier {
   /// Revision of the connected board, 0 while unknown.
   int _boardRev = 0;
   DateTime? _checkedAt;
+
+  /// Last check attempt, good or bad. Checks within [updateRecheckAfter]
+  /// of it are skipped unless forced.
+  DateTime? _attemptAt;
   double _emaBps = 0;
   DateTime? _transferStarted;
 
@@ -111,6 +114,7 @@ class FirmwareUpdate extends ChangeNotifier {
     _boardRev = rev;
     if (rev != 0 && !latestHwRevs.contains(rev)) {
       _checkedAt = null;
+      _attemptAt = null;
     }
   }
 
@@ -180,12 +184,13 @@ class FirmwareUpdate extends ChangeNotifier {
         phase == FwUpdatePhase.transfer) {
       return;
     }
+    final last = _attemptAt;
     if (!force &&
-        _checkedAt != null &&
-        DateTime.now().difference(_checkedAt!) < _recheckAfter &&
-        latestVersion != null) {
+        last != null &&
+        DateTime.now().difference(last) < updateRecheckAfter) {
       return;
     }
+    _attemptAt = DateTime.now();
 
     phase = FwUpdatePhase.checking;
     errorMessage = null;
@@ -200,8 +205,10 @@ class FirmwareUpdate extends ChangeNotifier {
       phase = FwUpdatePhase.idle;
       notifyListeners();
     } catch (e) {
-      debugPrint('${channel.label} update check failed: $e');
-      errorMessage = 'Couldn’t check for ${channel.label} updates';
+      AppLog.w('update', '${channel.label} update check failed: $e');
+      errorMessage = e is GitHubRateLimitException
+          ? e.message
+          : 'Couldn’t check for ${channel.label} updates';
       phase = FwUpdatePhase.idle;
       notifyListeners();
     }

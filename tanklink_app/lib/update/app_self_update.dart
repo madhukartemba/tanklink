@@ -113,6 +113,10 @@ class AppSelfUpdate extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Last check attempt, good or bad. Checks within [updateRecheckAfter]
+  /// of it are skipped unless forced.
+  DateTime? _attemptAt;
+
   Future<void> checkForUpdates({bool force = false}) async {
     if (!enabled) return;
     if (phase == FwUpdatePhase.checking ||
@@ -121,15 +125,13 @@ class AppSelfUpdate extends ChangeNotifier {
       return;
     }
 
-    if (!force) {
-      final prefs = await SharedPreferences.getInstance();
-      final last = prefs.getInt(_prefsCheckAt) ?? 0;
-      final age = DateTime.now().millisecondsSinceEpoch - last;
-      if (age < const Duration(hours: 6).inMilliseconds &&
-          latestVersion != null) {
-        return;
-      }
+    final last = _attemptAt;
+    if (!force &&
+        last != null &&
+        DateTime.now().difference(last) < updateRecheckAfter) {
+      return;
     }
+    _attemptAt = DateTime.now();
 
     phase = FwUpdatePhase.checking;
     errorMessage = null;
@@ -173,7 +175,9 @@ class AppSelfUpdate extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       AppLog.w('update', 'App update check failed: $e');
-      errorMessage = 'Couldn’t check for app updates';
+      errorMessage = e is GitHubRateLimitException
+          ? e.message
+          : 'Couldn’t check for app updates';
       phase = FwUpdatePhase.error;
       notifyListeners();
       phase = FwUpdatePhase.idle;

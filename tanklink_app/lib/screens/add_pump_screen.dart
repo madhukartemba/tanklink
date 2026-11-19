@@ -17,6 +17,10 @@ class AddPumpScreen extends StatefulWidget {
 class _AddPumpScreenState extends State<AddPumpScreen> {
   PumpSession? _session;
 
+  /// Remote id of the pump being claimed; its row shows a spinner and the
+  /// other rows can't be tapped meanwhile.
+  String? _claimingId;
+
   @override
   void initState() {
     super.initState();
@@ -32,9 +36,18 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
     super.dispose();
   }
 
+  /// A pump that is already saved isn't claimed again (that fails); it is
+  /// opened on the home screen instead.
+  Future<void> _open(SavedPump pump) async {
+    final session = context.read<PumpSession>();
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    await session.selectPump(pump);
+  }
+
   Future<void> _claim(int index) async {
     final session = context.read<PumpSession>();
     final device = session.scanResults[index].device;
+    setState(() => _claimingId = device.remoteId.str);
     try {
       await session.claimDevice(device);
       if (!mounted) return;
@@ -69,6 +82,8 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
           ),
         ),
       );
+    } finally {
+      if (mounted) setState(() => _claimingId = null);
     }
   }
 
@@ -83,7 +98,9 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
         actions: [
           IconButton(
             tooltip: 'Scan again',
-            onPressed: session.scanning ? null : () => session.startScan(),
+            onPressed: session.scanning || _claimingId != null
+                ? null
+                : () => session.startScan(),
             icon: session.scanning
                 ? const SizedBox(
                     width: 20,
@@ -147,9 +164,12 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
                       final name = r.advertisementData.advName.isNotEmpty
                           ? r.advertisementData.advName
                           : 'TankLink device';
-                      final known = session.pumps.any(
-                        (p) => p.remoteId == r.device.remoteId.str,
-                      );
+                      final id = r.device.remoteId.str;
+                      final saved = session.pumps
+                          .where((p) => p.remoteId == id)
+                          .firstOrNull;
+                      final claiming = _claimingId == id;
+                      final busy = _claimingId != null;
                       return Material(
                         color: scheme.surfaceContainerHighest.withValues(
                           alpha: 0.55,
@@ -174,23 +194,45 @@ class _AddPumpScreenState extends State<AddPumpScreen> {
                             name,
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
-                          subtitle: known
+                          subtitle: claiming
                               ? Text(
-                                  'Already saved',
+                                  session.status,
+                                  style: TextStyle(color: scheme.primary),
+                                )
+                              : saved != null
+                              ? Text(
+                                  'Already added · tap to open',
                                   style: TextStyle(
                                     color: scheme.onSurfaceVariant,
                                   ),
                                 )
                               : null,
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _SignalBars(rssi: r.rssi),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.chevron_right_rounded),
-                            ],
-                          ),
-                          onTap: () => _claim(i),
+                          trailing: claiming
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _SignalBars(rssi: r.rssi),
+                                    const SizedBox(width: 8),
+                                    Icon(
+                                      saved != null
+                                          ? Icons.check_circle_outline_rounded
+                                          : Icons.chevron_right_rounded,
+                                    ),
+                                  ],
+                                ),
+                          enabled: !busy || claiming,
+                          onTap: busy
+                              ? null
+                              : saved != null
+                              ? () => _open(saved)
+                              : () => _claim(i),
                         ),
                       );
                     },
