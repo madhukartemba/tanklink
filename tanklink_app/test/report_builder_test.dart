@@ -158,4 +158,38 @@ void main() {
       expect(back.labels, r.labels);
     });
   });
+
+  group('contact email', () {
+    BuiltReport build(String email) => buildReport(
+      description: 'x',
+      problem: ReportProblem.manual,
+      versions: versions,
+      now: now,
+      contactEmail: email,
+      random: Random(1),
+    );
+
+    test('sent as its own field and shown in the report', () {
+      final r = build('  pat@example.com ');
+      expect(r.contact, 'pat@example.com');
+      expect(r.toJson('k')['contact'], 'pat@example.com');
+      expect(r.text, contains('Contact: pat@example.com'));
+      expect(BuiltReport.fromJson(r.toJson('k')).contact, 'pat@example.com');
+    });
+
+    test('left out when empty', () {
+      final r = build('');
+      expect(r.toJson('k').containsKey('contact'), isFalse);
+      expect(r.text.contains('Contact:'), isFalse);
+      expect(BuiltReport.fromJson(r.toJson('k')).contact, '');
+    });
+
+    test('isPlausibleEmail', () {
+      expect(isPlausibleEmail(''), isTrue);
+      expect(isPlausibleEmail('a.b+c@mail.co.in'), isTrue);
+      expect(isPlausibleEmail('no-at.example.com'), isFalse);
+      expect(isPlausibleEmail('a@nodot'), isFalse);
+      expect(isPlausibleEmail('a b@example.com'), isFalse);
+    });
+  });
 }

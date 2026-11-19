@@ -14,19 +14,22 @@ class _ReportLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: TextButton.icon(
-        style: TextButton.styleFrom(
-          foregroundColor: color,
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          minimumSize: const Size(0, 32),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          visualDensity: VisualDensity.compact,
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: TextButton.icon(
+          style: TextButton.styleFrom(
+            foregroundColor: color,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            minimumSize: const Size(0, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+          ),
+          onPressed: onPressed,
+          icon: const Icon(Icons.bug_report_outlined, size: 18),
+          label: const Text('Report'),
         ),
-        onPressed: onPressed,
-        icon: const Icon(Icons.bug_report_outlined, size: 18),
-        label: const Text('Report'),
       ),
     );
   }
@@ -261,60 +264,95 @@ class _CodeBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final fg = scheme.onErrorContainer;
+    // Title, code and X share one row of this height so they line up.
+    const rowHeight = 32.0;
     return Material(
       color: scheme.errorContainer.withValues(alpha: 0.85),
       borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+        padding: EdgeInsets.fromLTRB(14, 8, onClear != null ? 4 : 14, 8),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.error_outline_rounded, color: scheme.onErrorContainer),
+            SizedBox(
+              height: rowHeight,
+              child: Icon(Icons.error_outline_rounded, color: fg),
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: scheme.onErrorContainer,
-                      fontWeight: FontWeight.w700,
+                  SizedBox(
+                    height: rowHeight,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.titleSmall?.copyWith(
+                              color: fg,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: fg.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'Code $code',
+                            style: text.labelSmall?.copyWith(
+                              color: fg,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if (onClear != null)
+                          IconButton(
+                            tooltip: 'Clear error',
+                            onPressed: onClear,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 40,
+                              height: rowHeight,
+                            ),
+                            iconSize: 20,
+                            icon: Icon(Icons.close_rounded, color: fg),
+                          ),
+                      ],
                     ),
                   ),
-                  if (detail != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      detail!,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onErrorContainer.withValues(alpha: 0.9),
-                        height: 1.3,
+                  if (detail != null)
+                    Padding(
+                      padding: EdgeInsets.only(right: onClear != null ? 10 : 0),
+                      child: Text(
+                        detail!,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.bodySmall?.copyWith(
+                          color: fg.withValues(alpha: 0.9),
+                          height: 1.3,
+                        ),
                       ),
                     ),
-                  ],
                   _ReportLink(
-                    color: scheme.onErrorContainer,
+                    color: fg,
                     onPressed: () => openReportScreen(context, problem),
                   ),
                 ],
               ),
             ),
-            Text(
-              '$code',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: scheme.onErrorContainer,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            if (onClear != null)
-              IconButton(
-                tooltip: 'Clear error',
-                visualDensity: VisualDensity.compact,
-                onPressed: onClear,
-                icon: Icon(Icons.close_rounded, color: scheme.onErrorContainer),
-              ),
           ],
         ),
       ),
@@ -322,7 +360,6 @@ class _CodeBanner extends StatelessWidget {
   }
 }
 
-/// The last connect attempt failed or the pump dropped the link.
 class ConnectFailedBanner extends StatelessWidget {
   const ConnectFailedBanner({super.key, required this.session});
 

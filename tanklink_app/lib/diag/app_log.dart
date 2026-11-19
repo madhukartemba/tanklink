@@ -68,7 +68,8 @@ class AppLog {
     _mem.add(line);
     if (_mem.length > _memLines) _mem.removeRange(0, _mem.length - _memLines);
     _pending.add(line);
-    if (kDebugMode) debugPrintSynchronously(line);
+    // Root zone: main()'s print hook feeds prints back into here.
+    if (kDebugMode) Zone.root.print(line);
     _scheduleFlush();
   }
 

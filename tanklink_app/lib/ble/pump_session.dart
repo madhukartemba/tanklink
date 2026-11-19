@@ -99,6 +99,11 @@ class PumpSession extends ChangeNotifier {
   /// Selected tank sensor's own light code, 0 when it has none.
   int tankFault = 0;
 
+  /// Debug builds only: codes that replace the pump's reported ones so the
+  /// error banners and reports can be tried without breaking hardware.
+  int? simPumpError;
+  int? simTankFault;
+
   /// Set when a fill was cut short by a power cut or restart, until dismissed.
   FillInterruption? fillInterruption;
   bool pumpClockValid = false;
@@ -779,7 +784,27 @@ class PumpSession extends ChangeNotifier {
         tankOnline = false;
       }
     }
+    _applySimulatedErrors();
     _ensureAgeTicker();
+  }
+
+  void _applySimulatedErrors() {
+    if (!kDebugMode) return;
+    if (simPumpError != null) pumpLastError = simPumpError!;
+    if (simTankFault != null) tankFault = simTankFault!;
+  }
+
+  /// Debug builds only. Null leaves that code to the pump again.
+  void simulateErrors({int? pump, int? tank}) {
+    if (!kDebugMode) return;
+    simPumpError = pump;
+    simTankFault = tank;
+    AppLog.w(
+      'debug',
+      'Simulated pump error ${pump ?? '-'}, tank code ${tank ?? '-'}',
+    );
+    _applySimulatedErrors();
+    notifyListeners();
   }
 
   void _applySensors(List<TankSensor>? list) {
@@ -865,6 +890,7 @@ class PumpSession extends ChangeNotifier {
   }
 
   Future<void> clearPumpError() async {
+    simPumpError = null;
     pumpLastError = TankLinkUuids.pumpErrNone;
     notifyListeners();
     if (_cmd == null || !authed) return;
@@ -1269,11 +1295,11 @@ class PumpSession extends ChangeNotifier {
   }
 
   void _logTankStatusChanges(TankStatus t) {
-    if (t.pumpLastError != pumpLastError) {
+    if (simPumpError == null && t.pumpLastError != pumpLastError) {
       AppLog.w('pump', 'Pump error ${t.pumpLastError} (was $pumpLastError)');
     }
     final fault = t.bound ? t.tankFault : 0;
-    if (fault != tankFault) {
+    if (simTankFault == null && fault != tankFault) {
       AppLog.w('tank', 'Tank sensor code $fault (was $tankFault)');
     }
     if (t.bound && t.online != tankOnline) {

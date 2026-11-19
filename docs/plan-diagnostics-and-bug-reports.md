@@ -37,6 +37,7 @@ Ships alone; already useful for app-side failures (BLE, updates, crashes).
    - Checkboxes, on by default: app log, pump diagnostics (greyed out until Phase 2 or when not connected), phone details.
    - **Preview** button showing the exact text that will be sent.
    - **Send**: POSTs the report to the report service (below). On success, shows the short report ID it returns ("Sent. Report ID K7Q2") so the user can quote it.
+   - **Your email (optional)**: sent as `contact` so the developer can write back. Remembered for the next report. The issue gets a `has-contact` label. (Next app release; a two-way conversation in the app was considered and dropped in favour of this.)
    - **No internet or service down**: the report goes into a queue in the app support dir and is sent on the next app start, or when the user taps Retry. At most 10 queued; oldest dropped.
    - Secondary **Save or share file**: builds `tanklink-report-YYYYMMDD-HHMM.txt` and opens the Android share sheet (`share_plus`), for when sending won't work at all.
    - One line under Send says where it goes: "Sent to the TankLink developer to fix the problem."

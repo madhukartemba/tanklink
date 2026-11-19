@@ -32,6 +32,7 @@ class BuiltReport {
     required this.labels,
     required this.summary,
     required this.text,
+    this.contact = '',
   });
 
   final String title;
@@ -40,6 +41,9 @@ class BuiltReport {
   final String summary;
   final String text;
 
+  /// Email the user gave so the developer can reply. Empty = none.
+  final String contact;
+
   Map<String, Object> toJson(String appKey) => {
     'app_key': appKey,
     'fingerprint': fingerprint,
@@ -47,6 +51,7 @@ class BuiltReport {
     'labels': labels,
     'summary': summary,
     'report_text': text,
+    if (contact.isNotEmpty) 'contact': contact,
   };
 
   factory BuiltReport.fromJson(Map<String, dynamic> j) => BuiltReport(
@@ -55,6 +60,7 @@ class BuiltReport {
     labels: (j['labels'] as List).cast<String>(),
     summary: j['summary'] as String,
     text: j['report_text'] as String,
+    contact: (j['contact'] as String?) ?? '',
   );
 }
 
@@ -90,6 +96,7 @@ BuiltReport buildReport({
   Map<String, String> pumpState = const {},
   String? appLog,
   String when = '',
+  String contactEmail = '',
   List<List<int>> secrets = const [],
   Random? random,
 }) {
@@ -137,6 +144,8 @@ BuiltReport buildReport({
     ..writeln('== What happened ==')
     ..writeln(desc.isEmpty ? '(no description)' : desc);
   if (when.isNotEmpty) t.writeln('When: $when');
+  final contact = contactEmail.trim();
+  if (contact.isNotEmpty) t.writeln('Contact: $contact');
   t
     ..writeln()
     ..writeln('== Problem ==')
@@ -171,7 +180,15 @@ BuiltReport buildReport({
     labels: labels,
     summary: redact(summary.toString().trimRight(), secrets),
     text: redact(t.toString(), secrets),
+    contact: contact,
   );
+}
+
+/// Loose check: something@something.tld, no spaces. Empty is allowed.
+bool isPlausibleEmail(String s) {
+  final e = s.trim();
+  return e.isEmpty ||
+      (e.length <= 254 && RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(e));
 }
 
 /// Replaces every form of each secret: hex (any case, optional `:` or space

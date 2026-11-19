@@ -12,6 +12,7 @@
  *   labels       string[] e.g. ["pump-err-3", "pump-0.14.0", "app-1.3.0"]
  *   summary      string   short markdown-free text: description + versions
  *   report_text  string   the full report the user previewed
+ *   contact      string   optional email the user gave for follow-up
  *
  * Response: 200 {"id": "K7Q2MX"} | 4xx/5xx {"error": "..."}
  *
@@ -31,6 +32,9 @@ const MAX_BODY_BYTES = 200 * 1024;
 const MAX_TITLE = 120;
 const MAX_SUMMARY = 4000;
 const MAX_LABELS = 8;
+const CONTACT_LABEL = "has-contact";
+// Loose: one @, a dot after it, no spaces or markdown-breaking characters.
+const EMAIL_RE = /^[^\s@`<>]+@[^\s@`<>]+\.[^\s@`<>]+$/;
 const GH_API = "https://api.github.com";
 const RELEASES_FRESH_SEC = 600;
 const RELEASES_KEEP_SEC = 86400;
@@ -104,12 +108,16 @@ function validate(b) {
   if (!fingerprint || fingerprint.length > 200) return "bad fingerprint";
   if (!title) return "missing title";
   if (!reportText) return "missing report";
+  const contact = str(b.contact).trim();
+  if (contact && (contact.length > 254 || !EMAIL_RE.test(contact))) {
+    return "bad contact";
+  }
   const labels = (Array.isArray(b.labels) ? b.labels : [])
     .filter((l) => typeof l === "string")
     .map((l) => l.toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 40))
     .filter((l) => l.length > 0)
     .slice(0, MAX_LABELS);
-  return { fingerprint, title, summary, reportText, labels };
+  return { fingerprint, title, summary, reportText, labels, contact };
 }
 
 async function fileReport(env, r) {
@@ -128,6 +136,8 @@ async function fileReport(env, r) {
   const fpLabel = "fp-" + (await sha256Hex(r.fingerprint)).slice(0, 12);
   const text = [
     `**Report ${id}**${fileUrl ? ` · [full report](${fileUrl})` : ""}`,
+    // In backticks: copyable as is, and GitHub never treats it as a mention.
+    ...(r.contact ? ["", `Contact: \`${r.contact}\``] : []),
     "",
     quote(r.summary),
   ].join("\n");
@@ -147,11 +157,16 @@ async function fileReport(env, r) {
 
   if (issueNumber) {
     await gh(env, "POST", `/issues/${issueNumber}/comments`, { body: text });
+    if (r.contact) {
+      await gh(env, "POST", `/issues/${issueNumber}/labels`, {
+        labels: [CONTACT_LABEL],
+      });
+    }
   } else {
     const issue = await gh(env, "POST", "/issues", {
       title: r.title,
       body: `${text}\n\n<sub>fingerprint: ${escapeMentions(r.fingerprint)}</sub>`,
-      labels: [...r.labels, fpLabel],
+      labels: [...r.labels, fpLabel, ...(r.contact ? [CONTACT_LABEL] : [])],
     });
     await gh(env, "PUT", indexPath, {
       message: `Index ${fpLabel} → #${issue.number}`,

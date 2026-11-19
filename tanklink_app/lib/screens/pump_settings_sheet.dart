@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -18,6 +19,7 @@ import 'settings/led_brightness_tile.dart';
 import 'settings/auto_off_section.dart';
 import 'settings/factory_reset_dialog.dart';
 import 'report_problem_screen.dart';
+import '../util/error_text.dart';
 
 Future<void> showPumpSettingsSheet(BuildContext context) {
   // Refresh release metadata when opening settings, unless it was checked
@@ -268,6 +270,14 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => openReportScreen(context),
             ),
+            if (kDebugMode && ready)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.science_outlined),
+                title: const Text('Simulate an error'),
+                subtitle: const Text('Debug build only'),
+                onTap: () => _simulateErrorDialog(context, session),
+              ),
             if (ready && session.pumpLastError != 0)
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -409,4 +419,54 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
       ),
     );
   }
+}
+
+/// Debug builds only: pick a pump or tank code to show as if the board sent it.
+Future<void> _simulateErrorDialog(
+  BuildContext context,
+  PumpSession session,
+) async {
+  Widget pick(String label, VoidCallback onTap) => ListTile(
+    dense: true,
+    title: Text(label),
+    onTap: () {
+      onTap();
+      Navigator.of(context).pop();
+    },
+  );
+  await showDialog<void>(
+    context: context,
+    builder: (context) => SimpleDialog(
+      title: const Text('Simulate an error'),
+      children: [
+        pick('Stop simulating', () => session.simulateErrors()),
+        const Divider(),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(24, 4, 24, 4),
+          child: Text('Pump'),
+        ),
+        for (final w in TankLinkErrors.pump)
+          pick(
+            '${w.code} · ${w.name}',
+            () => session.simulateErrors(
+              pump: w.code,
+              tank: session.simTankFault,
+            ),
+          ),
+        const Divider(),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(24, 4, 24, 4),
+          child: Text('Tank sensor'),
+        ),
+        for (final w in TankLinkErrors.tank)
+          pick(
+            '${w.code} · ${w.name}',
+            () => session.simulateErrors(
+              pump: session.simPumpError,
+              tank: w.code,
+            ),
+          ),
+      ],
+    ),
+  );
 }

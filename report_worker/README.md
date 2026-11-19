@@ -23,6 +23,8 @@ Receives "Report a problem" submissions from the app and files them in a private
 - one issue per distinct problem; a report with the same fingerprint as an open issue adds a comment instead
 - `index/fp-<hash>.json` maps each fingerprint to its issue. GitHub's label filter lags a few seconds behind a new issue, so grouping can't rely on it. Once that issue is closed, the next report opens a new one and the index points there.
 
+If the user fills in **Your email (optional)**, the app sends it as `contact`. The Worker checks it looks like an email, adds a ``Contact: `pat@example.com` `` line to the issue or comment, and labels the issue `has-contact`. Filter by that label to find reports you can follow up on. The email is also in the saved report file. The app remembers it for the next report; clearing the field forgets it.
+
 The app only knows the URL (`ReportSender.endpoint` in `tanklink_app/lib/diag/report_sender.dart`) and the app key. The body format is a shared contract with that file.
 
 ## Set up (once)

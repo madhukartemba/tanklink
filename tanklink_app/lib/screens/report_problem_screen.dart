@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -8,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ble/pump_session.dart';
 import '../diag/app_log.dart';
@@ -45,6 +47,7 @@ enum _When { now, today, earlier }
 
 class _ReportProblemScreenState extends State<ReportProblemScreen> {
   final _desc = TextEditingController();
+  final _email = TextEditingController();
   _When _when = _When.now;
   bool _withLog = true;
   bool _withPump = true;
@@ -58,15 +61,40 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
   void initState() {
     super.initState();
     _desc.addListener(() => setState(() {}));
+    _email.addListener(() => setState(() {}));
+    _loadEmail();
+  }
+
+  static const _emailKey = 'report_contact_email';
+
+  Future<void> _loadEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_emailKey) ?? '';
+    if (mounted && _email.text.isEmpty) _email.text = saved;
+  }
+
+  /// Remembered for the next report; cleared when the field is emptied.
+  Future<void> _saveEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    final e = _email.text.trim();
+    if (e.isEmpty) {
+      await prefs.remove(_emailKey);
+    } else {
+      await prefs.setString(_emailKey, e);
+    }
   }
 
   @override
   void dispose() {
     _desc.dispose();
+    _email.dispose();
     super.dispose();
   }
 
-  bool get _canSend => !_busy && (!_manual || _desc.text.trim().isNotEmpty);
+  bool get _emailOk => isPlausibleEmail(_email.text);
+
+  bool get _canSend =>
+      !_busy && _emailOk && (!_manual || _desc.text.trim().isNotEmpty);
 
   Future<BuiltReport> _build() async {
     final session = context.read<PumpSession>();
@@ -76,6 +104,7 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
       description: _desc.text,
       problem: widget.problem,
       when: _manual ? _whenLabel(_when) : '',
+      contactEmail: _email.text,
       now: DateTime.now(),
       versions: ReportVersions(
         app: '${pkg.version}+${pkg.buildNumber}',
@@ -102,6 +131,7 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
     // Any failure must end with the button usable again and a message.
     try {
       final report = await _build();
+      await _saveEmail();
       final String id;
       try {
         id = await ReportSender.send(report);
@@ -122,7 +152,8 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
       }
       await _doneDialog(
         'Report sent',
-        'Thank you. If you get in touch about it, mention report $id.',
+        'Thank you. If you get in touch about it, mention this report ID.',
+        reportId: id,
       );
     } catch (e, st) {
       AppLog.e('report', 'Send failed', e, st);
@@ -131,13 +162,27 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
   }
 
   /// Tells the user how it went, then closes this screen.
-  Future<void> _doneDialog(String title, String message) async {
+  Future<void> _doneDialog(
+    String title,
+    String message, {
+    String? reportId,
+  }) async {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(title),
-        content: Text(message),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            if (reportId != null) ...[
+              const SizedBox(height: 16),
+              _ReportIdChip(id: reportId),
+            ],
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -287,6 +332,20 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
               ),
             ],
             const SizedBox(height: 12),
+            TextField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              textInputAction: TextInputAction.done,
+              decoration: InputDecoration(
+                labelText: 'Your email (optional)',
+                helperText: 'Only used to ask you about this report',
+                errorText: _emailOk ? null : 'Check the email address',
+                prefixIcon: const Icon(Icons.mail_outline_rounded),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 4),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('App log'),
@@ -465,3 +524,47 @@ List<List<int>> _secrets(PumpSession s) => [
   for (final x in s.sensors)
     if (x.bleToken != null) x.bleToken!,
 ];
+
+/// The report ID with a copy button, so the user can quote it later.
+class _ReportIdChip extends StatelessWidget {
+  const _ReportIdChip({required this.id});
+
+  final String id;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: SelectableText(
+                id,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: id));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Report ID copied')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy_rounded, size: 18),
+              label: const Text('Copy'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

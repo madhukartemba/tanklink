@@ -51,6 +51,13 @@ android {
     }
 
     buildTypes {
+        // Same key as releases when it is here, so a debug build installs
+        // over the released app and keeps its saved pumps.
+        debug {
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             signingConfig = when {
                 keystorePropertiesFile.exists() -> signingConfigs.getByName("release")
