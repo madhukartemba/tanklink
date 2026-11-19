@@ -20,7 +20,7 @@ The status LED shows the **error number** as **short flashes** with a long dark 
 | Action | LED |
 | --- | --- |
 | Boot | Soft fade pulses |
-| Hold to pair | Brightness ramps 0→100 over 3 s. Pairing starts at 3 s, while the button is still held, then soft breathing pulses (~30 s window) |
+| Hold to pair | Brightness ramps 0→100 over 3 s. Pairing starts at 3 s, while the button is still held, then a slow, smooth breathe (about 2.4 s per breath) for the ~30 s window |
 | Pairing success | Soft success pulse |
 | Short press (paired) | One short blink (BLE OTA listen ~10 s), including a tap that is already released when the chip wakes. After TX+ACK: **one** soft success pulse; on failure code **3**. Another short press during the window sends LoRa again. Holding 3 s during the window starts pairing without waiting for release |
 | Heartbeat / float / boot TX (paired) | After full TX+ACK: **one** soft success pulse; on failure code **3** |
