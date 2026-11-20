@@ -725,9 +725,8 @@ class PumpSession extends ChangeNotifier {
   }
 
   /// Whether [slot] can fill by itself: its sensor has both floats (almost
-  /// empty mode, pin-1 tank) and the pump knows the command.
+  /// empty mode, pin-1 tank).
   bool canAutoFill(int slot) {
-    if (pumpProtoMinor < TankLinkUuids.autoFillMinor) return false;
     final t = slotAt(slot);
     if (t == null || t.sensor != 0) return false;
     return sensorForSlot(t)?.mode == TankLinkUuids.sensorModeEmpty;

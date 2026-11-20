@@ -239,9 +239,7 @@ class _AutoFillRowState extends State<_AutoFillRow> {
     final can = session.canAutoFill(widget.slot);
     final on = can && (slot?.autoFill ?? false);
     final String subtitle;
-    if (session.pumpProtoMinor < TankLinkUuids.autoFillMinor) {
-      subtitle = 'Update the pump to use this';
-    } else if (!can) {
+    if (!can) {
       subtitle =
           'Needs an almost-empty float on this tank. Set it in Tank sensors.';
     } else {

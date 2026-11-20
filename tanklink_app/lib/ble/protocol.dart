@@ -264,7 +264,7 @@ class TankList {
   final List<TankSlot> slots;
 
   /// active_slot count, then count × 20-byte entries:
-  /// index sensor_pin sensor_index auto_off name(16), then (minor 3)
+  /// index sensor_pin sensor_index auto_off name(16), then
   /// auto_fill_mask(1), bit i = slot i.
   static TankList? parse(List<int> b) {
     if (b.length < 2) return null;
@@ -275,7 +275,8 @@ class TankList {
     for (var i = 0; i < b[1] && o + entry <= b.length; i++, o += entry) {
       entries.add(b.sublist(o, o + entry));
     }
-    final autoFillMask = o < b.length ? b[o] : 0;
+    if (o >= b.length) return null;
+    final autoFillMask = b[o];
     for (final e in entries) {
       final raw = e.sublist(4);
       final end = raw.indexOf(0);

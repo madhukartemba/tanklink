@@ -175,9 +175,6 @@ static void normalize(void)
         if (s->auto_off_min > PUMP_AUTO_OFF_MAX_MIN) {
             s->auto_off_min = PUMP_AUTO_OFF_MAX_MIN;
         }
-        if (s->auto_off_min < PUMP_AUTO_OFF_MIN_MIN) {
-            s->auto_off_min = PUMP_AUTO_OFF_DEFAULT_MIN;
-        }
         s->name[PUMP_TANK_NAME_LEN - 1] = '\0';
     }
 

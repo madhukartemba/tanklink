@@ -154,7 +154,7 @@ size_t gatt_payload_tanks(uint8_t out[GATT_TANKS_MAX_LEN])
         written++;
     }
     out[1] = written;
-    out[o++] = pump_tanks_auto_fill_mask(); /* minor 3 */
+    out[o++] = pump_tanks_auto_fill_mask();
     return o;
 }
 

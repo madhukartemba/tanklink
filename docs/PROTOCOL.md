@@ -104,7 +104,7 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xA5` | Rename tank slot | `slot(1) name(≤16, UTF-8)` |
 | `0xA6` | Set a tank slot's auto-off. Always on: clamped to 1–240 | `slot(1) minutes(1)` |
 | `0xA7` | Set a sensor's float mode (see Sensors). Leaving two-tank mode deletes that sensor's second tank and its schedules, refused while the pump fills it | `sensor_id(6) mode(1)` |
-| `0xA8` | Auto-fill on/off for a tank (see below). Turning it on is refused unless the tank has both floats: its sensor is in almost-empty mode and it is that sensor's pin-1 tank. Minor 3 | `slot(1) on(1)` |
+| `0xA8` | Auto-fill on/off for a tank (see below). Turning it on is refused unless the tank has both floats: its sensor is in almost-empty mode and it is that sensor's pin-1 tank | `slot(1) on(1)` |
 | `0xB1` | Test beep | — |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |
@@ -175,7 +175,7 @@ Write:
 - `sensor_index`: the sensor (see Sensors) whose float this tank uses, `0xFF` = none.
 - `auto_off_min`: 1–240. A fill always stops after the active slot's auto-off.
 
-After the entries (minor 3): `auto_fill_mask(1)`, bit *i* set = slot *i* fills itself when low.
+After the entries: `auto_fill_mask(1)`, bit *i* set = slot *i* fills itself when low.
 
 **Auto-fill** (selected tank only, so the valve or lever must already point at it): the pump starts when that tank's almost-empty float drops, and stops when it is full or on auto-off. It starts once per drop: it is armed when the tank is seen above the float and fires on the next drop, so a tank that is already low (after a restart, a manual stop or turning the setting on) waits for the next one. At least 15 minutes after any stop. Only on a reading the tank sent since boot, never on one restored from flash. An automatic fill that stops any way other than "tank full" (auto-off, the app, the button) pauses auto-fill until the tank is next seen full, so a dry source or a stuck float can't keep starting the pump. The tank must be online, and nothing starts during pairing or an update.
 
@@ -219,7 +219,7 @@ The last 20 fills, newest first: `count(1)` followed by `count` × 12 bytes:
 | 10 | 1 | stopped by (cause) |
 | 11 | 1 | reserved, 0 |
 
-Causes: 0 unknown, 1 app, 2 pump button, 3 schedule, 4 tank full, 5 auto-off, 6 power cut or restart, 7 update / pairing / unpair / factory reset, 8 auto-fill (start only, minor 3). A fill cut by a power cut is added at the next boot with start cause 0 and stop cause 6. Notified when a fill is added. Cleared by factory reset.
+Causes: 0 unknown, 1 app, 2 pump button, 3 schedule, 4 tank full, 5 auto-off, 6 power cut or restart, 7 update / pairing / unpair / factory reset, 8 auto-fill (start only). A fill cut by a power cut is added at the next boot with start cause 0 and stop cause 6. Notified when a fill is added. Cleared by factory reset.
 
 ### Battery (read + notify, authed)
 

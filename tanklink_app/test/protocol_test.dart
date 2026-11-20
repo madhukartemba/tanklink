@@ -192,6 +192,7 @@ void main() {
       ...entry(0, 0, 0, 30, 'Roof'),
       ...entry(1, 1, 0, 0, 'Sump'),
       ...entry(2, 0, 3, 45, 'Garden'),
+      0, // auto-fill mask
     ])!;
     expect(list.activeSlot, 2);
     expect(list.slots.map((s) => s.name), ['Roof', 'Sump', 'Garden']);
@@ -200,7 +201,7 @@ void main() {
     expect(list.slots.map((s) => s.autoOffMin), [30, 0, 45]);
   });
 
-  test('TankList reads the auto-fill mask after the entries (minor 3)', () {
+  test('TankList reads the auto-fill mask after the entries', () {
     List<int> entry(int index, String name) => [
       index,
       0,
@@ -216,9 +217,8 @@ void main() {
       0x08, // slot 3 fills when low
     ])!;
     expect(withMask.slots.map((s) => s.autoFill), [false, true]);
-    // An older pump sends no mask byte: auto-fill reads as off.
-    final noMask = TankList.parse([0, 1, ...entry(0, 'Roof')])!;
-    expect(noMask.slots.single.autoFill, isFalse);
+    // The mask byte is part of the layout: without it the payload is bad.
+    expect(TankList.parse([0, 1, ...entry(0, 'Roof')]), isNull);
   });
 
   test('TankList: a pump with no sensor has one sensorless slot', () {
@@ -226,6 +226,7 @@ void main() {
       0, 1, //
       0, 0, TankLinkUuids.sensorNone, 30, ...'Tank'.codeUnits,
       ...List.filled(12, 0),
+      0, // auto-fill mask
     ])!;
     expect(list.slots.single.node, TankLinkUuids.sensorNone);
   });

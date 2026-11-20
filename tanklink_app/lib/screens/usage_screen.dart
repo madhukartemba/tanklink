@@ -38,10 +38,11 @@ class _UsageScreenState extends State<UsageScreen> {
   Widget build(BuildContext context) {
     final session = context.watch<PumpSession>();
     final s = session.usageSettings;
-    final fills = session.archivedFills.isNotEmpty
-        ? session.archivedFills
-        : session.fills;
-    final report = buildUsage(fills, now: DateTime.now(), days: _days);
+    final report = buildUsage(
+      session.archivedFills,
+      now: DateTime.now(),
+      days: _days,
+    );
     var metric = _metric ?? _defaultMetric(s);
     if (!metric.available(s)) metric = _defaultMetric(s);
 

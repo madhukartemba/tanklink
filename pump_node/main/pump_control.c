@@ -262,7 +262,7 @@ static void enforce_auto_off(void)
         return;
     }
     const uint8_t mins = pump_tanks_active_auto_off_min();
-    if (pump_control_run_seconds() < (uint32_t)(mins ? mins : PUMP_AUTO_OFF_MIN_MIN) * 60u) {
+    if (pump_control_run_seconds() < (uint32_t)mins * 60u) {
         return;
     }
     ESP_LOGW(TAG, "Auto-off after %u min", mins);

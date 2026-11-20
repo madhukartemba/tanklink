@@ -94,9 +94,8 @@ class TankLinkUuids {
   static const cmdTankAutoOff = 0xA6;
 
   /// slot(1) on(1): fill by itself when its almost-empty float drops. Only
-  /// for a tank whose sensor has both floats. Pump protocol minor 3.
+  /// for a tank whose sensor has both floats.
   static const cmdTankAutoFill = 0xA8;
-  static const autoFillMinor = 3;
 
   /// sensor_id(6) mode(1): one sensor's float mode.
   static const cmdSensorMode = 0xA7;
