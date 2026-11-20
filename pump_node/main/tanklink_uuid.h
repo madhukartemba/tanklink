@@ -147,8 +147,10 @@ extern "C" {
  * rssi_dbm_i8(1) snr_db_i8(1) last_error(1) ble_token(16), then the
  * interrupted fill: reason(1) started(u32) last_seen(u32) back(u32)
  * ran_sec(u32), then tank_hw_rev(1), then tank_fault(1), then
- * pump_flags(1) = 55 bytes. pump_flags bit 0: the pump's clock lost power
- * since it started (its coin cell is likely flat). Times are
+ * pump_flags(1), then boot_id(u32) = 59 bytes. pump_flags bit 0: the pump's
+ * clock lost power since it started (its coin cell is likely flat).
+ * boot_id: random, new every time the pump starts, so the app can tell a
+ * restart (a dismissed clock warning comes back after one). Times are
  * pump-local seconds since 1970, 0 = unknown. tank_fault is the sensor's own
  * LED code (0 = none).
  */
@@ -157,7 +159,8 @@ extern "C" {
 #define TANKLINK_TANK_STATUS_FAULT_AT 53
 #define TANKLINK_TANK_STATUS_PUMP_FLAGS_AT 54
 #define TANKLINK_TANK_STATUS_CLOCK_LOST 0x01
-#define TANKLINK_TANK_STATUS_LEN 55
+#define TANKLINK_TANK_STATUS_BOOT_ID_AT 55
+#define TANKLINK_TANK_STATUS_LEN 59
 
 /* Schedule char write opcodes (authenticated). */
 #define TANKLINK_SCHED_OP_SET_CLOCK 0x01

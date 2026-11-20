@@ -235,7 +235,17 @@ void main() {
       b[TankLinkUuids.tankStatusPumpFlagsAt] =
           TankLinkUuids.tankStatusClockLost;
       expect(TankStatus.parse(b)!.clockLostPower, isTrue);
-      expect(TankStatus.parse(b.sublist(0, 54)), isNull);
+      expect(TankStatus.parse(b.sublist(0, 58)), isNull);
+    });
+
+    test('reads the pump boot id (bytes 55-58)', () {
+      final b = status();
+      b.setRange(
+        TankLinkUuids.tankStatusBootIdAt,
+        TankLinkUuids.tankStatusBootIdAt + 4,
+        u32(0xA1B2C3D4),
+      );
+      expect(TankStatus.parse(b)!.pumpBootId, 0xA1B2C3D4);
     });
 
     test('reads an interrupted fill', () {

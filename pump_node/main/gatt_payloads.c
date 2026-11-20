@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "esp_random.h"
+
 #include "lora_link.h"
 #include "pump_clock.h"
 #include "pump_config.h"
@@ -76,6 +78,16 @@ size_t gatt_payload_settings(uint8_t out[GATT_SETTINGS_READ_LEN])
     return GATT_SETTINGS_READ_LEN;
 }
 
+/** Random, picked once per boot: lets the app tell that the pump restarted. */
+static uint32_t boot_id(void)
+{
+    static uint32_t id;
+    while (id == 0) {
+        id = esp_random();
+    }
+    return id;
+}
+
 size_t gatt_payload_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
 {
     memset(out, 0, TANKLINK_TANK_STATUS_LEN);
@@ -108,6 +120,7 @@ size_t gatt_payload_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
     out[TANKLINK_TANK_STATUS_FAULT_AT] = lora_link_tank_fault();
     out[TANKLINK_TANK_STATUS_PUMP_FLAGS_AT] =
         pump_clock_lost_power_since_boot() ? TANKLINK_TANK_STATUS_CLOCK_LOST : 0;
+    put_u32(&out[TANKLINK_TANK_STATUS_BOOT_ID_AT], boot_id());
     return TANKLINK_TANK_STATUS_LEN;
 }
 

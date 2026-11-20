@@ -212,6 +212,7 @@ class TankStatus {
     required this.hwRev,
     required this.tankFault,
     required this.clockLostPower,
+    required this.pumpBootId,
   });
 
   final bool bound;
@@ -242,6 +243,9 @@ class TankStatus {
   /// is likely flat. Stays set after the phone sets the time.
   final bool clockLostPower;
 
+  /// Random, new every time the pump starts: tells the app it restarted.
+  final int pumpBootId;
+
   static TankStatus? parse(List<int> b) {
     if (b.length < TankLinkUuids.tankStatusLen) return null;
     final fw = '${b[8]}.${b[9]}.${b[10]}';
@@ -268,6 +272,7 @@ class TankStatus {
           b[TankLinkUuids.tankStatusPumpFlagsAt] &
               TankLinkUuids.tankStatusClockLost !=
           0,
+      pumpBootId: _u32(b, TankLinkUuids.tankStatusBootIdAt),
     );
   }
 

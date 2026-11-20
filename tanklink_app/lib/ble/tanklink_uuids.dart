@@ -169,7 +169,10 @@ class TankLinkUuids {
   /// Pump-wide flags: bit 0 = the pump's clock lost power since it started.
   static const tankStatusPumpFlagsAt = 54;
   static const tankStatusClockLost = 0x01;
-  static const tankStatusLen = 55;
+
+  /// u32, random and new every time the pump starts.
+  static const tankStatusBootIdAt = 55;
+  static const tankStatusLen = 59;
 
   static const interruptNone = 0;
   static const interruptPowerLost = 1;

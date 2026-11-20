@@ -107,15 +107,20 @@ class PumpSession extends ChangeNotifier {
   /// The pump's clock lost power since it started (flat clock battery).
   bool clockLostPower = false;
 
-  /// Pumps (device ids) whose clock battery banner was dismissed, saved on
-  /// the phone. A pump leaves this set once it reports its clock is fine
-  /// (after a new cell and a restart), so a later power loss shows it again.
-  final Set<String> _clockLostDismissed = {};
-  static const _clockDismissedKey = 'clock_lost_dismissed';
+  /// The pump's boot id from its last Tank status (new on every start).
+  int pumpBootId = 0;
+
+  /// The clock battery banner dismissed per pump (device id), for the boot
+  /// it was dismissed on. Saved on the phone; when the pump restarts it has
+  /// a new boot id, so the warning comes back if the clock is still flat.
+  final Map<String, int> _clockLostDismissed = {};
+  static const _clockDismissedKey = 'clock_lost_dismissed_boot';
 
   bool get clockLostDismissed {
     final id = selected?.deviceIdHex;
-    return id != null && _clockLostDismissed.contains(id);
+    return id != null &&
+        pumpBootId != 0 &&
+        _clockLostDismissed[id] == pumpBootId;
   }
 
   /// Debug builds only: codes that replace the pump's reported ones so the
@@ -391,9 +396,13 @@ class PumpSession extends ChangeNotifier {
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    _clockLostDismissed
-      ..clear()
-      ..addAll(prefs.getStringList(_clockDismissedKey) ?? const []);
+    _clockLostDismissed.clear();
+    for (final e
+        in prefs.getStringList(_clockDismissedKey) ?? const <String>[]) {
+      final parts = e.split('=');
+      final boot = parts.length == 2 ? int.tryParse(parts[1]) : null;
+      if (boot != null) _clockLostDismissed[parts[0]] = boot;
+    }
 
     // Saved pumps hold each pump's sign-in token: Keystore/Keychain backed.
     String? listRaw;
@@ -921,11 +930,8 @@ class PumpSession extends ChangeNotifier {
     tankSnrDb = t.snrDb;
     pumpLastError = t.pumpLastError;
     tankFault = t.tankFault;
-    final id = selected?.deviceIdHex;
-    if (!t.clockLostPower && id != null && _clockLostDismissed.remove(id)) {
-      unawaited(_saveClockDismissed());
-    }
     clockLostPower = t.clockLostPower;
+    pumpBootId = t.pumpBootId;
     tankHwRev = t.hwRev;
     fillInterruption = t.interruption;
     tankBleToken = t.bleToken;
@@ -1068,15 +1074,17 @@ class PumpSession extends ChangeNotifier {
 
   void dismissClockLost() {
     final id = selected?.deviceIdHex;
-    if (id == null) return;
-    _clockLostDismissed.add(id);
+    if (id == null || pumpBootId == 0) return;
+    _clockLostDismissed[id] = pumpBootId;
     notifyListeners();
     unawaited(_saveClockDismissed());
   }
 
   Future<void> _saveClockDismissed() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_clockDismissedKey, _clockLostDismissed.toList());
+    await prefs.setStringList(_clockDismissedKey, [
+      for (final e in _clockLostDismissed.entries) '${e.key}=${e.value}',
+    ]);
   }
 
   Future<void> clearPumpError() async {
