@@ -99,21 +99,38 @@ class _PairTankPromptScreenState extends State<PairTankPromptScreen> {
   }
 }
 
-class _ListeningDialog extends StatelessWidget {
+class _ListeningDialog extends StatefulWidget {
   const _ListeningDialog({required this.session});
 
   final PumpSession session;
 
   @override
+  State<_ListeningDialog> createState() => _ListeningDialogState();
+}
+
+class _ListeningDialogState extends State<_ListeningDialog> {
+  bool _closing = false;
+
+  /// Close this dialog once. The session notifies several times in a row
+  /// when a tank pairs; popping on each would also close the screens below
+  /// it (and finally the home screen, leaving a blank page).
+  void _close() {
+    if (_closing) return;
+    _closing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.isCurrent) Navigator.of(context).pop();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final session = widget.session;
     return ListenableBuilder(
       listenable: session,
       builder: (context, _) {
-        if (session.tankBound && !session.tankPairing) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted) Navigator.of(context).pop();
-          });
-        }
+        if (session.tankBound && !session.tankPairing) _close();
         return AlertDialog(
           title: Text(session.tankBound ? 'Tank paired' : 'Listening…'),
           content: Column(
@@ -130,7 +147,7 @@ class _ListeningDialog extends StatelessWidget {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: _close,
               child: Text(session.tankBound ? 'Done' : 'Close'),
             ),
           ],
