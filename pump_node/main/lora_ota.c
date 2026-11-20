@@ -178,7 +178,9 @@ static size_t wait_reply(uint8_t type, uint8_t *buf, size_t cap, uint32_t ms)
                 return n;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(2));
+        /* At least one tick (10 ms at 100 Hz): a zero-tick delay never lets
+         * the idle task run and trips the task watchdog. */
+        vTaskDelay(1);
     }
     return 0;
 }
@@ -333,6 +335,9 @@ static uint8_t transfer(void)
     }
     ESP_LOGI(TAG, "all %u chunks sent in %llds (%s)", s_chunks,
              (long long)((esp_timer_get_time() - t0) / 1000000), s_fast_now ? "fast" : "slow");
+    /* DONE at 125 kHz: the tank answers at the speed it hears, and falls
+     * back to 125 kHz itself after 10 s quiet, well inside DONE's retries. */
+    set_speed(false);
     set_state(LORA_OTA_ST_FINISHING, LORA_OTA_ERR_NONE);
     return finish();
 }

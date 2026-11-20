@@ -205,7 +205,8 @@ static void on_done(rx_t *r)
 {
     if (!r->done) {
         r->done = true;
-        set_speed(r, false); /* the pump goes back to 125 kHz for DONE too */
+        /* Stay at this speed: the answer has to go out at the speed the pump
+         * is listening on, which is the one DONE arrived at. */
         r->result = r->begun || r->have == r->chunks ? check(r) : TL_OTA_ERR_MISSING;
         ESP_LOGI(TAG, "update %s (%u)", r->result == TL_OTA_OK ? "OK" : "failed", r->result);
         if (r->result == TL_OTA_ERR_MISSING) {
@@ -244,7 +245,7 @@ void tank_lora_ota_run(void)
         size_t n = 0;
         if (sx1278_poll_recv(buf, sizeof(buf), &n) != ESP_OK ||
             n < sizeof(tl_ota_hdr_t) + TL_LORA_TAG_LEN) {
-            vTaskDelay(pdMS_TO_TICKS(1));
+            vTaskDelay(1); /* one tick: lets the idle task run (task watchdog) */
             continue;
         }
         const tl_ota_hdr_t *h = (const tl_ota_hdr_t *)buf;
