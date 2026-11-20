@@ -20,6 +20,7 @@ idf_component_register(
         "pump_control.c"
         "pump_diag.c"
         "lora_link.c"
+        "lora_ota.c"
         "relay_control.c"
     INCLUDE_DIRS "."
     REQUIRES nvs_flash bt led_strip driver esp_driver_i2c esp_timer app_update PixelEngine tanklink_lora

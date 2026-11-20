@@ -17,6 +17,7 @@
 #include "tank_version.h"
 #include "tanklink_crypto.h"
 #include "tanklink_lora_proto.h"
+#include "tanklink_lora_ota.h"
 
 #define TAG "TANK_LINK"
 #define NVS_NS "tank"
@@ -26,6 +27,12 @@ static uint32_t s_seq;
 static bool s_radio_ok;
 static uint8_t s_tank_id[TANKLINK_LORA_TANK_ID_LEN];
 static uint8_t s_fault;
+static bool s_ota_pending; /* the pump's last ACK asked us to stay for an update */
+
+bool tank_link_ota_pending(void)
+{
+    return s_ota_pending;
+}
 
 uint8_t tank_link_fault(void)
 {
@@ -124,9 +131,14 @@ static bool packet_is_ack_for(const uint8_t *buf, size_t len, uint32_t seq,
     }
     /* Several tanks can share a pump, and seq is per tank: the ACK must be ours,
      * and only the pump that holds our key can tag it. */
-    return ack->seq == seq &&
-           memcmp(ack->tank_id, s_tank_id, TANKLINK_LORA_TANK_ID_LEN) == 0 &&
-           tl_lora_verify(key, buf, len);
+    if (ack->seq != seq || memcmp(ack->tank_id, s_tank_id, TANKLINK_LORA_TANK_ID_LEN) != 0 ||
+        !tl_lora_verify(key, buf, len)) {
+        return false;
+    }
+    if (ack->flags & TANKLINK_LORA_FLAG_OTA_PENDING) {
+        s_ota_pending = true;
+    }
+    return true;
 }
 
 static bool wait_ack(uint32_t seq, const uint8_t key[TL_KEY_LEN], uint32_t timeout_ms,

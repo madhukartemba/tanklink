@@ -25,6 +25,7 @@ extern "C" {
  *   Sensors  7f1a000e-ac01-4c8c-9b2e-74616e6b6c6e
  *   History  7f1a000f-ac01-4c8c-9b2e-74616e6b6c6e
  *   Battery  7f1a0010-ac01-4c8c-9b2e-74616e6b6c6e
+ *   TankOta  7f1a0011-ac01-4c8c-9b2e-74616e6b6c6e  (experimental)
  */
 #define TANKLINK_UUID_BASE_TAIL 0x6e, 0x6c, 0x6b, 0x6e, 0x61, 0x74, 0x2e, 0x9b, \
                                 0x8c, 0x4c, 0x01, 0xac
@@ -45,6 +46,7 @@ extern "C" {
 #define TANKLINK_CHR_NODES_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0e, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_HISTORY_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0f, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_BATTERY_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x10, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_TANK_OTA_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x11, 0x00, 0x1a, 0x7f)
 
 #define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
 /* GAP name before the serial suffix is known. Adverts use PREFIX + serial. */
@@ -83,6 +85,9 @@ extern "C" {
 #define TANKLINK_OTA_OP_START  0x01
 #define TANKLINK_OTA_OP_ABORT  0x02
 #define TANKLINK_OTA_OP_FINISH 0x03
+/* Experimental: node(1) size(u32) sha256(32). Same transfer, but the image
+ * is a tank's firmware, stored and sent to that tank over LoRa. */
+#define TANKLINK_OTA_OP_TANK_START 0x11
 
 /* OTA_STATUS state byte */
 #define TANKLINK_OTA_ST_IDLE      0
@@ -128,6 +133,9 @@ extern "C" {
 /* flow_dlpm(u16) watts(u16) price_centi(u16) currency(4, UTF-8, NUL-padded):
  * what the app needs for litres and cost (see Settings). */
 #define TANKLINK_CMD_USAGE 0xA9
+/* Experimental tank update over LoRa: action(1), 0 cancel, 1 retry at
+ * 125 kHz, 2 retry trying 500 kHz first. */
+#define TANKLINK_CMD_TANK_OTA 0xAA
 #define TANKLINK_USAGE_LEN 10
 #define TANKLINK_CMD_SENSOR_MODE 0xA7 /* sensor_id(6) mode(1) */
 #define TANKLINK_CMD_UNPAIR    0xF0

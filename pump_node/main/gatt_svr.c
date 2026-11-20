@@ -22,6 +22,7 @@
 #include "buzzer.h"
 #include "gatt_payloads.h"
 #include "lora_link.h"
+#include "lora_ota.h"
 #include "pump_clock.h"
 #include "pump_config.h"
 #include "pump_control.h"
@@ -55,6 +56,7 @@ typedef enum {
     SUB_NODES,
     SUB_HISTORY,
     SUB_BATTERY,
+    SUB_TANK_OTA,
     SUB_COUNT,
 } sub_t;
 
@@ -186,6 +188,12 @@ void gatt_svr_notify_sched(void)
 {
     uint8_t buf[GATT_SCHED_MAX_LEN];
     notify_all(SUB_SCHED, buf, gatt_payload_sched(buf));
+}
+
+void gatt_svr_notify_tank_ota(void)
+{
+    uint8_t buf[LORA_OTA_STATUS_LEN];
+    notify_all(SUB_TANK_OTA, buf, lora_ota_status(buf));
 }
 
 static void notify_ota_status(void)
@@ -463,6 +471,17 @@ static int run_command(conn_slot_t *slot, const uint8_t *body, uint16_t len)
         gatt_svr_notify_tanks();
         return 0;
 
+    case TANKLINK_CMD_TANK_OTA: {
+        if (len < 2) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        if (body[1] == 0) {
+            lora_ota_cancel();
+            return 0;
+        }
+        return lora_ota_retry(body[1] == 2) == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+    }
+
     case TANKLINK_CMD_USAGE: {
         if (len < 1 + TANKLINK_USAGE_LEN) {
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
@@ -700,6 +719,19 @@ static int on_battery(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt 
     return reply(ctxt, buf, gatt_payload_battery(buf));
 }
 
+static int on_tank_ota(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
+                       void *arg)
+{
+    if (!gatt_svr_is_authed_conn(conn)) {
+        return BLE_ATT_ERR_READ_NOT_PERMITTED;
+    }
+    if (!is_read(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t buf[LORA_OTA_STATUS_LEN];
+    return reply(ctxt, buf, lora_ota_status(buf));
+}
+
 static int on_ota_status(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
                          void *arg)
 {
@@ -717,7 +749,7 @@ static int on_ota_ctrl(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt
     if (!is_write(ctxt)) {
         return BLE_ATT_ERR_UNLIKELY;
     }
-    uint8_t buf[1 + 4 + 32];
+    uint8_t buf[1 + 1 + 4 + 32]; /* the longest: tank start */
     uint16_t len = 0;
     const int rc = read_write(ctxt, buf, sizeof(buf), 1, &len);
     if (rc != 0) {
@@ -726,10 +758,16 @@ static int on_ota_ctrl(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt
     uint8_t err;
     switch (buf[0]) {
     case TANKLINK_OTA_OP_START:
-        if (len != sizeof(buf)) {
+        if (len != 1 + 4 + 32) {
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
         }
         err = pump_ota_start(conn, get_u32(&buf[1]), &buf[5]);
+        break;
+    case TANKLINK_OTA_OP_TANK_START:
+        if (len != 1 + 1 + 4 + 32) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        err = pump_ota_start_tank(conn, buf[1], get_u32(&buf[2]), &buf[6]);
         break;
     case TANKLINK_OTA_OP_ABORT:
         err = pump_ota_abort_from(conn);
@@ -781,6 +819,7 @@ static const ble_uuid128_t uuid_tanks = TANKLINK_CHR_TANKS_INIT;
 static const ble_uuid128_t uuid_nodes = TANKLINK_CHR_NODES_INIT;
 static const ble_uuid128_t uuid_history = TANKLINK_CHR_HISTORY_INIT;
 static const ble_uuid128_t uuid_battery = TANKLINK_CHR_BATTERY_INIT;
+static const ble_uuid128_t uuid_tank_ota = TANKLINK_CHR_TANK_OTA_INIT;
 
 #define F_R BLE_GATT_CHR_F_READ
 #define F_W BLE_GATT_CHR_F_WRITE
@@ -816,6 +855,8 @@ static const struct ble_gatt_svc_def s_services[] = {
              .val_handle = &s_val_handle[SUB_HISTORY]},
             {.uuid = &uuid_battery.u, .access_cb = on_battery, .flags = F_R | F_N,
              .val_handle = &s_val_handle[SUB_BATTERY]},
+            {.uuid = &uuid_tank_ota.u, .access_cb = on_tank_ota, .flags = F_R | F_N,
+             .val_handle = &s_val_handle[SUB_TANK_OTA]},
             {0},
         },
     },

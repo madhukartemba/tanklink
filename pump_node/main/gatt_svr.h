@@ -37,6 +37,8 @@ void gatt_svr_notify_tanks(void);
 void gatt_svr_notify_nodes(void);
 void gatt_svr_notify_history(void);
 void gatt_svr_notify_battery(void);
+/** Experimental tank update over LoRa: progress (lora_ota.h). */
+void gatt_svr_notify_tank_ota(void);
 void gatt_svr_notify_sched(void);
 
 #ifdef __cplusplus

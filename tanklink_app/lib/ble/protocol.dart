@@ -567,3 +567,42 @@ Map<int, List<BatteryDay>>? parseBatteryLog(List<int> b) {
   }
   return out;
 }
+
+/// Progress of an experimental tank update over LoRa (TankOta).
+class TankOtaStatus {
+  const TankOtaStatus({
+    required this.state,
+    required this.node,
+    required this.error,
+    required this.fast,
+    required this.done,
+    required this.total,
+  });
+
+  /// [TankLinkUuids.tankOtaIdle] and the other `tankOta*` states.
+  final int state;
+  final int node;
+  final int error;
+
+  /// Sending at 500 kHz right now.
+  final bool fast;
+  final int done;
+  final int total;
+
+  bool get busy =>
+      state >= TankLinkUuids.tankOtaWaiting &&
+      state <= TankLinkUuids.tankOtaFinishing;
+
+  /// state node error fast done(u16) total(u16).
+  static TankOtaStatus? parse(List<int> b) {
+    if (b.length < 8) return null;
+    return TankOtaStatus(
+      state: b[0],
+      node: b[1],
+      error: b[2],
+      fast: b[3] != 0,
+      done: _u16(b, 4),
+      total: _u16(b, 6),
+    );
+  }
+}

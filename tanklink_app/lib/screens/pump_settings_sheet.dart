@@ -10,6 +10,7 @@ import '../update/firmware_update.dart';
 import '../util/format.dart';
 import 'error_codes_screen.dart';
 import 'fill_history_screen.dart';
+import 'tank_lora_update_screen.dart';
 import 'usage_screen.dart';
 import 'schedules_screen.dart';
 import 'starter_settings_screen.dart';
@@ -291,6 +292,18 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 title: const Text('Simulate an error'),
                 subtitle: const Text('Debug build only'),
                 onTap: () => _simulateErrorDialog(context, session),
+              ),
+            if (kDebugMode && ready)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.cell_tower_rounded),
+                title: const Text('Update a tank over LoRa'),
+                subtitle: const Text('Experimental, debug build only'),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const TankLoraUpdateScreen(),
+                  ),
+                ),
               ),
             if (kDebugMode)
               ListTile(

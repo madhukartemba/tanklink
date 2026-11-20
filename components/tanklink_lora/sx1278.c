@@ -471,3 +471,22 @@ esp_err_t sx1278_poll_recv(uint8_t *buf, size_t buf_len, size_t *out_len)
 {
     return sx1278_poll_recv_ex(buf, buf_len, out_len, NULL, NULL);
 }
+
+esp_err_t sx1278_set_bandwidth_khz(uint32_t khz)
+{
+    if (!s_ok) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    uint8_t bw;
+    switch (khz) {
+    case 125: bw = 0x7; break;
+    case 250: bw = 0x8; break;
+    case 500: bw = 0x9; break;
+    default: return ESP_ERR_INVALID_ARG;
+    }
+    set_mode(MODE_STDBY);
+    /* BW in bits 7-4, CR 4/5 (001) in bits 3-1, explicit header. */
+    esp_err_t err = write_reg(REG_MODEM_CONFIG_1, (uint8_t)((bw << 4) | 0x02));
+    set_mode(MODE_SLEEP);
+    return err;
+}

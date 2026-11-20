@@ -15,6 +15,11 @@ bool pump_ota_is_active(void);
 /** START from a specific BLE connection: size + 32-byte SHA-256. */
 uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t sha256[32]);
 
+/** Same transfer, but the image is a tank's firmware for sensor [node]: it is
+ * stored in the spare slot and sent to the tank over LoRa (lora_ota.h). */
+uint8_t pump_ota_start_tank(uint16_t conn_handle, uint8_t node, uint32_t image_size,
+                            const uint8_t sha256[32]);
+
 /** Write sequential chunk at expected offset (owner conn only). */
 uint8_t pump_ota_write(uint16_t conn_handle, uint32_t offset, const uint8_t *data, uint16_t len);
 

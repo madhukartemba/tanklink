@@ -20,6 +20,8 @@
 #include "status_led.h"
 #include "sx1278.h"
 #include "tanklink_crypto.h"
+#include "tanklink_lora_ota.h"
+#include "lora_ota.h"
 
 #define TAG "LORA"
 #define NVS_NS "tl_tank"
@@ -77,6 +79,13 @@ bool lora_link_active_tank_full(void)
 }
 bool lora_link_active_tank_low(void)
 {
+    return false;
+}
+bool lora_link_node_secrets(uint8_t node, uint8_t key[16], uint8_t mac[6])
+{
+    (void)node;
+    (void)key;
+    (void)mac;
     return false;
 }
 bool lora_link_tank_bound(void)
@@ -448,7 +457,8 @@ static void restore_last(uint8_t node)
              (long long)age, rt->was_online ? "online" : "stale", rec.flags);
 }
 
-static void send_ack(const tanklink_lora_status_t *pkt, const uint8_t key[TL_KEY_LEN])
+static void send_ack(const tanklink_lora_status_t *pkt, const uint8_t key[TL_KEY_LEN],
+                     uint8_t flags)
 {
     uint8_t buf[TANKLINK_LORA_STATUS_LEN];
     tanklink_lora_status_t *ack = (tanklink_lora_status_t *)buf;
@@ -457,6 +467,7 @@ static void send_ack(const tanklink_lora_status_t *pkt, const uint8_t key[TL_KEY
     ack->magic1 = TANKLINK_LORA_MAGIC1;
     ack->ver = TANKLINK_LORA_VER;
     ack->type = TANKLINK_LORA_TYPE_ACK;
+    ack->flags = flags;
     ack->seq = pkt->seq;
     memcpy(ack->tank_id, pkt->tank_id, TANKLINK_LORA_TANK_ID_LEN);
     const size_t len = tl_lora_seal(key, buf, TANKLINK_LORA_STATUS_BODY_LEN);
@@ -619,7 +630,7 @@ static void on_pair_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t sn
     rt->seq_known = false;
     s_pairing = false;
     restore_led_after_tank_pair();
-    send_ack(pkt, rt->key);
+    send_ack(pkt, rt->key, 0);
     ESP_LOGI(TAG, "sensor %u %s %02x:%02x:%02x:%02x:%02x:%02x", node,
              added ? "paired" : "re-paired", pkt->tank_id[0], pkt->tank_id[1],
              pkt->tank_id[2], pkt->tank_id[3], pkt->tank_id[4], pkt->tank_id[5]);
@@ -651,13 +662,22 @@ static void on_status_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t 
                  (unsigned long)pkt->seq, (unsigned long)rt->last_seq);
         return;
     }
-    send_ack(pkt, rt->key);
+    /* A tank update waiting for this sensor: tell it to stay awake, then run
+     * the transfer here (this task owns the radio). */
+    const bool update = lora_ota_waiting_for((uint8_t)node);
+    send_ack(pkt, rt->key, update ? TANKLINK_LORA_FLAG_OTA_PENDING : 0);
     handle_packet((uint8_t)node, pkt, rssi, snr);
+    if (update) {
+        lora_ota_run();
+    }
 }
 
 /** Notice sensors dropping out of range (and coming back). */
 static void poll_online(void)
 {
+    if (lora_ota_busy()) {
+        return; /* other tanks can't be heard during a tank update */
+    }
     const uint8_t active = pump_tanks_active_node();
     for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
         if (!pump_tanks_node_get(n, NULL)) {
@@ -867,6 +887,15 @@ bool lora_link_node_status(uint8_t node, lora_node_status_t *out)
     out->snr_db = rt->heard ? rt->snr_db : 0;
     out->has_ble_token = rt->has_key;
     memcpy(out->ble_token, rt->token, sizeof(out->ble_token));
+    return true;
+}
+
+bool lora_link_node_secrets(uint8_t node, uint8_t key[TL_KEY_LEN], uint8_t mac[6])
+{
+    if (node >= PUMP_NODE_MAX || !s_rt[node].has_key || !node_mac(node, mac)) {
+        return false;
+    }
+    memcpy(key, s_rt[node].key, TL_KEY_LEN);
     return true;
 }
 

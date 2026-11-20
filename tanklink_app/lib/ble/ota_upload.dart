@@ -31,6 +31,7 @@ Future<void> uploadFirmware(
   required int mtu,
   void Function(int done, int total)? onProgress,
   void Function()? onVerifying,
+  List<int> startOp = const [TankLinkUuids.otaOpStart],
 }) async {
   final size = image.length;
   final statusCtrl = StreamController<List<int>>.broadcast();
@@ -45,9 +46,9 @@ Future<void> uploadFirmware(
   }
 
   try {
-    // Start: op(1) size(u32) sha256(32).
+    // Start: op(1) [node(1) for a tank image] size(u32) sha256(32).
     await ota.ctrl.write([
-      TankLinkUuids.otaOpStart,
+      ...startOp,
       ..._u32(size),
       ...sha256.convert(image).bytes,
     ], withoutResponse: false);

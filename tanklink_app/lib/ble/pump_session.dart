@@ -135,6 +135,11 @@ class PumpSession extends ChangeNotifier {
   BluetoothCharacteristic? _otaCtrl;
   BluetoothCharacteristic? _otaData;
   BluetoothCharacteristic? _otaStatus;
+  BluetoothCharacteristic? _tankOtaChr;
+  StreamSubscription<List<int>>? _tankOtaNotifySub;
+
+  /// Experimental tank update over LoRa: the pump's progress, null until read.
+  TankOtaStatus? tankOta;
   BluetoothCharacteristic? _tank;
   BluetoothCharacteristic? _sched;
   BluetoothCharacteristic? _tanks;
@@ -791,6 +796,42 @@ class PumpSession extends ChangeNotifier {
     await chr.write(encodeUsage(s), withoutResponse: false);
     usageSettings = s;
     notifyListeners();
+  }
+
+  /// Experimental: send a tank firmware [image] for sensor [node] to the
+  /// pump, which stores it and sends it to that tank over LoRa when the tank
+  /// next wakes. Progress after the upload is in [tankOta].
+  Future<void> sendTankImageToPump(
+    Uint8List image,
+    int node, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    if (!authed || !connected) {
+      throw StateError('Connect to the pump first');
+    }
+    if (pumpOn) {
+      throw StateError('Stop the pump first');
+    }
+    await uploadFirmware(
+      OtaCharacteristics(ctrl: _otaCtrl!, data: _otaData!, status: _otaStatus!),
+      image,
+      mtu: _device?.mtuNow ?? 23,
+      onProgress: onProgress,
+      startOp: [TankLinkUuids.otaOpTankStart, node],
+    );
+    AppLog.i(
+      'debug',
+      'Tank image (${image.length} B) stored on the pump for sensor $node',
+    );
+  }
+
+  /// Experimental tank update: 0 cancel, 1 retry at 125 kHz, 2 retry fast.
+  Future<void> tankOtaCommand(int action) async {
+    final chr = _cmd;
+    if (chr == null || !authed) {
+      throw StateError('Connect to the pump first');
+    }
+    await chr.write([TankLinkUuids.cmdTankOta, action], withoutResponse: false);
   }
 
   /// Set one tank's auto-off. The pump notifies the new tank list.
@@ -1486,7 +1527,10 @@ class PumpSession extends ChangeNotifier {
     _info = null;
     _pair = _auth = _state = _cmd = _settings = null;
     _otaCtrl = _otaData = _otaStatus = _tank = _sched = _tanks = null;
-    _sensorsChr = _historyChr = _batteryChr = null;
+    _sensorsChr = _historyChr = _batteryChr = _tankOtaChr = null;
+    await _tankOtaNotifySub?.cancel();
+    _tankOtaNotifySub = null;
+    tankOta = null;
     fills = [];
     batteryLogs = {};
     sensors = [];
@@ -1677,6 +1721,7 @@ class PumpSession extends ChangeNotifier {
     _sensorsChr = _chr(TankLinkUuids.sensors);
     _historyChr = _chr(TankLinkUuids.history);
     _batteryChr = _chr(TankLinkUuids.battery);
+    _tankOtaChr = _chr(TankLinkUuids.tankOta);
 
     await _state!.setNotifyValue(true);
     await _stateNotifySub?.cancel();
@@ -1844,6 +1889,9 @@ class PumpSession extends ChangeNotifier {
       } else {
         unawaited(_readAllHistory());
       }
+    });
+    _tankOtaNotifySub = await _follow(_tankOtaChr!, _tankOtaNotifySub, (v) {
+      tankOta = TankOtaStatus.parse(v) ?? tankOta;
     });
     _batteryNotifySub = await _follow(_batteryChr!, _batteryNotifySub, (v) {
       final logs = parseBatteryLog(v);

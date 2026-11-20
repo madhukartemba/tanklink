@@ -39,6 +39,10 @@ esp_err_t sx1278_poll_recv_ex(uint8_t *buf, size_t buf_len, size_t *out_len,
                               int16_t *rssi_dbm, int8_t *snr_db);
 uint8_t sx1278_read_version(void);
 
+/** LoRa bandwidth: 125, 250 or 500 kHz (SF7, CR 4/5 stay). Leaves the radio
+ * asleep; call sx1278_start_rx() afterwards to listen. */
+esp_err_t sx1278_set_bandwidth_khz(uint32_t khz);
+
 #ifdef __cplusplus
 }
 #endif

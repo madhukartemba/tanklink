@@ -12,6 +12,7 @@
 #include "tinycrypt/sha256.h"
 
 #include "gatt_svr.h"
+#include "lora_ota.h"
 #include "pump_control.h"
 #include "relay_control.h"
 #include "status_led.h"
@@ -31,6 +32,11 @@ static struct tc_sha256_state_struct s_sha;
 static pump_ota_status_cb_t s_status_cb;
 static status_led_mode_t s_led_before;
 static uint16_t s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
+/* Tank image upload (experimental LoRa tank update): the sensor it is for,
+ * or NO_TANK for a pump update. A tank image goes raw into the spare slot
+ * and is never booted. */
+#define NO_TANK 0xFF
+static uint8_t s_tank_node = NO_TANK;
 
 static void notify_status(void)
 {
@@ -93,7 +99,9 @@ static void cleanup_session(bool keep_err)
 {
     const bool was_updating = (status_led_get_mode() == STATUS_LED_UPDATING) || s_active;
     if (s_active) {
-        esp_ota_abort(s_handle);
+        if (s_tank_node == NO_TANK) {
+            esp_ota_abort(s_handle);
+        }
         s_active = false;
         s_handle = 0;
         s_part = NULL;
@@ -165,7 +173,26 @@ void pump_ota_on_disconnect(uint16_t conn_handle)
     }
 }
 
+static uint8_t ota_start(uint16_t conn_handle, uint8_t tank_node, uint32_t image_size,
+                         const uint8_t sha256[32]);
+
 uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t sha256[32])
+{
+    return ota_start(conn_handle, NO_TANK, image_size, sha256);
+}
+
+uint8_t pump_ota_start_tank(uint16_t conn_handle, uint8_t node, uint32_t image_size,
+                            const uint8_t sha256[32])
+{
+    if (node == NO_TANK || lora_ota_busy()) {
+        set_err(TANKLINK_OTA_ERR_BUSY);
+        return TANKLINK_OTA_ERR_BUSY;
+    }
+    return ota_start(conn_handle, node, image_size, sha256);
+}
+
+static uint8_t ota_start(uint16_t conn_handle, uint8_t tank_node, uint32_t image_size,
+                         const uint8_t sha256[32])
 {
     if (!gatt_svr_is_authed_conn(conn_handle)) {
         set_err(TANKLINK_OTA_ERR_NOT_AUTH);
@@ -200,9 +227,15 @@ uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
         return TANKLINK_OTA_ERR_BAD_PARAM;
     }
 
-    esp_err_t err = esp_ota_begin(s_part, image_size, &s_handle);
+    esp_err_t err;
+    if (tank_node == NO_TANK) {
+        err = esp_ota_begin(s_part, image_size, &s_handle);
+    } else {
+        /* Raw store: erase whole sectors; nothing marks it bootable. */
+        err = esp_partition_erase_range(s_part, 0, (image_size + 0xFFFu) & ~0xFFFu);
+    }
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_ota_begin: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "erase/begin: %s", esp_err_to_name(err));
         set_err(TANKLINK_OTA_ERR_FLASH);
         return TANKLINK_OTA_ERR_FLASH;
     }
@@ -212,14 +245,16 @@ uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
     s_image_size = image_size;
     s_offset = 0;
     s_active = true;
+    s_tank_node = tank_node;
     s_owner_conn = conn_handle;
     s_err = TANKLINK_OTA_ERR_OK;
     s_state = TANKLINK_OTA_ST_READY;
     relay_control_set_blocked(true);
     s_led_before = status_led_get_mode();
     status_led_set_mode(STATUS_LED_UPDATING);
-    ESP_LOGI(TAG, "OTA start size=%lu part=%s owner=%u",
-             (unsigned long)image_size, s_part->label, conn_handle);
+    ESP_LOGI(TAG, "%s start size=%lu part=%s owner=%u",
+             tank_node == NO_TANK ? "OTA" : "Tank image", (unsigned long)image_size,
+             s_part->label, conn_handle);
     notify_status();
     return TANKLINK_OTA_ERR_OK;
 }
@@ -246,9 +281,11 @@ uint8_t pump_ota_write(uint16_t conn_handle, uint32_t offset, const uint8_t *dat
         return TANKLINK_OTA_ERR_BAD_PARAM;
     }
 
-    esp_err_t err = esp_ota_write(s_handle, data, len);
+    esp_err_t err = s_tank_node == NO_TANK
+                        ? esp_ota_write(s_handle, data, len)
+                        : esp_partition_write(s_part, s_offset, data, len);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_ota_write: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "write: %s", esp_err_to_name(err));
         cleanup_session(true);
         set_err(TANKLINK_OTA_ERR_FLASH);
         return TANKLINK_OTA_ERR_FLASH;
@@ -326,6 +363,27 @@ uint8_t pump_ota_finish(uint16_t conn_handle)
         cleanup_session(true);
         set_err(TANKLINK_OTA_ERR_HASH);
         return TANKLINK_OTA_ERR_HASH;
+    }
+
+    if (s_tank_node != NO_TANK) {
+        /* Stored and checked: hand it to the LoRa side, which sends it when
+         * the tank next wakes. The tank checks the signature itself. */
+        const uint8_t node = s_tank_node;
+        s_active = false;
+        s_tank_node = NO_TANK;
+        s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
+        relay_control_set_blocked(false);
+        restore_led_after_ota();
+        if (lora_ota_begin(node, s_part, s_image_size, s_expect_sha) != ESP_OK) {
+            set_err(TANKLINK_OTA_ERR_STATE);
+            return TANKLINK_OTA_ERR_STATE;
+        }
+        s_state = TANKLINK_OTA_ST_VERIFY_OK;
+        s_err = TANKLINK_OTA_ERR_OK;
+        ESP_LOGI(TAG, "Tank image stored for sensor %u", node);
+        notify_status();
+        s_state = TANKLINK_OTA_ST_IDLE;
+        return TANKLINK_OTA_ERR_OK;
     }
 
     esp_err_t err = esp_ota_end(s_handle);

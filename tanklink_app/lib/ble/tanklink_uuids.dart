@@ -38,6 +38,10 @@ class TankLinkUuids {
   /// Each sensor's daily battery low and high.
   static final battery = Guid('7f1a0010-ac01-4c8c-9b2e-74616e6b6c6e');
 
+  /// Experimental tank update over LoRa: progress (state node error fast
+  /// done(u16) total(u16)).
+  static final tankOta = Guid('7f1a0011-ac01-4c8c-9b2e-74616e6b6c6e');
+
   /// History entry: started(u32) ran_sec(u32) slot started_by stopped_by pad.
   static const historyEntryLen = 12;
 
@@ -180,6 +184,21 @@ class TankLinkUuids {
   static const otaOpStart = 0x01;
   static const otaOpAbort = 0x02;
   static const otaOpFinish = 0x03;
+
+  /// Experimental: node(1) size(u32) sha256(32). The image is a tank's
+  /// firmware; the pump stores it and sends it to that tank over LoRa.
+  static const otaOpTankStart = 0x11;
+
+  /// Cmd action(1): 0 cancel, 1 retry at 125 kHz, 2 retry trying 500 kHz.
+  static const cmdTankOta = 0xAA;
+
+  static const tankOtaIdle = 0;
+  static const tankOtaWaiting = 1;
+  static const tankOtaOffering = 2;
+  static const tankOtaSending = 3;
+  static const tankOtaFinishing = 4;
+  static const tankOtaDone = 5;
+  static const tankOtaFailed = 6;
 
   static const otaStIdle = 0;
   static const otaStReady = 1;

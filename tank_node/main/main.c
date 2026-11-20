@@ -12,6 +12,7 @@
 #include "tank_battery.h"
 #include "tank_ble.h"
 #include "tank_ble_token.h"
+#include "tank_lora_ota.h"
 #include "tank_board.h"
 #include "tank_boot_pins.h"
 #include "tank_errors.h"
@@ -376,6 +377,12 @@ void app_main(void)
             save_last_flags(now_flags);
             (void)err;
         }
+    }
+
+    /* The pump has an update for us (experimental LoRa update). */
+    if (tank_link_ota_pending() && tank_link_radio_ok()) {
+        tank_ble_stop();
+        tank_lora_ota_run();
     }
 
 #if CONFIG_TANK_DEMO_NO_SLEEP

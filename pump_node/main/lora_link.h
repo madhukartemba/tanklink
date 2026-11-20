@@ -57,6 +57,8 @@ bool lora_link_node_status(uint8_t node, lora_node_status_t *out);
 bool lora_link_active_tank_full(void);
 /** The selected tank's almost-empty float is down (fresh reading, auto-fill tanks only). */
 bool lora_link_active_tank_low(void);
+/** Link key and MAC of sensor [node], for the tank update. False if unpaired. */
+bool lora_link_node_secrets(uint8_t node, uint8_t key[16], uint8_t mac[6]);
 
 /* ---- The selected tank's sensor ---- */
 bool lora_link_tank_bound(void);

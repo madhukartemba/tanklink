@@ -23,6 +23,9 @@ const uint8_t *tank_link_tank_id(void);
  * lives in RAM and is found again on every wake. See tank_errors.h.
  */
 uint8_t tank_link_fault(void);
+
+/** True once a pump ACK said it has a firmware update for this tank. */
+bool tank_link_ota_pending(void);
 void tank_link_set_fault(uint8_t code);
 
 /**

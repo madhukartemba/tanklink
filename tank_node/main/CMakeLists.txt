@@ -7,6 +7,7 @@ idf_component_register(
         "tank_link.c"
         "tank_ble_token.c"
         "tank_ota.c"
+        "tank_lora_ota.c"
         "tank_gatt.c"
         "tank_ble.c"
     INCLUDE_DIRS "."
