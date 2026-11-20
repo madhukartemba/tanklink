@@ -165,6 +165,9 @@ static void normalize(void)
         if (s->auto_off_min > PUMP_AUTO_OFF_MAX_MIN) {
             s->auto_off_min = PUMP_AUTO_OFF_MAX_MIN;
         }
+        if (s->auto_off_min < PUMP_AUTO_OFF_MIN_MIN) {
+            s->auto_off_min = PUMP_AUTO_OFF_DEFAULT_MIN;
+        }
         s->name[PUMP_TANK_NAME_LEN - 1] = '\0';
     }
 
@@ -471,6 +474,9 @@ esp_err_t pump_tanks_set_auto_off(uint8_t slot, uint8_t minutes)
     }
     if (minutes > PUMP_AUTO_OFF_MAX_MIN) {
         minutes = PUMP_AUTO_OFF_MAX_MIN;
+    }
+    if (minutes < PUMP_AUTO_OFF_MIN_MIN) {
+        minutes = PUMP_AUTO_OFF_MIN_MIN;
     }
     s_blob.slots[slot].auto_off_min = minutes;
     ESP_LOGI(TAG, "slot %u auto-off %u min", slot, minutes);

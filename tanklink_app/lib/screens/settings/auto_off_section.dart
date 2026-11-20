@@ -21,7 +21,10 @@ class _AutoOffSectionState extends State<AutoOffSection> {
   static const int _maxMinutes = TankLinkUuids.autoOffMaxMin;
 
   int _draftMinutes = 30;
-  bool _autoEnabled = false;
+
+  /// Auto-off can't be turned off: it is the last stop if a float or the
+  /// radio fails. The pump clamps to 1–240 minutes.
+  static const bool _autoEnabled = true;
 
   /// The tank whose auto-off is being edited; null until the tank list loads.
   int? _editSlot;
@@ -33,10 +36,9 @@ class _AutoOffSectionState extends State<AutoOffSection> {
   }
 
   void _loadSlot(PumpSession session, int slot) {
-    final v = session.autoOffMinFor(slot).clamp(0, _maxMinutes);
+    final v = session.autoOffMinFor(slot);
     _editSlot = slot;
-    _autoEnabled = v > 0;
-    _draftMinutes = v > 0 ? v : 30;
+    _draftMinutes = v > 0 ? v.clamp(_minMinutes, _maxMinutes) : 30;
   }
 
   Future<void> _commitAuto(int minutes) async {
@@ -53,22 +55,9 @@ class _AutoOffSectionState extends State<AutoOffSection> {
     }
   }
 
-  Future<void> _setAutoEnabled(bool on) async {
-    setState(() {
-      _autoEnabled = on;
-      if (on && _draftMinutes < _minMinutes) {
-        _draftMinutes = 30;
-      }
-    });
-    await _commitAuto(on ? _draftMinutes : 0);
-  }
-
   Future<void> _applyDraft(int minutes) async {
     final m = minutes.clamp(_minMinutes, _maxMinutes);
-    setState(() {
-      _autoEnabled = true;
-      _draftMinutes = m;
-    });
+    setState(() => _draftMinutes = m);
     await _commitAuto(m);
   }
 
@@ -102,9 +91,7 @@ class _AutoOffSectionState extends State<AutoOffSection> {
                         ? 'Connect to change'
                         : _editSlot == null
                         ? 'Loading…'
-                        : _autoEnabled
-                        ? 'Stops after ${formatAutoOff(_draftMinutes)}'
-                        : 'Disabled',
+                        : 'Stops after ${formatAutoOff(_draftMinutes)}',
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
                       fontSize: 13,
@@ -112,10 +99,6 @@ class _AutoOffSectionState extends State<AutoOffSection> {
                   ),
                 ],
               ),
-            ),
-            Switch(
-              value: _autoEnabled,
-              onChanged: !ready || _editSlot == null ? null : _setAutoEnabled,
             ),
           ],
         ),

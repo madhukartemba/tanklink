@@ -59,7 +59,7 @@ The app only offers a release whose `proto_major` equals its own and whose `hw_r
 ### Tank BLE OTA notes
 
 - First USB flash after dual-OTA partition change: `erase-flash` then flash (clears NVS).
-- Re-pair the tank once so the BLE OTA token reaches the pump/app.
+- The tank's BLE OTA token is derived from its LoRa link key, which changes on every pairing; the pump passes it to the app.
 - Short-press the tank button to open a ~10 s BLE advertise window; the app scans for `TL-Tank-XXXX` / `tank_id` and pushes the image.
 - From **0.2.4+**: deep sleep ~50 µA on BAT± (USB out); NimBLE only during OTA.
 - From **0.2.5**: TX retries=5; unpaired = button-only sleep (no 10 min wake); **10 kΩ** on NSS+SCK+MOSI; battery divider **120 k/120 k**.

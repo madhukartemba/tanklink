@@ -55,12 +55,19 @@ class TankLinkUuids {
   static const causeSystem = 7;
 
   static const tokenLen = 16;
+
+  /// Auth: read gives a 16-byte nonce per connection; write the answer
+  /// from `authResponse` in protocol.dart.
+  static const nonceLen = 16;
   static const cmdUnpair = 0xF0;
   static const cmdFactoryReset = 0xF1;
 
   /// Open / close the pump's phone pairing window (pump protocol minor 2).
   static const cmdPairingOpen = 0xF2;
   static const cmdPairingClose = 0xF3;
+
+  /// Keep only this phone's key: every other phone must be added again.
+  static const cmdForgetOtherPhones = 0xF4;
 
   /// Pump protocol minor that has the two commands above and the
   /// advertising state byte below.
@@ -82,7 +89,7 @@ class TankLinkUuids {
   static const cmdTankSelect = 0xA4;
   static const cmdTankRename = 0xA5;
 
-  /// slot(1) minutes(1), 0 = off.
+  /// slot(1) minutes(1), 1–240 (the pump clamps; auto-off can't be off).
   static const cmdTankAutoOff = 0xA6;
 
   /// sensor_id(6) mode(1): one sensor's float mode.

@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_random.h"
 #include "host/ble_gap.h"
 #include "host/ble_hs.h"
 #include "host/ble_uuid.h"
@@ -60,6 +61,8 @@ typedef struct {
     uint16_t conn_handle;
     bool in_use;
     bool authed;
+    int8_t phone;                /* pump_pair phone index once authed, else -1 */
+    uint8_t nonce[TL_NONCE_LEN]; /* Auth challenge, new after every attempt */
     bool subscribed[SUB_COUNT];
 } conn_slot_t;
 
@@ -89,16 +92,24 @@ static conn_slot_t *slot_alloc(uint16_t conn_handle)
             memset(&s_conns[i], 0, sizeof(s_conns[i]));
             s_conns[i].in_use = true;
             s_conns[i].conn_handle = conn_handle;
+            s_conns[i].phone = -1;
+            esp_fill_random(s_conns[i].nonce, sizeof(s_conns[i].nonce));
             return &s_conns[i];
         }
     }
     return NULL;
 }
 
+static void sign_out(conn_slot_t *slot)
+{
+    slot->authed = false;
+    slot->phone = -1;
+}
+
 static void clear_all_auth(void)
 {
     for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
-        s_conns[i].authed = false;
+        sign_out(&s_conns[i]);
     }
 }
 
@@ -237,10 +248,18 @@ static int on_info(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ct
     return reply(ctxt, buf, gatt_payload_info(buf, gatt_svr_is_authed_conn(conn)));
 }
 
-/** Claim the pump while its pairing window is open; notifies the new token. */
+/**
+ * Claim the pump while its pairing window is open: makes a token for this
+ * phone and notifies it. This is the one time a token goes over the air;
+ * after that the phone signs in by answering the Auth challenge.
+ */
 static int on_pair(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
     if (!is_write(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    conn_slot_t *slot = slot_find(conn);
+    if (!slot) {
         return BLE_ATT_ERR_UNLIKELY;
     }
     if (!pump_pair_is_claimable()) {
@@ -248,14 +267,18 @@ static int on_pair(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ct
         return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
     }
     uint8_t token[TANKLINK_TOKEN_LEN];
-    if (pump_pair_claim(token) != ESP_OK) {
+    int phone = -1;
+    const esp_err_t err = pump_pair_claim(token, &phone);
+    if (err == ESP_ERR_NO_MEM) {
+        return BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    if (err != ESP_OK) {
         return BLE_ATT_ERR_UNLIKELY;
     }
-    conn_slot_t *slot = slot_find(conn);
-    if (slot) {
-        slot->authed = true; /* the claiming phone is signed in */
-    }
+    slot->authed = true; /* the claiming phone is signed in */
+    slot->phone = (int8_t)phone;
     struct os_mbuf *om = ble_hs_mbuf_from_flat(token, sizeof(token));
+    memset(token, 0, sizeof(token));
     if (!om) {
         return BLE_ATT_ERR_INSUFFICIENT_RES;
     }
@@ -266,24 +289,35 @@ static int on_pair(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ct
     return 0;
 }
 
+/**
+ * Read: this connection's 16-byte nonce. Write: the phone's answer,
+ * HMAC-SHA256(token, "TLauth" || nonce) first 16 bytes. The nonce changes
+ * after every write, so a recorded answer is useless.
+ */
 static int on_auth(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
+    conn_slot_t *slot = slot_find(conn);
+    if (!slot) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    if (is_read(ctxt)) {
+        return reply(ctxt, slot->nonce, sizeof(slot->nonce));
+    }
     if (!is_write(ctxt)) {
         return BLE_ATT_ERR_UNLIKELY;
     }
-    uint8_t token[TANKLINK_TOKEN_LEN];
+    uint8_t resp[TL_AUTH_RESP_LEN];
     uint16_t len = 0;
-    const int rc = read_write(ctxt, token, sizeof(token), sizeof(token), &len);
+    const int rc = read_write(ctxt, resp, sizeof(resp), sizeof(resp), &len);
     if (rc != 0) {
         return rc;
     }
-    const bool ok = pump_pair_check_token(token, sizeof(token));
-    conn_slot_t *slot = slot_find(conn);
-    if (slot) {
-        slot->authed = ok;
-    }
-    ESP_LOGI(TAG, "Auth %s conn=%u", ok ? "OK" : "FAILED", conn);
-    return ok ? 0 : BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    const int phone = pump_pair_check_response(slot->nonce, resp);
+    esp_fill_random(slot->nonce, sizeof(slot->nonce));
+    slot->authed = phone >= 0;
+    slot->phone = (int8_t)phone;
+    ESP_LOGI(TAG, "Auth %s conn=%u phone=%d", phone >= 0 ? "OK" : "FAILED", conn, phone);
+    return phone >= 0 ? 0 : BLE_ATT_ERR_WRITE_NOT_PERMITTED;
 }
 
 static int on_state(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -313,8 +347,8 @@ static int node_from_id(const uint8_t *body, uint16_t len, uint16_t at)
     return pump_tanks_node_find(&body[at]);
 }
 
-/** Runs one Cmd opcode. [body] is the whole write, [len] at least 1. */
-static int run_command(const uint8_t *body, uint16_t len)
+/** Runs one Cmd opcode from [slot]. [body] is the whole write, [len] at least 1. */
+static int run_command(conn_slot_t *slot, const uint8_t *body, uint16_t len)
 {
     switch (body[0]) {
     case TANKLINK_CMD_OFF:
@@ -339,6 +373,18 @@ static int run_command(const uint8_t *body, uint16_t len)
 
     case TANKLINK_CMD_PAIRING_CLOSE:
         pump_pair_exit_pairing_mode();
+        return 0;
+
+    case TANKLINK_CMD_FORGET_OTHER_PHONES:
+        if (pump_pair_forget_others(slot->phone) != ESP_OK) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        for (int i = 0; i < TANKLINK_MAX_BLE_CONN; i++) {
+            if (s_conns[i].in_use && &s_conns[i] != slot && s_conns[i].authed) {
+                sign_out(&s_conns[i]);
+                ble_gap_terminate(s_conns[i].conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+            }
+        }
         return 0;
 
     case TANKLINK_CMD_TEST_BEEP:
@@ -426,7 +472,8 @@ static int on_cmd(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctx
     if (!is_write(ctxt)) {
         return BLE_ATT_ERR_UNLIKELY;
     }
-    if (!gatt_svr_is_authed_conn(conn)) {
+    conn_slot_t *slot = slot_find(conn);
+    if (!slot || !slot->authed) {
         ESP_LOGW(TAG, "Cmd rejected: conn=%u not signed in", conn);
         return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
     }
@@ -435,7 +482,7 @@ static int on_cmd(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctx
     _Static_assert(sizeof(body) >= 1 + TANKLINK_DEVICE_ID_LEN + 1, "Cmd buffer");
     uint16_t len = 0;
     const int rc = read_write(ctxt, body, sizeof(body), 1, &len);
-    return rc != 0 ? rc : run_command(body, len);
+    return rc != 0 ? rc : run_command(slot, body, len);
 }
 
 static int on_settings(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
@@ -710,7 +757,7 @@ static const struct ble_gatt_svc_def s_services[] = {
             {.uuid = &uuid_info.u, .access_cb = on_info, .flags = F_R},
             {.uuid = &uuid_pair.u, .access_cb = on_pair, .flags = F_W | F_N,
              .val_handle = &s_pair_val_handle},
-            {.uuid = &uuid_auth.u, .access_cb = on_auth, .flags = F_W},
+            {.uuid = &uuid_auth.u, .access_cb = on_auth, .flags = F_R | F_W},
             {.uuid = &uuid_state.u, .access_cb = on_state, .flags = F_R | F_N,
              .val_handle = &s_val_handle[SUB_STATE]},
             {.uuid = &uuid_cmd.u, .access_cb = on_cmd, .flags = F_W},

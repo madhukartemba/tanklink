@@ -15,13 +15,14 @@
 #include "tank_errors.h"
 #include "tank_led.h"
 #include "tank_version.h"
+#include "tanklink_crypto.h"
 #include "tanklink_lora_proto.h"
 
 #define TAG "TANK_LINK"
 #define NVS_NS "tank"
-#define NVS_KEY_SEQ "seq"
+#define NVS_KEY_SEQ "seq32"
 
-static uint16_t s_seq;
+static uint32_t s_seq;
 static bool s_radio_ok;
 static uint8_t s_tank_id[TANKLINK_LORA_TANK_ID_LEN];
 static uint8_t s_fault;
@@ -36,12 +37,14 @@ void tank_link_set_fault(uint8_t code)
     s_fault = code;
 }
 
-static uint16_t next_seq(void)
+/* Saved before every send: the pump drops any seq it has already seen, so
+ * a recorded packet can't be played back. */
+static uint32_t next_seq(void)
 {
     s_seq++;
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_set_u16(h, NVS_KEY_SEQ, s_seq);
+        nvs_set_u32(h, NVS_KEY_SEQ, s_seq);
         nvs_commit(h);
         nvs_close(h);
     }
@@ -52,7 +55,7 @@ esp_err_t tank_link_init(void)
 {
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
-        nvs_get_u16(h, NVS_KEY_SEQ, &s_seq);
+        nvs_get_u32(h, NVS_KEY_SEQ, &s_seq);
         nvs_close(h);
     }
 
@@ -105,9 +108,10 @@ const uint8_t *tank_link_tank_id(void)
     return s_tank_id;
 }
 
-static bool packet_is_ack_for(const uint8_t *buf, size_t len, uint16_t seq)
+static bool packet_is_ack_for(const uint8_t *buf, size_t len, uint32_t seq,
+                              const uint8_t key[TL_KEY_LEN])
 {
-    if (len < sizeof(tanklink_lora_status_t)) {
+    if (len < TANKLINK_LORA_STATUS_LEN) {
         return false;
     }
     const tanklink_lora_status_t *ack = (const tanklink_lora_status_t *)buf;
@@ -118,12 +122,14 @@ static bool packet_is_ack_for(const uint8_t *buf, size_t len, uint16_t seq)
         ack->type != TANKLINK_LORA_TYPE_ACK) {
         return false;
     }
-    /* Several tanks can share a pump, and seq is per tank: the ACK must be ours. */
+    /* Several tanks can share a pump, and seq is per tank: the ACK must be ours,
+     * and only the pump that holds our key can tag it. */
     return ack->seq == seq &&
-           memcmp(ack->tank_id, s_tank_id, TANKLINK_LORA_TANK_ID_LEN) == 0;
+           memcmp(ack->tank_id, s_tank_id, TANKLINK_LORA_TANK_ID_LEN) == 0 &&
+           tl_lora_verify(key, buf, len);
 }
 
-static bool wait_ack(uint16_t seq, uint32_t timeout_ms,
+static bool wait_ack(uint32_t seq, const uint8_t key[TL_KEY_LEN], uint32_t timeout_ms,
                      tank_link_should_cancel_fn should_cancel, void *ctx)
 {
     if (sx1278_start_rx() != ESP_OK) {
@@ -137,13 +143,13 @@ static bool wait_ack(uint16_t seq, uint32_t timeout_ms,
         }
         size_t n = 0;
         esp_err_t err = sx1278_poll_recv(buf, sizeof(buf), &n);
-        if (err == ESP_OK && packet_is_ack_for(buf, n, seq)) {
-            ESP_LOGI(TAG, "ACK seq=%u", seq);
+        if (err == ESP_OK && packet_is_ack_for(buf, n, seq, key)) {
+            ESP_LOGI(TAG, "ACK seq=%lu", (unsigned long)seq);
             return true;
         }
         vTaskDelay(pdMS_TO_TICKS(20));
     }
-    ESP_LOGW(TAG, "ACK timeout seq=%u", seq);
+    ESP_LOGW(TAG, "ACK timeout seq=%lu", (unsigned long)seq);
     return false;
 }
 
@@ -162,6 +168,7 @@ static void fill_status(tanklink_lora_status_t *pkt, const tank_inputs_t *in,
     pkt->fw_minor = TANK_FW_MINOR;
     pkt->fw_patch = TANK_FW_PATCH;
     pkt->hw_rev = TANK_HW_REV;
+    pkt->fault = s_fault;
     if (in) {
         if (in->sensor1) {
             pkt->flags |= TANKLINK_LORA_FLAG_SENSOR1;
@@ -178,7 +185,8 @@ static void fill_status(tanklink_lora_status_t *pkt, const tank_inputs_t *in,
     }
 }
 
-static esp_err_t send_with_ack(const uint8_t *payload, size_t len, uint16_t seq,
+static esp_err_t send_with_ack(const uint8_t *payload, size_t len, uint32_t seq,
+                               const uint8_t key[TL_KEY_LEN],
                                tank_link_should_cancel_fn should_cancel, void *ctx)
 {
     if (!s_radio_ok) {
@@ -193,15 +201,15 @@ static esp_err_t send_with_ack(const uint8_t *payload, size_t len, uint16_t seq,
         if (should_cancel && should_cancel(ctx)) {
             return ESP_ERR_INVALID_STATE;
         }
-        ESP_LOGI(TAG, "TX attempt %d/%d type=%u seq=%u flags=0x%02x len=%u", i + 1, attempts,
-                 hdr->type, seq, hdr->flags, (unsigned)len);
+        ESP_LOGI(TAG, "TX attempt %d/%d type=%u seq=%lu flags=0x%02x len=%u", i + 1,
+                 attempts, hdr->type, (unsigned long)seq, hdr->flags, (unsigned)len);
         esp_err_t err = sx1278_send(payload, len, 2000);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "radio TX failed: %s", esp_err_to_name(err));
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
-        if (wait_ack(seq, ack_ms, should_cancel, ctx)) {
+        if (wait_ack(seq, key, ack_ms, should_cancel, ctx)) {
             return ESP_OK;
         }
         if (should_cancel && should_cancel(ctx)) {
@@ -217,11 +225,12 @@ esp_err_t tank_link_send_status(const tank_inputs_t *in, uint8_t battery_pct,
                                 bool button_event,
                                 tank_link_should_cancel_fn should_cancel, void *ctx)
 {
-    uint8_t buf[sizeof(tanklink_lora_status_t) + 1];
+    uint8_t buf[TANKLINK_LORA_STATUS_LEN];
     tanklink_lora_status_t *pkt = (tanklink_lora_status_t *)buf;
     fill_status(pkt, in, battery_pct, button_event, false);
-    buf[sizeof(*pkt)] = s_fault;
-    esp_err_t err = send_with_ack(buf, sizeof(buf), pkt->seq, should_cancel, ctx);
+    const uint8_t *key = tank_link_key();
+    const size_t len = tl_lora_seal(key, buf, TANKLINK_LORA_STATUS_BODY_LEN);
+    esp_err_t err = send_with_ack(buf, len, pkt->seq, key, should_cancel, ctx);
     if (err == ESP_ERR_INVALID_STATE && should_cancel) {
         return err;
     }
@@ -239,11 +248,18 @@ esp_err_t tank_link_send_pair_request(uint8_t battery_pct,
 {
     tank_inputs_t in;
     tank_board_read(&in);
-    uint8_t buf[TANKLINK_LORA_PAIR_LEN + 1];
+    /* A new key every pairing. It is only kept once the pump ACKs with it. */
+    uint8_t key[TL_KEY_LEN];
+    tank_link_key_make_pending(key);
+    uint8_t buf[TANKLINK_LORA_PAIR_LEN];
     tanklink_lora_status_t *pkt = (tanklink_lora_status_t *)buf;
     fill_status(pkt, &in, battery_pct, true, true);
-    memcpy(buf + sizeof(tanklink_lora_status_t), tank_ble_token_bytes(),
-           TANKLINK_LORA_BLE_TOKEN_LEN);
-    buf[TANKLINK_LORA_PAIR_LEN] = s_fault;
-    return send_with_ack(buf, sizeof(buf), pkt->seq, should_cancel, ctx);
+    memcpy(buf + TANKLINK_LORA_STATUS_BODY_LEN, key, sizeof(key));
+    const size_t len = tl_lora_seal(key, buf, TANKLINK_LORA_PAIR_BODY_LEN);
+    esp_err_t err = send_with_ack(buf, len, pkt->seq, key, should_cancel, ctx);
+    if (err == ESP_OK) {
+        err = tank_link_key_commit(key);
+    }
+    memset(key, 0, sizeof(key));
+    return err;
 }

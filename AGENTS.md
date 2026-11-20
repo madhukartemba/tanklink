@@ -69,6 +69,7 @@ These values are duplicated by hand. There is no codegen. If you change one, cha
 | --- | --- | --- | --- |
 | BLE UUIDs, Cmd opcodes, OTA opcodes/status, payload lengths | `pump_node/main/tanklink_uuid.h` | `tank_node/main/tanklink_ble_uuid.h` | `tanklink_app/lib/ble/tanklink_uuids.dart` |
 | LoRa packet format | `components/tanklink_lora/include/tanklink_lora_proto.h` (shared) | same | — |
+| Sign-in answer, LoRa tag, tank OTA token | `components/tanklink_lora/tanklink_crypto.c` (shared) | same | `authResponse` in `tanklink_app/lib/ble/protocol.dart` (covered by `test/auth_test.dart`) |
 | Report body (`POST /v1/report`) | — | — | `tanklink_app/lib/diag/report_builder.dart` (`toJson`) ↔ `report_worker/src/index.js` |
 | BLE payload layouts | `pump_node/main/gatt_payloads.c` (reads) and the handlers in `gatt_svr.c` (writes) | `tank_node/main/tank_gatt.c` | `tanklink_app/lib/ble/protocol.dart` (covered by `test/protocol_test.dart`) |
 | Protocol versions | `TANKLINK_PROTO_MAJOR/MINOR` in `tanklink_uuid.h` | same names in `tanklink_ble_uuid.h` | `TankLinkUuids.protoMajor` |
@@ -155,6 +156,7 @@ A fill cut short by a power cut or restart is detected by `pump_runlog.c` (a "ru
 - Pump relays (GPIO0/1) are active-low by default and set to idle first thing in `app_main` (`relay_control_early_safe()`), so the motor never clicks on during reset.
 - Tank: 10 kΩ pull-ups on NSS/SCK/MOSI are required or the SX1278 draws ~2 mA in deep sleep. See `tank_node/README.md`.
 - The first flash after a partition-table change must be over USB with `erase-flash`, which clears pairing.
+- Firmware is signed. Builds need `keys/firmware_signing_key.pem` (gitignored, never commit it), and boards refuse BLE updates signed with another key. See `docs/firmware-build-setup.md#signing-key`.
 
 ## Testing reality
 

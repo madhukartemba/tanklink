@@ -51,3 +51,13 @@ CONFIG_PUMP_LORA_FREQ_HZ=433000000
 # BLE transmit power: the C3's maximum. The pump is mains powered, and the
 # SuperMini's small antenna needs every dB (default is +9 dBm).
 CONFIG_BT_CTRL_DFT_TX_POWER_LEVEL_P20=y
+
+# Signed firmware: OTA only takes an image signed with the TankLink release
+# key (Secure Boot V2 signature block, RSA-3072). No eFuses are burned and
+# the bootloader does not check, so USB flashing still works as before.
+# The key is not in git: see docs/firmware-build-setup.md#signing-key.
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
+CONFIG_SECURE_BOOT_SIGNING_KEY="../keys/firmware_signing_key.pem"

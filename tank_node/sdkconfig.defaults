@@ -44,3 +44,13 @@ CONFIG_TANK_BLE_OTA_WINDOW_MS=10000
 CONFIG_TANK_PAIR_WINDOW_MS=30000
 CONFIG_TANK_TX_RETRIES=5
 CONFIG_TANK_ACK_TIMEOUT_MS=800
+
+# Signed firmware: OTA only takes an image signed with the TankLink release
+# key (Secure Boot V2 signature block, RSA-3072). No eFuses are burned and
+# the bootloader does not check, so USB flashing still works as before.
+# The key is not in git: see docs/firmware-build-setup.md#signing-key.
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
+CONFIG_SECURE_BOOT_SIGNING_KEY="../keys/firmware_signing_key.pem"

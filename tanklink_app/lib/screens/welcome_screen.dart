@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../ble/pump_session.dart';
+
 import 'add_pump_screen.dart';
 import 'home_screen.dart';
 
@@ -28,7 +30,7 @@ class _StartGateState extends State<StartGate> {
     var show = false;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final hasPumps = (prefs.getString('saved_pumps') ?? '[]') != '[]';
+      final hasPumps = await hasSavedPumps();
       show = !(prefs.getBool(_welcomeSeenKey) ?? false) && !hasPumps;
     } catch (_) {
       // Prefs unreadable: go straight home.

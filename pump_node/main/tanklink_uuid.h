@@ -121,7 +121,7 @@ extern "C" {
 #define TANKLINK_CMD_TANK_UNPAIR 0xA2 /* sensor_id(6) */
 #define TANKLINK_CMD_TANK_SELECT 0xA4
 #define TANKLINK_CMD_TANK_RENAME 0xA5
-#define TANKLINK_CMD_TANK_AUTO_OFF 0xA6 /* slot(1) minutes(1), 0 = off */
+#define TANKLINK_CMD_TANK_AUTO_OFF 0xA6 /* slot(1) minutes(1), 1-240 */
 #define TANKLINK_CMD_SENSOR_MODE 0xA7 /* sensor_id(6) mode(1) */
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
@@ -129,6 +129,8 @@ extern "C" {
  * Open is refused while the pump runs: the window switches it off. */
 #define TANKLINK_CMD_PAIRING_OPEN  0xF2
 #define TANKLINK_CMD_PAIRING_CLOSE 0xF3
+/* Keep only the sending phone's token: every other phone must pair again. */
+#define TANKLINK_CMD_FORGET_OTHER_PHONES 0xF4
 #define TANKLINK_CMD_CLEAR_ERROR   0xE0
 #define TANKLINK_CMD_DISMISS_INTERRUPT 0xE1
 

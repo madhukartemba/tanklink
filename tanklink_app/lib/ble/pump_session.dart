@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../diag/app_log.dart';
@@ -373,7 +374,13 @@ class PumpSession extends ChangeNotifier {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final listRaw = prefs.getString('saved_pumps');
+    // Saved pumps hold each pump's sign-in token: Keystore/Keychain backed.
+    String? listRaw;
+    try {
+      listRaw = await _secure.read(key: _savedPumpsKey);
+    } catch (e) {
+      AppLog.w('ble', 'Saved pumps unreadable: $e');
+    }
     if (listRaw != null) {
       final list = (jsonDecode(listRaw) as List)
           .cast<Map<String, dynamic>>()
@@ -410,9 +417,9 @@ class PumpSession extends ChangeNotifier {
 
   Future<void> _persistAll() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      'saved_pumps',
-      jsonEncode(pumps.map((p) => p.toJson()).toList()),
+    await _secure.write(
+      key: _savedPumpsKey,
+      value: jsonEncode(pumps.map((p) => p.toJson()).toList()),
     );
     if (selectedRemoteId != null) {
       await prefs.setString('selected_pump_id', selectedRemoteId!);
@@ -535,7 +542,7 @@ class PumpSession extends ChangeNotifier {
       await _connectWithRetries(device, attempts);
       final tokenPump = selected ?? pump;
       try {
-        await _auth!.write(tokenPump.token, withoutResponse: false);
+        await signInWith(_auth!, tokenPump.token);
       } catch (e) {
         AppLog.w('ble', 'Auth write failed: $e');
         await disconnect();
@@ -989,6 +996,19 @@ class PumpSession extends ChangeNotifier {
     AppLog.i('pump', 'Phone pairing opened from the app');
   }
 
+  /// Sign out every other phone: they keep nothing that works and must be
+  /// added again. This phone stays signed in.
+  Future<void> forgetOtherPhones() async {
+    final chr = _cmd;
+    if (chr == null || !authed) {
+      throw StateError('Connect to the pump first');
+    }
+    await chr.write([
+      TankLinkUuids.cmdForgetOtherPhones,
+    ], withoutResponse: false);
+    AppLog.i('pump', 'Signed out the other phones');
+  }
+
   Future<void> closePhonePairing() async {
     final chr = _cmd;
     if (chr == null || !authed) return;
@@ -1116,7 +1136,18 @@ class PumpSession extends ChangeNotifier {
       }
     });
 
-    await _pair!.write([0x01], withoutResponse: false);
+    try {
+      await _pair!.write([0x01], withoutResponse: false);
+    } catch (e) {
+      // The pump has keys for as many phones as it can hold.
+      if ('$e'.contains('INSUFFICIENT_RESOURCES')) {
+        throw StateError(
+          'This pump already has 8 phones. On a phone that has it, '
+          'use Sign out other phones, then try again.',
+        );
+      }
+      rethrow;
+    }
     final token = await completer.future.timeout(const Duration(seconds: 8));
     final info = PumpInfo.parse(await _info!.read());
     final pump = SavedPump(
@@ -1127,7 +1158,7 @@ class PumpSession extends ChangeNotifier {
     );
     await _upsertPump(pump);
 
-    await _auth!.write(token, withoutResponse: false);
+    await signInWith(_auth!, token);
     authed = true;
     authRejected = false;
     connecting = false;
@@ -1280,7 +1311,7 @@ class PumpSession extends ChangeNotifier {
           orElse: () =>
               throw StateError('Tank firmware cannot be updated from the app'),
         );
-        await chr(TankLinkUuids.auth).write(token, withoutResponse: false);
+        await signInWith(chr(TankLinkUuids.auth), token);
         await uploadFirmware(
           OtaCharacteristics(
             ctrl: chr(TankLinkUuids.otaCtrl),
@@ -1774,4 +1805,20 @@ class PumpSession extends ChangeNotifier {
     unawaited(stopScan());
     super.dispose();
   }
+}
+
+/// Sign in on a pump's or tank's Auth characteristic: read its nonce, write
+/// the answer. The token itself is never sent.
+Future<void> signInWith(BluetoothCharacteristic auth, List<int> token) async {
+  final nonce = await auth.read();
+  await auth.write(authResponse(token, nonce), withoutResponse: false);
+}
+
+const _secure = FlutterSecureStorage();
+const _savedPumpsKey = 'saved_pumps';
+
+/// Whether any pump is saved on this phone (for the first-run screen).
+Future<bool> hasSavedPumps() async {
+  final raw = await _secure.read(key: _savedPumpsKey);
+  return raw != null && raw != '[]';
 }

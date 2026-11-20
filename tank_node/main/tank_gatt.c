@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_random.h"
 #include "host/ble_gap.h"
 #include "host/ble_hs.h"
 #include "host/ble_uuid.h"
@@ -23,6 +24,7 @@ typedef struct {
     bool in_use;
     bool authed;
     bool ota_status_notify;
+    uint8_t nonce[TL_NONCE_LEN]; /* Auth challenge, new after every attempt */
 } conn_slot_t;
 
 static const ble_uuid128_t uuid_svc = TANKLINK_SVC_UUID_INIT;
@@ -51,7 +53,7 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
             {
                 .uuid = &uuid_auth.u,
                 .access_cb = chr_access,
-                .flags = BLE_GATT_CHR_F_WRITE,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
             },
             {
                 .uuid = &uuid_ota_ctrl.u,
@@ -96,6 +98,7 @@ static conn_slot_t *slot_alloc(uint16_t conn_handle)
             memset(&s_conns[i], 0, sizeof(s_conns[i]));
             s_conns[i].in_use = true;
             s_conns[i].conn_handle = conn_handle;
+            esp_fill_random(s_conns[i].nonce, sizeof(s_conns[i].nonce));
             return &s_conns[i];
         }
     }
@@ -161,19 +164,31 @@ static int chr_access(uint16_t conn_handle, uint16_t attr_handle,
     }
 
     if (ble_uuid_cmp(uuid, &uuid_auth.u) == 0) {
-        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-        uint8_t token[TANKLINK_TOKEN_LEN];
-        int rc = ble_hs_mbuf_to_flat(ctxt->om, token, sizeof(token), NULL);
-        if (rc != 0 || OS_MBUF_PKTLEN(ctxt->om) != TANKLINK_TOKEN_LEN) {
-            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        }
+        /* Read: this connection's nonce. Write: HMAC(token, "TLauth" || nonce). */
         conn_slot_t *slot = slot_find(conn_handle);
         if (!slot) {
             return BLE_ATT_ERR_UNLIKELY;
         }
-        slot->authed = tank_ble_token_check(token, sizeof(token));
+        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+            return os_mbuf_append(ctxt->om, slot->nonce, sizeof(slot->nonce)) == 0
+                       ? 0
+                       : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+        if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        if (OS_MBUF_PKTLEN(ctxt->om) != TL_AUTH_RESP_LEN) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        uint8_t resp[TL_AUTH_RESP_LEN];
+        if (ble_hs_mbuf_to_flat(ctxt->om, resp, sizeof(resp), NULL) != 0) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        uint8_t want[TL_AUTH_RESP_LEN];
+        tl_auth_response(tank_ble_token_bytes(), slot->nonce, want);
+        slot->authed = tl_ct_equal(resp, want, sizeof(want));
+        /* One answer per nonce: a wrong guess needs a fresh read. */
+        esp_fill_random(slot->nonce, sizeof(slot->nonce));
         ESP_LOGI(TAG, "auth %s", slot->authed ? "ok" : "fail");
         return slot->authed ? 0 : BLE_ATT_ERR_INSUFFICIENT_AUTHEN;
     }

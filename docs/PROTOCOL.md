@@ -2,7 +2,7 @@
 
 Byte-level reference for the app ↔ pump BLE link, the app ↔ tank BLE OTA link, and the tank ↔ pump LoRa link. The C headers and handlers are the source of truth. This file just collects them in one place. If they disagree, trust the code and fix this file.
 
-All multi-byte integers are **little-endian**. "Authed" means the connection has written the correct 16-byte token to **Auth** since connecting. Only Info, State, OtaStatus and the Pair/Auth writes work without it. Notifications of authed characteristics only go to authed connections.
+All multi-byte integers are **little-endian**. "Authed" means the connection has answered the **Auth** challenge with a valid phone token since connecting (or claimed the pump on this connection). Only Info, State, OtaStatus and the Pair/Auth writes work without it. Notifications of authed characteristics only go to authed connections.
 
 Source files: `pump_node/main/tanklink_uuid.h`, `pump_node/main/gatt_payloads.c`, `pump_node/main/gatt_svr.c`, `tank_node/main/tanklink_ble_uuid.h`, `tank_node/main/tank_gatt.c`, `components/tanklink_lora/include/tanklink_lora_proto.h`, `tanklink_app/lib/ble/tanklink_uuids.dart`, `tanklink_app/lib/ble/protocol.dart`.
 
@@ -77,11 +77,15 @@ Advertised names: pump `TankLink-XXXX` (last 4 hex of MAC), tank `TL-Tank-XXXX`.
 
 ### Pair (write + notify, no auth)
 
-Write anything while the pairing window is open (hold the button ~5 s, or `0xF2` from a phone that already has the pump) to claim the pump. The pump makes a new 16-byte token, notifies it on this characteristic, and marks the connection authed. The app stores the token. A write outside the window is rejected with *write not permitted*.
+Write anything while the pairing window is open (hold the button ~5 s, `0xF2` from a phone that already has the pump, or the first 60 s after power-up while no phone has it) to claim the pump. The pump makes a new 16-byte token **for this phone**, notifies it on this characteristic, marks the connection authed and closes the window (one phone per window). The app stores the token. A write outside the window is rejected with *write not permitted*. An unpaired pump whose window has closed needs the button. Up to 8 phones; a claim when 8 already have the pump is rejected with *insufficient resources*.
 
-### Auth (write)
+This notify is the only time a token goes over the air.
 
-Write the 16-byte token. Success marks the connection authed. A wrong token is rejected with *write not permitted*.
+### Auth (read + write)
+
+Read: this connection's 16-byte nonce (random, new on connect and after every write).
+
+Write: `HMAC-SHA256(token, "TLauth" || nonce)`, first 16 bytes. Success marks the connection authed as that phone. A wrong answer is rejected with *write not permitted*. Code: `tl_auth_response` in `components/tanklink_lora/tanklink_crypto.c`, `authResponse` in `protocol.dart`.
 
 ### State (read + notify)
 
@@ -94,19 +98,20 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | Opcode | Meaning | Extra bytes |
 | --- | --- | --- |
 | `0x00` / `0x01` | Pump off / on | — |
-| `0xA1` | Open LoRa tank-pair window (60 s default). A PAIR adds that sensor, or refreshes its token if already paired. Ignored when 4 sensors are paired | — |
+| `0xA1` | Open LoRa tank-pair window (60 s default). A PAIR adds that sensor, or takes its new link key if already paired. Ignored when 4 sensors are paired | — |
 | `0xA2` | Unpair a sensor: deletes its tanks and their schedules. Refused while the pump fills one of its tanks. The last sensor's first tank stays, without a sensor | `sensor_id(6)` |
 | `0xA4` | Select active tank slot (rejected for a different slot while running) | `slot(1)` |
 | `0xA5` | Rename tank slot | `slot(1) name(≤16, UTF-8)` |
-| `0xA6` | Set a tank slot's auto-off | `slot(1) minutes(1)`, 0 = off, max 240 |
+| `0xA6` | Set a tank slot's auto-off. Always on: clamped to 1–240 | `slot(1) minutes(1)` |
 | `0xA7` | Set a sensor's float mode (see Sensors). Leaving two-tank mode deletes that sensor's second tank and its schedules, refused while the pump fills it | `sensor_id(6) mode(1)` |
 | `0xB1` | Test beep | — |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |
-| `0xF0` | Unpair every phone: clears the one shared token, so all phones must add the pump again. The app no longer sends it (Remove only forgets the pump on that phone); factory reset does the same and more | — |
+| `0xF0` | Unpair every phone: clears every phone's token, so all phones must add the pump again. The app no longer sends it (Remove only forgets the pump on that phone); factory reset does the same and more | — |
 | `0xF1` | Factory reset | — |
 | `0xF2` | Open the phone pairing window (60 s default), so another phone can add the pump. Refused while the pump runs or updates, because the window switches it off. Minor 2 | — |
 | `0xF3` | Close the phone pairing window. Minor 2 | — |
+| `0xF4` | Sign out every other phone: keeps only the sender's token and drops the other signed-in connections | — |
 
 Maximum write length is 18 bytes.
 
@@ -167,7 +172,7 @@ Write:
 
 - `sensor_pin`: 0 = the sensor's pin 1, 1 = pin 2 (only in two-tank mode).
 - `sensor_index`: the sensor (see Sensors) whose float this tank uses, `0xFF` = none.
-- `auto_off_min`: 0 = off. A fill stops after the active slot's auto-off.
+- `auto_off_min`: 1–240. A fill always stops after the active slot's auto-off.
 
 Up to 8 slots. With no sensor paired there is exactly one slot (`sensor_index` `0xFF`), holding the name and auto-off for running without a sensor. Otherwise every slot has a sensor, each sensor has a pin-1 slot, and a pin-2 slot only in two-tank mode. A new sensor adds one slot; the first one takes over the sensorless slot.
 
@@ -241,12 +246,12 @@ The pump must be off and the connection authed.
 The tank only runs BLE during a ~10 s window after a short button press, for OTA.
 
 - **Info** (read, frozen layout, 13 bytes): `proto_major(1) proto_minor(1) hw_rev(1) paired(1)=1 tank_id(6) fw_major(1) fw_minor(1) fw_patch(1)`.
-- **Auth** (write): the 16-byte tank token. The tank made this token and sent it to the pump in its LoRa PAIR packet. The app reads it from the pump's Tank characteristic.
+- **Auth** (read + write): same challenge as the pump, with the tank's OTA token. That token is `HMAC-SHA256(link key, "TLota")`, first 16 bytes, so it changes on every pairing and never goes over the air; the pump derives it from the link key and the app reads it from the pump's Tank or Sensors characteristic.
 - **OtaCtrl / OtaData / OtaStatus**: same as the pump.
 
 ## LoRa (tank ↔ pump)
 
-433 MHz, SX1278. Packed struct `tanklink_lora_status_t`, 18 bytes:
+433 MHz, SX1278. Packed struct `tanklink_lora_status_t`, 21 bytes:
 
 | Offset | Size | Field |
 | --- | --- | --- |
@@ -255,20 +260,28 @@ The tank only runs BLE during a ~10 s window after a short button press, for OTA
 | 3 | 1 | type: `0x01` STATUS, `0x02` PAIR, `0x03` ACK |
 | 4 | 1 | flags |
 | 5 | 1 | battery % |
-| 6 | 2 | seq |
-| 8 | 6 | tank_id (tank MAC) |
-| 14 | 3 | fw major, minor, patch |
-| 17 | 1 | tank board revision (0 in ACK) |
+| 6 | 4 | seq (u32, per tank, only goes up; kept in the tank's NVS) |
+| 10 | 6 | tank_id (tank MAC) |
+| 16 | 3 | fw major, minor, patch |
+| 19 | 1 | tank board revision (0 in ACK) |
+| 20 | 1 | tank fault (LED code, 0 = none; 0 in ACK) |
 
-PAIR packets append the 16-byte tank BLE token, for 34 bytes total. A PAIR without the token is ignored.
+On air:
 
-Versioning: a receiver drops packets whose major differs from its own. Within a major, new fields go at the end (after the token in PAIR), and receivers ignore bytes they don't know.
+- STATUS and ACK: the 21-byte body, then an 8-byte tag (29 bytes).
+- PAIR: the body, the tank's new 16-byte **link key**, then the tag (45 bytes).
+
+The tag is `HMAC-SHA256(link key, everything before it)`, first 8 bytes (`tl_lora_seal` / `tl_lora_verify`). A packet with a wrong tag is dropped. PAIR is tagged with the key it carries; the pump's ACK to it is tagged with the same key, and the tank only starts using the new key once it gets that ACK, so a failed pairing leaves the old link working.
+
+The link key is sent in the clear once, in PAIR. Someone listening during that pairing window could learn it; after that, packets can't be faked or replayed.
+
+Versioning: a receiver drops packets whose major differs from its own. Within a major, new fields go before the tag (after the key in PAIR), and receivers ignore bytes they don't know.
 
 Flags: bit 0 = sensor 1 pin HIGH, bit 1 = sensor 2 pin HIGH, bit 2 = button, bit 3 = tank in pairing mode. Pins have internal pull-ups. The **pump** decides what a level means (full / empty / second tank), not the tank.
 
 Exchange:
 
-1. The tank sends STATUS (or PAIR when the button has been held 3 s). STATUS appends one fault byte after the 18-byte body. PAIR appends that byte after the BLE token.
-2. The pump accepts PAIR only while its tank-pair window is open (Cmd `0xA1`). It accepts STATUS only from a paired `tank_id` (up to 4).
-3. The pump replies ACK with the same layout, `type = 0x03`, and the same `seq`. The tank retries up to 5 times without an ACK, with a random 40–440 ms gap so two tanks that collided don't retry in step. It only accepts an ACK carrying its own `tank_id` (seq is per tank).
-4. The pump ignores repeated `seq` values for state changes but still updates RSSI/SNR.
+1. The tank sends STATUS (or PAIR, with a new link key, when the button has been held 3 s).
+2. The pump accepts PAIR only while its tank-pair window is open (Cmd `0xA1`). It accepts STATUS only from a paired `tank_id` (up to 4) with a valid tag.
+3. The pump replies ACK with the same layout, `type = 0x03`, the same `seq`, tagged with that tank's key. The tank retries up to 5 times without an ACK, with a random 40–440 ms gap so two tanks that collided don't retry in step. It only accepts a correctly tagged ACK carrying its own `tank_id` and `seq`.
+4. The pump drops a STATUS whose `seq` is below the last one it saw from that tank (a replay). The same `seq` again is a retry: it is ACKed and updates RSSI/SNR but not state. The pump saves the last `seq` per tank in NVS, so this holds across restarts.

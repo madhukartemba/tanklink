@@ -68,7 +68,7 @@ Menu: **Pump Board**. The values below are the ones in `sdkconfig.defaults`.
 | `PUMP_HW_REV` | `1` | Board revision, reported in Info and matched against firmware manifests. Bump when the board changes |
 | `PUMP_TANK_STALE_SEC` | `750` | Tank counts as out of range after this long with no packet. **Must match the app** (`tankStaleSec`) |
 
-Other `sdkconfig.defaults` settings: USB Serial/JTAG console, 4 MB flash, the custom `partitions_ota.csv` (two OTA slots), and NimBLE with up to 5 connections and MTU 512.
+Other `sdkconfig.defaults` settings: USB Serial/JTAG console, 4 MB flash, the custom `partitions_ota.csv` (two OTA slots), NimBLE with up to 5 connections and MTU 512, and signed OTA updates (`CONFIG_SECURE_SIGNED_*`, key `keys/firmware_signing_key.pem`; see [`firmware-build-setup.md`](firmware-build-setup.md#signing-key)).
 
 ## Tank build options (`tank_node`)
 
@@ -106,7 +106,7 @@ Stored on the pump in NVS namespace `pump`, key `cfg`. Defaults apply after a fi
 
 | Setting | Default | Range / values | App location |
 | --- | --- | --- | --- |
-| Auto-off (per tank) | 30 min | 0 (off) – 240 min | Pump settings. Stored with the tank slot in `tl_tanks` |
+| Auto-off (per tank) | 30 min | 1 – 240 min (can't be turned off) | Pump settings. Stored with the tank slot in `tl_tanks` |
 | Buzzer | on for button, pump start/stop, auto-off | per-event switches | Pump settings |
 | Buzzer tone | click | click, soft, sharp, double | Pump settings |
 | LED brightness | 70 % | 1 – 100 % | Pump settings |
@@ -121,15 +121,15 @@ Other data the pump saves (all cleared by factory reset or `erase-flash`):
 | NVS namespace | Holds |
 | --- | --- |
 | `pump` | Runtime settings above |
-| `tl_pair` | Phone pairing (paired flag + 16-byte token) |
-| `tl_tank` | Per paired sensor N: its BLE OTA token (`tok<N>`) and last packet (`last<N>`, for restoring last-seen after a restart). |
+| `tl_pair` | Phone pairing: one 16-byte token per phone (up to 8) and which are in use |
+| `tl_tank` | Per paired sensor N: its LoRa link key (`key<N>`, the BLE OTA token is derived from it), the last seq it accepted (`seq<N>`, so replays stay refused after a restart) and its last packet (`last<N>`, for restoring last-seen after a restart). |
 | `tl_tanks` | Paired sensors (up to 4: MAC, float mode), tank slots (up to 8: sensor, which float, name, auto-off), and the selected tank. |
 | `tl_sched` | Fill schedules (up to 4) |
 | `tl_hist` | The last 20 fills: start, length, tank, start and stop cause |
 | `tl_bat` | Each sensor's daily battery low and high for 14 days (`b<N>`) |
 | `tl_run` | "Pump is running" record while a fill runs (refreshed each minute), and the interrupted-fill notice until it is dismissed |
 
-The tank saves its pairing and BLE OTA token in NVS namespace `tank`.
+The tank saves its pairing, its LoRa link key (`link_key`) and its packet counter (`seq32`) in NVS namespace `tank`.
 
 The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, and isn't cleared by factory reset.
 

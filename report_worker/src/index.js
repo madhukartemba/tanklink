@@ -63,9 +63,15 @@ export default {
       return json({ error: "method not allowed" }, 405);
     }
 
+    // APP_KEY ships inside the app, so it is not a secret: these limits are
+    // what keep a flood out of the reports repo and off GITHUB_TOKEN's quota.
     if (env.REPORT_LIMITER) {
       const ip = request.headers.get("cf-connecting-ip") || "unknown";
       const { success } = await env.REPORT_LIMITER.limit({ key: ip });
+      if (!success) return json({ error: "too many reports" }, 429);
+    }
+    if (env.GLOBAL_LIMITER) {
+      const { success } = await env.GLOBAL_LIMITER.limit({ key: "all" });
       if (!success) return json({ error: "too many reports" }, 429);
     }
 
@@ -138,7 +144,7 @@ async function fileReport(env, r) {
     // In backticks: copyable as is, and GitHub never treats it as a mention.
     ...(r.contact ? ["", `Contact: \`${r.contact}\``] : []),
     "",
-    quote(r.summary),
+    codeBlock(r.summary),
   ].join("\n");
 
   // index/<fp>.json maps a fingerprint to its issue. GitHub's label filter
@@ -164,7 +170,7 @@ async function fileReport(env, r) {
   } else {
     const issue = await gh(env, "POST", "/issues", {
       title: r.title,
-      body: `${text}\n\n<sub>fingerprint: ${escapeMentions(r.fingerprint)}</sub>`,
+      body: `${text}\n\n<sub>fingerprint: \`${plainToken(r.fingerprint)}\`</sub>`,
       labels: [...r.labels, fpLabel, ...(r.contact ? [CONTACT_LABEL] : [])],
     });
     await gh(env, "PUT", indexPath, {
@@ -284,16 +290,20 @@ async function gh(env, method, path, body, { allow404 = false } = {}) {
   return res.json();
 }
 
-/** Markdown quote with @mentions defused so nobody gets pinged. */
-function quote(s) {
-  return escapeMentions(s)
-    .split("\n")
-    .map((l) => `> ${l}`)
-    .join("\n");
+/**
+ * User text as a fenced code block: GitHub renders nothing inside it, so no
+ * links, images, HTML or @mentions. The fence is longer than any run of
+ * tildes in the text, so the text can't close it.
+ */
+function codeBlock(s) {
+  const longest = Math.max(0, ...(s.match(/~+/g) || []).map((m) => m.length));
+  const fence = "~".repeat(Math.max(3, longest + 1));
+  return `${fence}text\n${s}\n${fence}`;
 }
 
-function escapeMentions(s) {
-  return s.replace(/@/g, "@​");
+/** Only characters that are safe inside inline code and HTML. */
+function plainToken(s) {
+  return s.replace(/[^A-Za-z0-9._:/-]/g, "_").slice(0, 200);
 }
 
 function oneLine(s) {

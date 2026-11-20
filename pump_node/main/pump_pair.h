@@ -4,18 +4,21 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
+#include "tanklink_crypto.h"
 #include "tanklink_uuid.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/** Phones that can be signed in at once, each with its own token. */
+#define PUMP_PAIR_PHONES_MAX 8
+
 esp_err_t pump_pair_init(void);
 bool pump_pair_is_paired(void);
 bool pump_pair_is_claimable(void);
 bool pump_pair_pairing_active(void);
 const uint8_t *pump_pair_device_id(void);
-const uint8_t *pump_pair_token(void);
 
 /** Copy BLE MAC into device_id (stable serial) and persist if changed. */
 esp_err_t pump_pair_set_mac_identity(const uint8_t mac[6]);
@@ -37,15 +40,23 @@ void pump_pair_set_change_callback(void (*cb)(void));
 void pump_pair_poll(void);
 
 /**
- * Claim when claimable. If already paired, replaces owner token (re-pair).
- * Ends pairing window on success.
+ * Claim while the pairing window is open: makes a token for one new phone
+ * and closes the window. ESP_ERR_NO_MEM when PUMP_PAIR_PHONES_MAX phones
+ * already have the pump.
  */
-esp_err_t pump_pair_claim(uint8_t out_token[TANKLINK_TOKEN_LEN]);
+esp_err_t pump_pair_claim(uint8_t out_token[TANKLINK_TOKEN_LEN], int *out_phone);
 
-/** Clear owner token; device becomes unpaired/claimable. */
+/** Clear every phone's token; the pump is unpaired and opens its window. */
 esp_err_t pump_pair_unpair(void);
 
-bool pump_pair_check_token(const uint8_t *token, size_t len);
+/** The phone whose token answers [nonce] with [resp], or -1. */
+int pump_pair_check_response(const uint8_t nonce[TL_NONCE_LEN],
+                             const uint8_t resp[TL_AUTH_RESP_LEN]);
+
+/** Keep only [keep_phone]'s token (sign out every other phone). */
+esp_err_t pump_pair_forget_others(int keep_phone);
+
+int pump_pair_phone_count(void);
 
 #ifdef __cplusplus
 }

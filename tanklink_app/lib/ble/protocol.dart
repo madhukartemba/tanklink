@@ -9,6 +9,8 @@ library;
 
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
+
 import 'models.dart';
 import 'tanklink_uuids.dart';
 
@@ -18,6 +20,17 @@ int _u32(List<int> b, int o) =>
     b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24);
 
 int _i8(int v) => v > 127 ? v - 256 : v;
+
+/// The Auth answer for a board's 16-byte [nonce]: HMAC-SHA256(token,
+/// "TLauth" || nonce), first 16 bytes. Same on pump and tank
+/// (components/tanklink_lora/tanklink_crypto.c). The token never goes on air.
+Uint8List authResponse(List<int> token, List<int> nonce) {
+  if (nonce.length != TankLinkUuids.nonceLen) {
+    throw ArgumentError('nonce must be ${TankLinkUuids.nonceLen} bytes');
+  }
+  final mac = Hmac(sha256, token).convert([...'TLauth'.codeUnits, ...nonce]);
+  return Uint8List.fromList(mac.bytes.sublist(0, TankLinkUuids.tokenLen));
+}
 
 String _hex(List<int> bytes) =>
     bytes.map((v) => v.toRadixString(16).padLeft(2, '0')).join();

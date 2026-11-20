@@ -334,6 +334,55 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                   ? () => showAddPhoneDialog(context, session)
                   : null,
             ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.phonelink_erase_rounded),
+              title: const Text('Sign out other phones'),
+              subtitle: Text(
+                ready
+                    ? 'For a lost or old phone. The others must add the pump again.'
+                    : 'Connect to the pump first',
+              ),
+              enabled: ready,
+              onTap: !ready
+                  ? null
+                  : () async {
+                      final ok = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Sign out other phones?'),
+                          content: const Text(
+                            'Every other phone loses this pump. This phone '
+                            'stays signed in.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Sign out'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (ok != true || !context.mounted) return;
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        await session.forgetOtherPhones();
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('Other phones signed out'),
+                          ),
+                        );
+                      } catch (e) {
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('Couldn’t sign them out: $e')),
+                        );
+                      }
+                    },
+            ),
             const Divider(height: 28),
             if (ready)
               OutlinedButton.icon(
@@ -345,9 +394,9 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
             TextButton(
               style: TextButton.styleFrom(foregroundColor: scheme.error),
               onPressed: () async {
-                // Only this phone forgets the pump (and its key). The pump
-                // keeps one key for every phone, so nothing is sent to it:
-                // other phones stay signed in.
+                // Only this phone forgets the pump (and its key). Nothing is
+                // sent: the pump keeps this phone's key until another phone
+                // uses Sign out other phones. Other phones stay signed in.
                 final ok = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(

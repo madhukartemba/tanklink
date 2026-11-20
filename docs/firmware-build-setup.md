@@ -79,6 +79,24 @@ cd tanklink
 
 **You don't need to clone PixelEngine.** The pump build downloads it from GitHub, pinned to a fixed commit in [`pump_node/main/idf_component.yml`](../pump_node/main/idf_component.yml).
 
+### Signing key
+
+Every firmware build is signed, and a board only accepts an update over BLE if it is signed with the same key as the firmware it runs. The key is `keys/firmware_signing_key.pem` at the repo root (gitignored). Both pump and tank use it. The build fails without it.
+
+Make it once:
+
+```bash
+. "$HOME/esp/esp-idf/export.sh"
+mkdir -p keys
+espsecure generate-signing-key --version 2 --scheme rsa3072 keys/firmware_signing_key.pem
+```
+
+**Back it up somewhere safe and never commit it.** If it is lost, boards can only be updated over USB. If it leaks, anyone with a board's sign-in token can flash their own firmware: make a new key and flash every board over USB.
+
+This is signature checking on update only. No eFuses are burned and the bootloader doesn't check, so USB flashing works as before. The first board update to signed firmware works over BLE from the app, because the old firmware doesn't check.
+
+After the key or the signing settings change, delete the local `sdkconfig` (or run `idf.py fullclean`) so it picks up `sdkconfig.defaults`.
+
 ## 4. Build the tank
 
 ```bash

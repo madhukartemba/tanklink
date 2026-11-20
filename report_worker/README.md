@@ -62,6 +62,7 @@ Check: a new issue the first time, a comment on the same issue the second time, 
 
 ## Limits
 
-- 200 KB per report, 5 reports a minute per IP (`[[ratelimits]]` in `wrangler.toml`).
+- 200 KB per report, 5 reports a minute per IP and 20 a minute in all (`[[ratelimits]]` in `wrangler.toml`).
+- The summary is posted inside a code block, so links, images, HTML and @mentions in it don't render.
 - The app key can be pulled out of the APK. It only stops casual spam; rotate it with an app release if it gets abused.
 - `@` in user text is defused so nobody gets pinged.

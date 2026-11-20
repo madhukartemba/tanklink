@@ -19,11 +19,13 @@
 #include "sdkconfig.h"
 #include "status_led.h"
 #include "sx1278.h"
+#include "tanklink_crypto.h"
 
 #define TAG "LORA"
 #define NVS_NS "tl_tank"
-/* Per sensor, suffixed with the node index: BLE OTA token and last packet. */
-#define NVS_KEY_TOKEN "tok"
+/* Per sensor, suffixed with the node index: link key, last seq, last packet. */
+#define NVS_KEY_LINK "key"
+#define NVS_KEY_SEQ "seq"
 #define NVS_KEY_LAST "last"
 #define LAST_REC_VER 2
 /* Save at most once a minute unless the float flags changed. */
@@ -154,12 +156,14 @@ const uint8_t *lora_link_tank_ble_token(void)
 typedef struct {
     bool heard;
     bool was_online;
-    bool has_token;
+    bool has_key;
+    bool seq_known;
     bool last_pending;
     bool last_saved_once;
     int64_t last_rx_us;
     int64_t last_saved_us;
-    uint8_t token[TANKLINK_LORA_BLE_TOKEN_LEN];
+    uint8_t key[TANKLINK_LORA_KEY_LEN];          /* tags every packet */
+    uint8_t token[TANKLINK_LORA_BLE_TOKEN_LEN]; /* the tank's BLE OTA token */
     uint8_t flags;
     uint8_t bat;
     uint8_t fw[3];
@@ -168,7 +172,7 @@ typedef struct {
     uint8_t last_saved_flags;
     int16_t rssi_dbm;
     int8_t snr_db;
-    uint16_t last_seq;
+    uint32_t last_seq;
 } node_rt_t;
 
 typedef struct {
@@ -194,20 +198,9 @@ static void node_key(char *buf, size_t cap, const char *base, uint8_t node)
     snprintf(buf, cap, "%s%u", base, (unsigned)node);
 }
 
-static bool token_nonzero(const uint8_t *tok)
-{
-    for (int i = 0; i < TANKLINK_LORA_BLE_TOKEN_LEN; i++) {
-        if (tok[i] != 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static void rt_reset(uint8_t node)
 {
     memset(&s_rt[node], 0, sizeof(s_rt[node]));
-    s_rt[node].last_seq = 0xFFFF;
 }
 
 static bool node_mac(uint8_t node, uint8_t mac[6])
@@ -220,41 +213,64 @@ static bool node_mac(uint8_t node, uint8_t mac[6])
     return true;
 }
 
-static void save_token(uint8_t node)
+static void save_key(uint8_t node)
 {
     char key[12];
-    node_key(key, sizeof(key), NVS_KEY_TOKEN, node);
+    node_key(key, sizeof(key), NVS_KEY_LINK, node);
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
         return;
     }
-    esp_err_t err = s_rt[node].has_token
-                        ? nvs_set_blob(h, key, s_rt[node].token, sizeof(s_rt[node].token))
+    esp_err_t err = s_rt[node].has_key
+                        ? nvs_set_blob(h, key, s_rt[node].key, sizeof(s_rt[node].key))
                         : nvs_erase_key(h, key);
     if (err == ESP_OK || err == ESP_ERR_NVS_NOT_FOUND) {
         err = nvs_commit(h);
     }
     nvs_close(h);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "save token %u failed: %s", node, esp_err_to_name(err));
+        ESP_LOGW(TAG, "save key %u failed: %s", node, esp_err_to_name(err));
     }
 }
 
-static void load_token(uint8_t node)
+/* Saved on every new packet so a restart still refuses old (replayed) seqs. */
+static void save_seq(uint8_t node)
 {
     char key[12];
-    node_key(key, sizeof(key), NVS_KEY_TOKEN, node);
+    node_key(key, sizeof(key), NVS_KEY_SEQ, node);
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    esp_err_t err = nvs_set_u32(h, key, s_rt[node].last_seq);
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
+    }
+    nvs_close(h);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "save seq %u failed: %s", node, esp_err_to_name(err));
+    }
+}
+
+static void load_key(uint8_t node)
+{
+    node_rt_t *rt = &s_rt[node];
+    char key[12];
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) {
         return;
     }
-    size_t len = sizeof(s_rt[node].token);
-    if (nvs_get_blob(h, key, s_rt[node].token, &len) == ESP_OK &&
-        len == sizeof(s_rt[node].token) && token_nonzero(s_rt[node].token)) {
-        s_rt[node].has_token = true;
+    node_key(key, sizeof(key), NVS_KEY_LINK, node);
+    size_t len = sizeof(rt->key);
+    if (nvs_get_blob(h, key, rt->key, &len) == ESP_OK && len == sizeof(rt->key) &&
+        tl_nonzero(rt->key, sizeof(rt->key))) {
+        rt->has_key = true;
+        tl_derive_ota_token(rt->key, rt->token);
     } else {
-        memset(s_rt[node].token, 0, sizeof(s_rt[node].token));
+        memset(rt->key, 0, sizeof(rt->key));
     }
+    node_key(key, sizeof(key), NVS_KEY_SEQ, node);
+    rt->seq_known = nvs_get_u32(h, key, &rt->last_seq) == ESP_OK;
     nvs_close(h);
 }
 
@@ -265,7 +281,9 @@ static void erase_node_keys(uint8_t node)
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
         return;
     }
-    node_key(key, sizeof(key), NVS_KEY_TOKEN, node);
+    node_key(key, sizeof(key), NVS_KEY_LINK, node);
+    (void)nvs_erase_key(h, key);
+    node_key(key, sizeof(key), NVS_KEY_SEQ, node);
     (void)nvs_erase_key(h, key);
     node_key(key, sizeof(key), NVS_KEY_LAST, node);
     (void)nvs_erase_key(h, key);
@@ -425,17 +443,19 @@ static void restore_last(uint8_t node)
              (long long)age, rt->was_online ? "online" : "stale", rec.flags);
 }
 
-static void send_ack(const tanklink_lora_status_t *pkt)
+static void send_ack(const tanklink_lora_status_t *pkt, const uint8_t key[TL_KEY_LEN])
 {
-    tanklink_lora_status_t ack;
-    memset(&ack, 0, sizeof(ack));
-    ack.magic0 = TANKLINK_LORA_MAGIC0;
-    ack.magic1 = TANKLINK_LORA_MAGIC1;
-    ack.ver = TANKLINK_LORA_VER;
-    ack.type = TANKLINK_LORA_TYPE_ACK;
-    ack.seq = pkt->seq;
-    memcpy(ack.tank_id, pkt->tank_id, TANKLINK_LORA_TANK_ID_LEN);
-    esp_err_t err = sx1278_send((const uint8_t *)&ack, sizeof(ack), 1500);
+    uint8_t buf[TANKLINK_LORA_STATUS_LEN];
+    tanklink_lora_status_t *ack = (tanklink_lora_status_t *)buf;
+    memset(buf, 0, sizeof(buf));
+    ack->magic0 = TANKLINK_LORA_MAGIC0;
+    ack->magic1 = TANKLINK_LORA_MAGIC1;
+    ack->ver = TANKLINK_LORA_VER;
+    ack->type = TANKLINK_LORA_TYPE_ACK;
+    ack->seq = pkt->seq;
+    memcpy(ack->tank_id, pkt->tank_id, TANKLINK_LORA_TANK_ID_LEN);
+    const size_t len = tl_lora_seal(key, buf, TANKLINK_LORA_STATUS_BODY_LEN);
+    esp_err_t err = sx1278_send(buf, len, 1500);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "ACK TX failed: %s", esp_err_to_name(err));
     }
@@ -461,17 +481,10 @@ static void notify_after_packet(bool active)
     gatt_svr_notify_nodes();
 }
 
-static uint8_t packet_fault(const uint8_t *buf, size_t n, uint8_t type)
-{
-    if (type == TANKLINK_LORA_TYPE_PAIR) {
-        return n > TANKLINK_LORA_PAIR_LEN ? buf[TANKLINK_LORA_PAIR_LEN] : 0;
-    }
-    return n > sizeof(tanklink_lora_status_t) ? buf[sizeof(tanklink_lora_status_t)] : 0;
-}
-
 static void apply_tank_packet(uint8_t node, const tanklink_lora_status_t *pkt,
-                              int16_t rssi_dbm, int8_t snr_db, uint8_t fault)
+                              int16_t rssi_dbm, int8_t snr_db)
 {
+    const uint8_t fault = pkt->fault;
     node_rt_t *rt = &s_rt[node];
     rt->heard = true;
     rt->last_rx_us = esp_timer_get_time();
@@ -496,23 +509,30 @@ static void apply_tank_packet(uint8_t node, const tanklink_lora_status_t *pkt,
         }
     }
     ESP_LOGI(TAG,
-             "sensor %u RX type=%u flags=0x%02x bat=%u%% seq=%u fw=%u.%u.%u%s full=%d "
+             "sensor %u RX type=%u flags=0x%02x bat=%u%% seq=%lu fw=%u.%u.%u%s full=%d "
              "fault=%u rssi=%d snr=%d",
-             node, pkt->type, pkt->flags, pkt->battery_pct, pkt->seq, pkt->fw_major,
+             node, pkt->type, pkt->flags, pkt->battery_pct, (unsigned long)pkt->seq,
+             pkt->fw_major,
              pkt->fw_minor, pkt->fw_patch, active ? " (selected)" : "", (int)full,
              fault, (int)rssi_dbm, (int)snr_db);
     note_last_changed(node);
     notify_after_packet(active);
 }
 
-/** A packet from a paired sensor: state changes once per seq, signal always. */
+/**
+ * A tagged packet from a paired sensor. A new (higher) seq changes state; the
+ * last seq again is a retry whose ACK got lost, so only the signal is
+ * updated. Anything older is a replay and was dropped by the caller.
+ */
 static void handle_packet(uint8_t node, const tanklink_lora_status_t *pkt, int16_t rssi,
-                          int8_t snr, uint8_t fault)
+                          int8_t snr)
 {
     node_rt_t *rt = &s_rt[node];
-    if (pkt->seq != rt->last_seq) {
+    if (!rt->seq_known || pkt->seq != rt->last_seq) {
         rt->last_seq = pkt->seq;
-        apply_tank_packet(node, pkt, rssi, snr, fault);
+        rt->seq_known = true;
+        save_seq(node);
+        apply_tank_packet(node, pkt, rssi, snr);
     } else {
         rt->rssi_dbm = rssi;
         rt->snr_db = snr;
@@ -555,11 +575,17 @@ static void on_pair_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t sn
 {
     const tanklink_lora_status_t *pkt = (const tanklink_lora_status_t *)buf;
     if (n < TANKLINK_LORA_PAIR_LEN) {
-        ESP_LOGW(TAG, "PAIR ignored — %u bytes, no token", (unsigned)n);
+        ESP_LOGW(TAG, "PAIR ignored — %u bytes", (unsigned)n);
         return;
     }
     if (!pairing_window_open()) {
         ESP_LOGW(TAG, "PAIR ignored — window closed");
+        return;
+    }
+    /* The tank's new link key, and the tag it made with it. */
+    const uint8_t *link_key = buf + TANKLINK_LORA_STATUS_BODY_LEN;
+    if (!tl_nonzero(link_key, TANKLINK_LORA_KEY_LEN) || !tl_lora_verify(link_key, buf, n)) {
+        ESP_LOGW(TAG, "PAIR ignored — bad tag");
         return;
     }
     uint8_t node = 0;
@@ -579,16 +605,19 @@ static void on_pair_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t sn
         pump_battery_log_clear(node);
     }
     node_rt_t *rt = &s_rt[node];
-    memcpy(rt->token, buf + sizeof(tanklink_lora_status_t), TANKLINK_LORA_BLE_TOKEN_LEN);
-    rt->has_token = token_nonzero(rt->token);
-    save_token(node);
+    memcpy(rt->key, link_key, TANKLINK_LORA_KEY_LEN);
+    rt->has_key = true;
+    tl_derive_ota_token(rt->key, rt->token);
+    save_key(node);
+    /* A new key starts a new seq history (the tank may have been erased). */
+    rt->seq_known = false;
     s_pairing = false;
     restore_led_after_tank_pair();
-    send_ack(pkt);
+    send_ack(pkt, rt->key);
     ESP_LOGI(TAG, "sensor %u %s %02x:%02x:%02x:%02x:%02x:%02x", node,
              added ? "paired" : "re-paired", pkt->tank_id[0], pkt->tank_id[1],
              pkt->tank_id[2], pkt->tank_id[3], pkt->tank_id[4], pkt->tank_id[5]);
-    handle_packet(node, pkt, rssi, snr, packet_fault(buf, n, pkt->type));
+    handle_packet(node, pkt, rssi, snr);
     /* A first sensor becomes the selected tank's sensor; slots may have changed. */
     lora_link_on_active_changed();
     gatt_svr_notify_tank();
@@ -605,8 +634,19 @@ static void on_status_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t 
                  pkt->tank_id[5]);
         return;
     }
-    send_ack(pkt);
-    handle_packet((uint8_t)node, pkt, rssi, snr, packet_fault(buf, n, pkt->type));
+    node_rt_t *rt = &s_rt[node];
+    /* The tag covers the whole packet as sent, including fields we don't know. */
+    if (!rt->has_key || !tl_lora_verify(rt->key, buf, n)) {
+        ESP_LOGW(TAG, "STATUS ignored — sensor %d bad tag", node);
+        return;
+    }
+    if (rt->seq_known && pkt->seq < rt->last_seq) {
+        ESP_LOGW(TAG, "STATUS ignored — sensor %d old seq %lu < %lu", node,
+                 (unsigned long)pkt->seq, (unsigned long)rt->last_seq);
+        return;
+    }
+    send_ack(pkt, rt->key);
+    handle_packet((uint8_t)node, pkt, rssi, snr);
 }
 
 /** Notice sensors dropping out of range (and coming back). */
@@ -648,7 +688,7 @@ static void lora_task(void *arg)
         int16_t rssi = 0;
         int8_t snr = 0;
         esp_err_t err = sx1278_poll_recv_ex(buf, sizeof(buf), &n, &rssi, &snr);
-        if (err == ESP_OK && n >= sizeof(tanklink_lora_status_t)) {
+        if (err == ESP_OK && n >= TANKLINK_LORA_STATUS_LEN) {
             const tanklink_lora_status_t *pkt = (const tanklink_lora_status_t *)buf;
             if (pkt->magic0 != TANKLINK_LORA_MAGIC0 ||
                 pkt->magic1 != TANKLINK_LORA_MAGIC1 ||
@@ -677,12 +717,12 @@ esp_err_t lora_link_init(void)
         if (!pump_tanks_node_get(n, NULL)) {
             continue;
         }
-        load_token(n);
+        load_key(n);
         restore_last(n);
         uint8_t mac[6];
         (void)node_mac(n, mac);
         ESP_LOGI(TAG, "sensor %u %02x:%02x:%02x:%02x:%02x:%02x ble_tok=%d", n, mac[0], mac[1],
-                 mac[2], mac[3], mac[4], mac[5], (int)s_rt[n].has_token);
+                 mac[2], mac[3], mac[4], mac[5], (int)s_rt[n].has_key);
     }
     lora_link_on_active_changed();
 
@@ -818,7 +858,7 @@ bool lora_link_node_status(uint8_t node, lora_node_status_t *out)
     out->fault = rt->fault;
     out->rssi_dbm = rt->heard ? rt->rssi_dbm : 0;
     out->snr_db = rt->heard ? rt->snr_db : 0;
-    out->has_ble_token = rt->has_token;
+    out->has_ble_token = rt->has_key;
     memcpy(out->ble_token, rt->token, sizeof(out->ble_token));
     return true;
 }
@@ -869,7 +909,7 @@ const uint8_t *lora_link_tank_id(void)
 bool lora_link_tank_has_ble_token(void)
 {
     const node_rt_t *rt = active_rt();
-    return rt && rt->has_token;
+    return rt && rt->has_key;
 }
 const uint8_t *lora_link_tank_ble_token(void)
 {

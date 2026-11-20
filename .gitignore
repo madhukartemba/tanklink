@@ -69,3 +69,7 @@ venv/
 fp-info-cache
 
 .cursor/
+
+# Firmware signing key (docs/firmware-build-setup.md#signing-key)
+keys/
+*.pem

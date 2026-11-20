@@ -101,6 +101,9 @@ done
 if [[ -n "$PUMP_VER$TANK_VER" ]]; then
   IDF_PATH="${IDF_PATH:-$HOME/esp/esp-idf}"
   [[ -f "$IDF_PATH/export.sh" ]] || die "ESP-IDF not found at $IDF_PATH"
+  # Boards only take updates signed with this key (sdkconfig.defaults).
+  [[ -f keys/firmware_signing_key.pem ]] ||
+    die "keys/firmware_signing_key.pem is missing: boards would refuse the update (docs/firmware-build-setup.md#signing-key)"
   if [[ -z "${IDF_PYTHON_ENV_PATH:-}" ]]; then
     IDF_PYTHON_ENV_PATH="$(ls -d "$HOME"/.espressif/python_env/idf6.1* 2>/dev/null | head -1 || true)"
   fi

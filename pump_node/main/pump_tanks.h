@@ -35,6 +35,8 @@ extern "C" {
 #define PUMP_TANK_SLOT_MAX (PUMP_NODE_MAX * 2)
 #define PUMP_TANK_NAME_LEN 16
 #define PUMP_AUTO_OFF_DEFAULT_MIN 30
+/* Auto-off is always on: it is the last stop if a float or the radio fails. */
+#define PUMP_AUTO_OFF_MIN_MIN 1
 #define PUMP_AUTO_OFF_MAX_MIN 240
 
 #define PUMP_SENSOR_MODE_OFF 0
@@ -106,10 +108,10 @@ esp_err_t pump_tanks_select(uint8_t slot, bool pump_running);
 
 esp_err_t pump_tanks_rename(uint8_t slot, const uint8_t *name, size_t len);
 
-/** Auto-off for one slot, 0 (off) to PUMP_AUTO_OFF_MAX_MIN minutes. */
+/** Auto-off for one slot, PUMP_AUTO_OFF_MIN_MIN to PUMP_AUTO_OFF_MAX_MIN minutes (clamped). */
 esp_err_t pump_tanks_set_auto_off(uint8_t slot, uint8_t minutes);
 
-/** Auto-off minutes of the active slot (0 = off). */
+/** Auto-off minutes of the active slot (never 0). */
 uint8_t pump_tanks_active_auto_off_min(void);
 
 /** True when [raw_flags] (from the slot's node) say that slot's tank is full. */

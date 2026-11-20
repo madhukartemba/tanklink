@@ -25,4 +25,10 @@ name = "REPORT_LIMITER"
 namespace_id = "1001"
 simple = { limit = 5, period = 60 }
 
+# All reports together: at most 20 a minute, whoever sends them.
+[[ratelimits]]
+name = "GLOBAL_LIMITER"
+namespace_id = "1002"
+simple = { limit = 20, period = 60 }
+
 # Secrets, set with `npx wrangler secret put <NAME>`: GITHUB_TOKEN, APP_KEY

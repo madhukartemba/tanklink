@@ -202,6 +202,7 @@ List<TaggedReleaseAssets> listTaggedReleasesBySemver({
   required String tagPrefix,
   required String binAssetName,
   required String manifestAssetName,
+  String repo = _releasesServiceRepo,
 }) {
   final out = <TaggedReleaseAssets>[];
   for (final item in releases) {
@@ -219,7 +220,10 @@ List<TaggedReleaseAssets> listTaggedReleasesBySemver({
     for (final a in assets) {
       final name = a['name'] as String? ?? '';
       final url = a['browser_download_url'] as String?;
-      if (url == null) continue;
+      // Only this repo's own release downloads, whoever served the list (the
+      // report service or GitHub). Firmware is also signed and the APK must
+      // match the installed app's signer; this is one more check.
+      if (url == null || url != releaseDownloadUrl(repo, tag, name)) continue;
       if (name == binAssetName) {
         binUrl = url;
         size = a['size'] as int? ?? 0;
@@ -245,6 +249,11 @@ List<TaggedReleaseAssets> listTaggedReleasesBySemver({
   });
   return out;
 }
+
+/// The only download URL the app accepts for [name] in release [tag].
+String releaseDownloadUrl(String repo, String tag, String name) =>
+    'https://github.com/$repo/releases/download/${Uri.encodeComponent(tag)}/'
+    '${Uri.encodeComponent(name)}';
 
 Future<Map<String, dynamic>?> fetchReleaseManifest(String manifestUrl) async {
   final manRes = await http
