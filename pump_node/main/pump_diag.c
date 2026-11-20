@@ -7,6 +7,8 @@
  */
 #include "pump_diag.h"
 
+#include <stdbool.h>
+
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -24,6 +26,12 @@ static const char *const k_tasks[] = {
 };
 
 static int64_t s_next_us = FIRST_REPORT_US;
+static volatile bool s_requested;
+
+void pump_diag_request(void)
+{
+    s_requested = true;
+}
 
 void pump_diag_log(void)
 {
@@ -52,7 +60,8 @@ void pump_diag_log(void)
 void pump_diag_poll(void)
 {
     const int64_t now = esp_timer_get_time();
-    if (now >= s_next_us) {
+    if (s_requested || now >= s_next_us) {
+        s_requested = false;
         s_next_us = now + REPORT_EVERY_US;
         pump_diag_log();
     }

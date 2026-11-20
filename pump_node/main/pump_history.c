@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "gatt_svr.h"
 #include "nvs.h"
+#include "pump_diag.h"
 
 #define TAG "HISTORY"
 #define NVS_NS "tl_hist"
@@ -83,6 +84,7 @@ void pump_history_add(const pump_fill_t *fill)
     ESP_LOGI(TAG, "fill slot %u ran %u s, started by %u, stopped by %u", fill->slot,
              (unsigned)fill->ran_sec, fill->started_by, fill->stopped_by);
     gatt_svr_notify_history();
+    pump_diag_request();
 }
 
 unsigned pump_history_count(void)

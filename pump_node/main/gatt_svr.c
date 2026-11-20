@@ -25,6 +25,7 @@
 #include "pump_clock.h"
 #include "pump_config.h"
 #include "pump_control.h"
+#include "pump_diag.h"
 #include "pump_factory.h"
 #include "pump_ota.h"
 #include "pump_pair.h"
@@ -871,6 +872,7 @@ void gatt_svr_on_disconnect(uint16_t conn_handle)
         memset(slot, 0, sizeof(*slot));
     }
     ESP_LOGI(TAG, "conn drop handle=%u count=%d", conn_handle, gatt_svr_conn_count());
+    pump_diag_request();
     pump_control_refresh_idle_led();
 }
 
