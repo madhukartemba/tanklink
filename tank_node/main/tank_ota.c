@@ -11,6 +11,7 @@
 #include "tinycrypt/sha256.h"
 
 #include "tank_gatt.h"
+#include "tank_errors.h"
 #include "tank_led.h"
 #include "tanklink_ble_uuid.h"
 
@@ -40,7 +41,7 @@ static void set_err(uint8_t err)
     s_err = err;
     s_state = TANKLINK_OTA_ST_ERR;
     tank_led_ota_pulse_stop();
-    tank_led_show_error(3);
+    tank_led_show_error(TANK_ERR_UPDATE_FAILED);
     notify_status();
 }
 

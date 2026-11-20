@@ -198,6 +198,72 @@ class ProtocolMismatchBanner extends StatelessWidget {
   }
 }
 
+/// The pump's clock forgot the time when its power went off: the coin cell
+/// on the clock module is flat or missing (light code 8). Shown even after
+/// the app has set the time again, because it will happen at every power cut.
+class ClockBatteryBanner extends StatelessWidget {
+  const ClockBatteryBanner({super.key, required this.onDismiss});
+
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.tertiaryContainer,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Icon(
+                Icons.battery_alert_rounded,
+                color: scheme.onTertiaryContainer,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Clock battery flat',
+                    style: TextStyle(
+                      color: scheme.onTertiaryContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'The pump forgot the time when its power went off (8 red flashes). '
+                    'The app set it again, but schedules won\u2019t run after the next power cut '
+                    'until a phone connects. Replace the CR2032 coin cell on the clock module.',
+                    style: TextStyle(
+                      color: scheme.onTertiaryContainer,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Dismiss',
+              onPressed: onDismiss,
+              icon: Icon(
+                Icons.close_rounded,
+                color: scheme.onTertiaryContainer,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class PumpErrorBanner extends StatelessWidget {
   const PumpErrorBanner({super.key, required this.session});
 

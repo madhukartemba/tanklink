@@ -211,6 +211,7 @@ class TankStatus {
     required this.interruption,
     required this.hwRev,
     required this.tankFault,
+    required this.clockLostPower,
   });
 
   final bool bound;
@@ -237,6 +238,10 @@ class TankStatus {
   /// The selected tank sensor's own light code, 0 when it has none.
   final int tankFault;
 
+  /// The pump's clock chip lost power since the pump started: its coin cell
+  /// is likely flat. Stays set after the phone sets the time.
+  final bool clockLostPower;
+
   static TankStatus? parse(List<int> b) {
     if (b.length < TankLinkUuids.tankStatusLen) return null;
     final fw = '${b[8]}.${b[9]}.${b[10]}';
@@ -259,6 +264,10 @@ class TankStatus {
       interruption: _parseInterruption(b),
       hwRev: b[TankLinkUuids.tankStatusHwRevAt],
       tankFault: b[TankLinkUuids.tankStatusFaultAt],
+      clockLostPower:
+          b[TankLinkUuids.tankStatusPumpFlagsAt] &
+              TankLinkUuids.tankStatusClockLost !=
+          0,
     );
   }
 

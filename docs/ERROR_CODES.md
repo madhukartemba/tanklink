@@ -14,6 +14,7 @@ The status LED shows the **error number** as **short flashes** with a long dark 
 | **4** | Pairing cancelled | Pairing mode was cancelled with a short button press. |
 | **5** | Pairing timed out | Hold-to-pair window expired without a successful pump ACK. |
 | **6** | Battery sense | The battery ADC did not start. The code is sent to the pump on later packets and shown in the app. |
+| **7** | Update failed | A firmware update over BLE stopped or was refused (lost link, wrong hash or signature). The tank keeps its old firmware. |
 
 ### Button / LED behaviour (tank)
 
@@ -43,7 +44,7 @@ Same flash pattern as the tank: **N short red flashes**, a long pause, then the 
 | **5** | Not paired | Local Start held while the pump has no phone owner token. |
 | **6** | I2C failed | The I2C bus for the DS3231 did not start. |
 | **7** | Clock chip missing | The I2C bus started, but the DS3231 did not answer. |
-| **8** | Clock lost power | The DS3231 oscillator-stopped flag is set. Cleared when the phone sets the time. |
+| **8** | Clock lost power | The DS3231 oscillator-stopped flag is set: its CR2032 coin cell is flat or missing. The code clears when the phone sets the time, but the pump keeps reporting "clock lost power since start" (Tank status byte 54), so the app shows a *Clock battery flat* banner until the pump next starts with a good clock. |
 | **9** | Clock chip not answering | A later read or write of the DS3231 failed. |
 
 ### Factory reset (not an error code)

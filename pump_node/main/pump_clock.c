@@ -27,8 +27,21 @@ static bool clock_fault_code(uint8_t code)
            code == PUMP_ERR_RTC_LOST || code == PUMP_ERR_RTC_COMM;
 }
 
+/* The DS3231 lost power at some point since this boot (its oscillator had
+ * stopped). Unlike the fault code, setting the time doesn't clear it: the
+ * app keeps telling the user the clock battery is likely flat. */
+static bool s_lost_since_boot;
+
+bool pump_clock_lost_power_since_boot(void)
+{
+    return s_lost_since_boot;
+}
+
 static void publish_fault(uint8_t code)
 {
+    if (code == PUMP_ERR_RTC_LOST) {
+        s_lost_since_boot = true;
+    }
     const uint8_t prev = s_fault;
     s_fault = code;
     if (!s_faults_armed || code == prev) {
@@ -175,6 +188,7 @@ void pump_clock_init(void)
                  t.day, t.hour, t.minute, t.second);
     } else if (rd == ESP_ERR_INVALID_STATE) {
         s_fault = PUMP_ERR_RTC_LOST;
+        s_lost_since_boot = true;
     } else {
         s_fault = PUMP_ERR_RTC_COMM;
     }

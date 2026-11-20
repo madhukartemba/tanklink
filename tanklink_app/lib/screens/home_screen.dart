@@ -180,6 +180,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ),
                           const SizedBox(height: 8),
                         ],
+                        if (ready &&
+                            session.clockLostPower &&
+                            !session.clockLostDismissed) ...[
+                          ClockBatteryBanner(
+                            onDismiss: session.dismissClockLost,
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                         if (ready && session.pumpErrorTitle != null) ...[
                           PumpErrorBanner(session: session),
                           const SizedBox(height: 8),

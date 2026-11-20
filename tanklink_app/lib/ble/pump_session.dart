@@ -104,6 +104,13 @@ class PumpSession extends ChangeNotifier {
   /// Selected tank sensor's own light code, 0 when it has none.
   int tankFault = 0;
 
+  /// The pump's clock lost power since it started (flat clock battery).
+  bool clockLostPower = false;
+
+  /// The clock battery banner was dismissed; it comes back when the pump
+  /// reports it again after its next start.
+  bool clockLostDismissed = false;
+
   /// Debug builds only: codes that replace the pump's reported ones so the
   /// error banners and reports can be tried without breaking hardware.
   int? simPumpError;
@@ -904,6 +911,8 @@ class PumpSession extends ChangeNotifier {
     tankSnrDb = t.snrDb;
     pumpLastError = t.pumpLastError;
     tankFault = t.tankFault;
+    if (!t.clockLostPower) clockLostDismissed = false;
+    clockLostPower = t.clockLostPower;
     tankHwRev = t.hwRev;
     fillInterruption = t.interruption;
     tankBleToken = t.bleToken;
@@ -1042,6 +1051,11 @@ class PumpSession extends ChangeNotifier {
     if (pump != null) {
       await forgetPump(pump);
     }
+  }
+
+  void dismissClockLost() {
+    clockLostDismissed = true;
+    notifyListeners();
   }
 
   Future<void> clearPumpError() async {

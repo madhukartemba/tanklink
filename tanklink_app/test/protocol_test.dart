@@ -227,6 +227,15 @@ void main() {
       expect(t.interruption, isNull);
       expect(t.hwRev, 1);
       expect(t.tankFault, TankLinkUuids.tankErrBattery);
+      expect(t.clockLostPower, isFalse);
+    });
+
+    test('reads the clock-lost-power flag (byte 54) and needs it', () {
+      final b = status();
+      b[TankLinkUuids.tankStatusPumpFlagsAt] =
+          TankLinkUuids.tankStatusClockLost;
+      expect(TankStatus.parse(b)!.clockLostPower, isTrue);
+      expect(TankStatus.parse(b.sublist(0, 54)), isNull);
     });
 
     test('reads an interrupted fill', () {

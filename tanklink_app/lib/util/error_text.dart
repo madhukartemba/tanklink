@@ -43,7 +43,9 @@ class TankLinkErrors {
     WarnText(
       8,
       'Clock lost the time',
-      'The clock chip lost power. Open the app near the pump so it can set the time again.',
+      'The clock chip lost power, so its coin cell (CR2032) is likely flat. '
+          'The app sets the time again when it connects; replace the cell so it '
+          'keeps the time through power cuts.',
     ),
     WarnText(
       9,
@@ -84,6 +86,12 @@ class TankLinkErrors {
       6,
       'Tank battery sense failed',
       'The tank cannot read its battery. Check the battery wiring.',
+    ),
+    WarnText(
+      7,
+      'Update failed',
+      'A firmware update to the tank stopped or was refused. It keeps its '
+          'old firmware. Tap the tank button and try the update again.',
     ),
   ];
 

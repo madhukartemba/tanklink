@@ -40,6 +40,10 @@ bool pump_clock_rtc_present(void);
 /** DS3231 holds a trusted time (read at boot or written by a phone sync). */
 bool pump_clock_rtc_ok(void);
 
+/** The clock chip lost power since this boot (flat or missing coin cell).
+ * Stays set after the phone sets the time, until the next boot. */
+bool pump_clock_lost_power_since_boot(void);
+
 /** True once the time is known: from the RTC at boot, or a phone sync. */
 bool pump_clock_is_valid(void);
 

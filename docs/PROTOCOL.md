@@ -135,7 +135,7 @@ Auto-off is per tank (Cmd `0xA6`, Tanks) and the float mode per sensor (Cmd `0xA
 
 ### Tank (read + notify, authed)
 
-The sensor of the **selected** tank (the one the pump fills), plus pump-wide error and interrupted-fill fields. `bound` = 0 when no sensor is paired. 54 bytes:
+The sensor of the **selected** tank (the one the pump fills), plus pump-wide error and interrupted-fill fields. `bound` = 0 when no sensor is paired. 55 bytes:
 
 | Offset | Size | Field |
 | --- | --- | --- |
@@ -158,6 +158,7 @@ The sensor of the **selected** tank (the one the pump fills), plus pump-wide err
 | 48 | 4 | how long it ran before the cut, seconds (u32, ±1 min) |
 | 52 | 1 | tank board revision (0 = not heard yet) |
 | 53 | 1 | selected tank's own fault code (see `ERROR_CODES.md`, 0 = none) |
+| 54 | 1 | pump flags: bit 0 = the pump's clock lost power since it started (coin cell flat or missing). Not cleared by setting the time; the app shows *Clock battery flat* |
 
 For tank OTA the app authenticates to the tank with that sensor's token from the Sensors characteristic.
 

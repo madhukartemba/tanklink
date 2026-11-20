@@ -38,6 +38,22 @@ class ErrorCodesScreen extends StatelessWidget {
             _CodeCard(entry: e, scheme: scheme),
           const SizedBox(height: 20),
           Text(
+            'Other pump lights',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          for (final (look, means) in _pumpLights)
+            _LightRow(look: look, means: means, scheme: scheme),
+          const SizedBox(height: 20),
+          Text(
+            'Other tank lights',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          for (final (look, means) in _tankLights)
+            _LightRow(look: look, means: means, scheme: scheme),
+          const SizedBox(height: 20),
+          Text(
             'Reset the pump',
             style: Theme.of(context).textTheme.titleMedium,
           ),
@@ -70,6 +86,63 @@ class ErrorCodesScreen extends StatelessWidget {
             'while setup runs — you do not have to let go first. Press once to cancel. '
             'A short press gives one soft flash if the pump answers, or code 3 flashes if it does not.',
             style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the pump's LED strip shows besides numbered codes (status_led.cpp).
+const _pumpLights = [
+  ('Amber, breathing slowly', 'No phone has added this pump yet.'),
+  ('Blue, sweeping side to side', 'Ready for a phone to add it (pairing).'),
+  ('Orange, sweeping side to side', 'Listening for a tank sensor to pair.'),
+  ('Soft white glow in the middle', 'Standby. The selected tank is not full.'),
+  ('Soft teal glow in the middle', 'Standby. The selected tank is full.'),
+  ('Blue wave', 'The pump is running.'),
+  (
+    'Filling from the middle while you hold the button',
+    'Blue: let go to start setup. Red: keep holding to reset the pump.',
+  ),
+  ('Filling from one end', 'A firmware update is being received.'),
+  ('Solid green', 'Update checked. The pump restarts.'),
+  (
+    'Solid red for 2 seconds',
+    'The update stopped or failed. The old firmware stays.',
+  ),
+];
+
+/// What the tank's single LED shows besides numbered codes (tank_led.c).
+const _tankLights = [
+  ('Two soft pulses', 'The tank just started.'),
+  ('One soft flash', 'The pump answered.'),
+  ('Slow breathing (about 2.4 s a breath)', 'Pairing with the pump.'),
+  ('Faster breathing (about 1.4 s a breath)', 'Receiving a firmware update.'),
+];
+
+class _LightRow extends StatelessWidget {
+  const _LightRow({
+    required this.look,
+    required this.means,
+    required this.scheme,
+  });
+
+  final String look;
+  final String means;
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(look, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(
+            means,
+            style: TextStyle(color: scheme.onSurfaceVariant, height: 1.3),
           ),
         ],
       ),

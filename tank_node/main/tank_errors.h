@@ -7,3 +7,4 @@
 #define TANK_ERR_PAIR_CANCELLED 4
 #define TANK_ERR_PAIR_TIMEOUT 5
 #define TANK_ERR_BATTERY 6 /* Battery ADC did not start */
+#define TANK_ERR_UPDATE_FAILED 7 /* A firmware update over BLE was stopped or refused */

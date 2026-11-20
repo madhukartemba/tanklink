@@ -106,6 +106,8 @@ size_t gatt_payload_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
     }
     out[TANKLINK_TANK_STATUS_HW_AT] = lora_link_tank_hw_rev();
     out[TANKLINK_TANK_STATUS_FAULT_AT] = lora_link_tank_fault();
+    out[TANKLINK_TANK_STATUS_PUMP_FLAGS_AT] =
+        pump_clock_lost_power_since_boot() ? TANKLINK_TANK_STATUS_CLOCK_LOST : 0;
     return TANKLINK_TANK_STATUS_LEN;
 }
 
