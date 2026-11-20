@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
@@ -37,9 +38,9 @@ class _UsageScreenState extends State<UsageScreen> {
   @override
   Widget build(BuildContext context) {
     final session = context.watch<PumpSession>();
-    final s = session.usageSettings;
+    final s = session.usageSettingsShown;
     final report = buildUsage(
-      session.archivedFills,
+      session.usageFills,
       now: DateTime.now(),
       days: _days,
     );
@@ -50,6 +51,14 @@ class _UsageScreenState extends State<UsageScreen> {
       appBar: AppBar(
         title: const Text('Water and power'),
         actions: [
+          if (kDebugMode)
+            IconButton(
+              tooltip: session.simUsage ? 'Real data' : 'Sample data',
+              isSelected: session.simUsage,
+              icon: const Icon(Icons.science_outlined),
+              selectedIcon: const Icon(Icons.science_rounded),
+              onPressed: () => session.simulateUsage(!session.simUsage),
+            ),
           IconButton(
             tooltip: 'Pump details',
             icon: const Icon(Icons.tune_rounded),
@@ -71,6 +80,10 @@ class _UsageScreenState extends State<UsageScreen> {
             onSelectionChanged: (v) => setState(() => _days = v.first),
           ),
           const SizedBox(height: 16),
+          if (session.simUsage) ...[
+            const _SampleBanner(),
+            const SizedBox(height: 12),
+          ],
           if (!s.hasFlow) ...[
             _SetupBanner(onTap: () => _editSettings(context, session)),
             const SizedBox(height: 12),
@@ -156,6 +169,41 @@ class _PanelTitle extends StatelessWidget {
       title,
       style: Theme.of(context).textTheme.titleMedium
           ?.copyWith(fontWeight: FontWeight.w600),
+    );
+  }
+}
+
+/// Debug builds: says the charts show made-up fills.
+class _SampleBanner extends StatelessWidget {
+  const _SampleBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Icon(Icons.science_rounded, color: scheme.onTertiaryContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Sample data (debug build). Nothing here is real or saved. '
+                'Tap the flask to go back.',
+                style: TextStyle(
+                  color: scheme.onTertiaryContainer,
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

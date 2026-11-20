@@ -779,6 +779,38 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Debug builds only: show made-up fills on the usage screen. Nothing is
+  /// saved; the real fills come back when it is turned off.
+  bool simUsage = false;
+  List<FillRecord> _simFills = [];
+
+  /// Fills the usage screen shows: the phone's archive, or sample data.
+  List<FillRecord> get usageFills => simUsage ? _simFills : archivedFills;
+
+  /// Settings the usage screen draws with. With sample data, flow and price
+  /// the user hasn't set are filled in so every chart has something to show.
+  UsageSettings get usageSettingsShown {
+    final s = usageSettings;
+    if (!simUsage) return s;
+    return s.copyWith(
+      flowLpm: s.hasFlow ? null : () => sampleUsageSettings.flowLpm,
+      pricePerKwh: s.hasPrice ? null : () => sampleUsageSettings.pricePerKwh,
+    );
+  }
+
+  void simulateUsage(bool on) {
+    if (!kDebugMode) return;
+    simUsage = on;
+    _simFills = on
+        ? sampleFills(
+            now: DateTime.now(),
+            slots: [for (final t in tanks) t.index],
+          )
+        : [];
+    AppLog.w('debug', 'Sample usage data ${on ? 'on' : 'off'}');
+    notifyListeners();
+  }
+
   Future<void> setUsageSettings(UsageSettings s) async {
     usageSettings = s;
     notifyListeners();

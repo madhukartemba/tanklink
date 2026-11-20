@@ -292,6 +292,21 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 subtitle: const Text('Debug build only'),
                 onTap: () => _simulateErrorDialog(context, session),
               ),
+            if (kDebugMode)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.science_outlined),
+                title: const Text('Usage charts with sample data'),
+                subtitle: const Text('Debug build only'),
+                onTap: () {
+                  session.simulateUsage(true);
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const UsageScreen(),
+                    ),
+                  );
+                },
+              ),
             if (ready && session.pumpLastError != 0)
               ListTile(
                 contentPadding: EdgeInsets.zero,

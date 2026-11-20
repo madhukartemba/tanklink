@@ -111,4 +111,19 @@ void main() {
     final merged = FillArchive.mergeLists([b, a], [c, b, untimed]);
     expect(merged.map((f) => f.startedAt!.day), [3, 2, 1]);
   });
+
+  test('sampleFills: same every time, newest first, nothing in the future', () {
+    final a = sampleFills(now: now, slots: [0, 1]);
+    final b = sampleFills(now: now, slots: [0, 1]);
+    expect(a.length, b.length);
+    expect(a.length, greaterThan(90));
+    expect(a.first.startedAt, b.first.startedAt);
+    for (var i = 1; i < a.length; i++) {
+      expect(a[i - 1].startedAt!.isBefore(a[i].startedAt!), isFalse);
+    }
+    expect(a.every((f) => !f.startedAt!.isAfter(now)), isTrue);
+    expect(a.map((f) => f.slot).toSet(), {0, 1});
+    final r = buildUsage(a, now: now, days: 90);
+    expect(r.days.where((d) => d.fills > 0).length, greaterThan(70));
+  });
 }

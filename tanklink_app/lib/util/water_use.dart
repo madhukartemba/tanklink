@@ -6,6 +6,8 @@
 /// on the phone; cost is energy times the price per kWh.
 library;
 
+import 'dart:math' as math;
+
 import '../ble/models.dart';
 
 /// What the phone knows about one pump, saved per pump on the phone.
@@ -224,3 +226,59 @@ String formatMetric(UseMetric m, double v, UsageSettings s) => switch (m) {
   UseMetric.energy => formatKwh(v),
   UseMetric.cost => formatMoney(v, s.currency),
 };
+
+/// Made-up fills for the debug "Sample data" switch: a morning fill most
+/// days and an evening one some days, over [days] days, spread over [slots].
+/// The same every time, newest first.
+List<FillRecord> sampleFills({
+  required DateTime now,
+  required List<int> slots,
+  int days = 90,
+}) {
+  final rnd = math.Random(7);
+  final tanks = slots.isEmpty ? const [0] : slots;
+  final out = <FillRecord>[];
+  for (var d = days - 1; d >= 0; d--) {
+    final day = DateTime(now.year, now.month, now.day - d);
+    final weekend = day.weekday >= DateTime.saturday;
+    if (rnd.nextDouble() < 0.88) {
+      final at = day.add(
+        Duration(hours: 5 + rnd.nextInt(3), minutes: rnd.nextInt(60)),
+      );
+      if (!at.isAfter(now)) {
+        out.add(
+          FillRecord(
+            startedAt: at,
+            ranSec: 900 + rnd.nextInt(weekend ? 900 : 600),
+            slot: tanks.first,
+            startedBy: rnd.nextBool() ? 8 : 3, // auto-fill or schedule
+            stoppedBy: rnd.nextDouble() < 0.94
+                ? 4
+                : 5, // full, sometimes auto-off
+          ),
+        );
+      }
+    }
+    if (rnd.nextDouble() < (weekend ? 0.7 : 0.4)) {
+      final at = day.add(
+        Duration(hours: 18 + rnd.nextInt(3), minutes: rnd.nextInt(60)),
+      );
+      if (!at.isAfter(now)) {
+        out.add(
+          FillRecord(
+            startedAt: at,
+            ranSec: 400 + rnd.nextInt(700),
+            slot: tanks[rnd.nextInt(tanks.length)],
+            startedBy: 1, // app
+            stoppedBy: 4,
+          ),
+        );
+      }
+    }
+  }
+  out.sort((a, b) => b.startedAt!.compareTo(a.startedAt!));
+  return out;
+}
+
+/// Flow and price to show with sample data when the user hasn't set them.
+const sampleUsageSettings = UsageSettings(flowLpm: 40, pricePerKwh: 8);
