@@ -38,6 +38,7 @@ String? startReasonLabel(int cause) => switch (cause) {
   TankLinkUuids.causeApp => 'Started in the app',
   TankLinkUuids.causeButton => 'Started with the button',
   TankLinkUuids.causeSchedule => 'Schedule',
+  TankLinkUuids.causeAutoFill => 'Auto-fill: tank was low',
   _ => null,
 };
 

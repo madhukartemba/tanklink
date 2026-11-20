@@ -42,7 +42,7 @@ void pump_control_clear_error(void);
 /** Show the idle LED unless a pairing, update or running state owns it. */
 void pump_control_refresh_idle_led(void);
 
-/** Call about once a second: starts due schedules, enforces auto-off. */
+/** Call about once a second: starts due schedules and auto-fills, enforces auto-off. */
 void pump_control_poll(void);
 
 #ifdef __cplusplus

@@ -118,6 +118,7 @@ class TankSlot {
     required this.name,
     required this.autoOffMin,
     required this.node,
+    this.autoFill = false,
   });
 
   final int index;
@@ -130,16 +131,21 @@ class TankSlot {
   /// a pump with no sensor.
   final int node;
 
-  /// Stop a fill into this tank after this many minutes. 0 = off.
+  /// Stop a fill into this tank after this many minutes (1–240).
   final int autoOffMin;
 
-  TankSlot copyWith({String? name, int? autoOffMin}) => TankSlot(
-    index: index,
-    sensor: sensor,
-    name: name ?? this.name,
-    autoOffMin: autoOffMin ?? this.autoOffMin,
-    node: node,
-  );
+  /// Fills by itself when its almost-empty float drops.
+  final bool autoFill;
+
+  TankSlot copyWith({String? name, int? autoOffMin, bool? autoFill}) =>
+      TankSlot(
+        index: index,
+        sensor: sensor,
+        name: name ?? this.name,
+        autoOffMin: autoOffMin ?? this.autoOffMin,
+        node: node,
+        autoFill: autoFill ?? this.autoFill,
+      );
 }
 
 /// A fill the pump was running when it lost power or restarted.

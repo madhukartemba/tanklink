@@ -53,6 +53,7 @@ class TankLinkUuids {
   static const causeAutoOff = 5;
   static const causePower = 6;
   static const causeSystem = 7;
+  static const causeAutoFill = 8;
 
   static const tokenLen = 16;
 
@@ -91,6 +92,11 @@ class TankLinkUuids {
 
   /// slot(1) minutes(1), 1–240 (the pump clamps; auto-off can't be off).
   static const cmdTankAutoOff = 0xA6;
+
+  /// slot(1) on(1): fill by itself when its almost-empty float drops. Only
+  /// for a tank whose sensor has both floats. Pump protocol minor 3.
+  static const cmdTankAutoFill = 0xA8;
+  static const autoFillMinor = 3;
 
   /// sensor_id(6) mode(1): one sensor's float mode.
   static const cmdSensorMode = 0xA7;

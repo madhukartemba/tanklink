@@ -200,6 +200,27 @@ void main() {
     expect(list.slots.map((s) => s.autoOffMin), [30, 0, 45]);
   });
 
+  test('TankList reads the auto-fill mask after the entries (minor 3)', () {
+    List<int> entry(int index, String name) => [
+      index,
+      0,
+      0,
+      30,
+      ...name.codeUnits,
+      ...List.filled(16 - name.length, 0),
+    ];
+    final withMask = TankList.parse([
+      0, 2, //
+      ...entry(0, 'Roof'),
+      ...entry(3, 'Sump'),
+      0x08, // slot 3 fills when low
+    ])!;
+    expect(withMask.slots.map((s) => s.autoFill), [false, true]);
+    // An older pump sends no mask byte: auto-fill reads as off.
+    final noMask = TankList.parse([0, 1, ...entry(0, 'Roof')])!;
+    expect(noMask.slots.single.autoFill, isFalse);
+  });
+
   test('TankList: a pump with no sensor has one sensorless slot', () {
     final list = TankList.parse([
       0, 1, //

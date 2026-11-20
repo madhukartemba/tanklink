@@ -58,6 +58,7 @@ App (`tanklink_app/lib/`):
 | `update/` | GitHub release checks, downloads, update flows |
 | `screens/`, `screens/home/`, `screens/settings/` | UI. One widget family per file |
 | `util/format.dart` | Shared labels |
+| `util/water_use.dart`, `ble/fill_archive.dart`, `screens/usage_screen.dart` | Water and power: litres, energy and cost from run time (unit tested), the phone's own fill archive, the charts |
 | `diag/` | App log (`app_log.dart`), report text and redaction (`report_builder.dart`, unit tested), sending and offline queue (`report_sender.dart`) |
 | `screens/report_problem_screen.dart` | Report a problem; opened from Settings, error banners and failed updates |
 

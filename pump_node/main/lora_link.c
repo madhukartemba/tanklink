@@ -75,6 +75,10 @@ bool lora_link_active_tank_full(void)
 {
     return false;
 }
+bool lora_link_active_tank_low(void)
+{
+    return false;
+}
 bool lora_link_tank_bound(void)
 {
     return false;
@@ -158,6 +162,7 @@ typedef struct {
     bool was_online;
     bool has_key;
     bool seq_known;
+    bool fresh_since_boot; /* a packet arrived since boot (not just restored) */
     bool last_pending;
     bool last_saved_once;
     int64_t last_rx_us;
@@ -487,6 +492,7 @@ static void apply_tank_packet(uint8_t node, const tanklink_lora_status_t *pkt,
     const uint8_t fault = pkt->fault;
     node_rt_t *rt = &s_rt[node];
     rt->heard = true;
+    rt->fresh_since_boot = true;
     rt->last_rx_us = esp_timer_get_time();
     rt->flags = pkt->flags;
     rt->bat = pkt->battery_pct;
@@ -868,6 +874,15 @@ bool lora_link_active_tank_full(void)
     const uint8_t node = pump_tanks_active_node();
     return node != PUMP_NODE_NONE && node_online(node) &&
            pump_tanks_active_is_full(s_rt[node].flags);
+}
+
+bool lora_link_active_tank_low(void)
+{
+    /* Only a reading the tank actually sent since boot: a record restored
+     * from flash after a restart must not start a fill. */
+    const uint8_t node = pump_tanks_active_node();
+    return node != PUMP_NODE_NONE && node_online(node) && s_rt[node].seq_known &&
+           s_rt[node].fresh_since_boot && pump_tanks_active_is_low(s_rt[node].flags);
 }
 
 bool lora_link_tank_bound(void)

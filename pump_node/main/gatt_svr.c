@@ -451,6 +451,16 @@ static int run_command(conn_slot_t *slot, const uint8_t *body, uint16_t len)
         gatt_svr_notify_tanks();
         return 0;
 
+    case TANKLINK_CMD_TANK_AUTO_FILL:
+        if (len < 3) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        if (pump_tanks_set_auto_fill(body[1], body[2] != 0) != ESP_OK) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        gatt_svr_notify_tanks();
+        return 0;
+
     case TANKLINK_CMD_TANK_AUTO_OFF:
         if (len < 3) {
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;

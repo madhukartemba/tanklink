@@ -125,6 +125,8 @@ class _AutoOffSectionState extends State<AutoOffSection> {
             ),
           ),
         ],
+        if (ready && _editSlot != null)
+          _AutoFillRow(session: session, slot: _editSlot!),
         if (ready && _autoEnabled && _editSlot != null) ...[
           const SizedBox(height: 8),
           // Indent to match title text (icon 24 + gap 16).
@@ -194,6 +196,84 @@ class _AutoOffSectionState extends State<AutoOffSection> {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// "Fill when low" for one tank. Only a tank with both floats can use it.
+class _AutoFillRow extends StatefulWidget {
+  const _AutoFillRow({required this.session, required this.slot});
+
+  final PumpSession session;
+  final int slot;
+
+  @override
+  State<_AutoFillRow> createState() => _AutoFillRowState();
+}
+
+class _AutoFillRowState extends State<_AutoFillRow> {
+  bool _busy = false;
+
+  Future<void> _set(bool on) async {
+    setState(() => _busy = true);
+    try {
+      await widget.session.setAutoFill(widget.slot, on);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('StateError: ', '')),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final session = widget.session;
+    final scheme = Theme.of(context).colorScheme;
+    final slot = session.slotAt(widget.slot);
+    final can = session.canAutoFill(widget.slot);
+    final on = can && (slot?.autoFill ?? false);
+    final String subtitle;
+    if (session.pumpProtoMinor < TankLinkUuids.autoFillMinor) {
+      subtitle = 'Update the pump to use this';
+    } else if (!can) {
+      subtitle =
+          'Needs an almost-empty float on this tank. Set it in Tank sensors.';
+    } else {
+      subtitle =
+          'Starts when the water drops below the almost-empty float, '
+          'stops when the tank is full';
+    }
+    return Padding(
+      padding: const EdgeInsets.only(left: 40, top: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Fill when low',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(value: on, onChanged: !can || _busy ? null : _set),
+        ],
+      ),
     );
   }
 }

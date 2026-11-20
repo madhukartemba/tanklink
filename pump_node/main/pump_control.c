@@ -21,12 +21,29 @@
 
 #define TAG "PUMP_CTL"
 
+/* Auto-fill: at least this long between a stop and the next automatic start,
+ * so a float bobbing at the water line can't start the pump again and again. */
+#define AUTO_FILL_COOLDOWN_US (15LL * 60 * 1000000)
+
 static bool s_on;
 static int64_t s_on_since_us;
 /* The running fill, for the history entry written when it stops. */
 static uint32_t s_fill_started_local;
 static uint8_t s_fill_started_by;
 static uint8_t s_last_error;
+static int64_t s_stopped_us; /* when the pump last stopped, 0 = not since boot */
+
+/*
+ * Auto-fill state for the selected tank. It is armed once the tank is seen
+ * above its almost-empty float, and fires once when the float drops: a tank
+ * that is already low (after a restart, a manual stop or turning the setting
+ * on) waits for the next drop. An automatic fill that ends any way other
+ * than "tank full" pauses auto-fill until the tank is next seen full, so a
+ * dry source or a stuck float can't cycle the pump.
+ */
+static uint8_t s_af_slot = 0xFF;
+static bool s_af_armed;
+static bool s_af_paused;
 
 bool pump_control_is_on(void)
 {
@@ -127,6 +144,11 @@ static void set_state(bool on, bool beep, pump_cause_t cause)
             .stopped_by = (uint8_t)cause,
         };
         pump_history_add(&fill);
+        s_stopped_us = esp_timer_get_time();
+        if (s_fill_started_by == PUMP_CAUSE_AUTO_FILL && cause != PUMP_CAUSE_TANK_FULL) {
+            s_af_paused = true;
+            ESP_LOGW(TAG, "Auto-fill paused until the tank is full (stopped by %d)", cause);
+        }
     }
     if (!on) {
         s_on_since_us = 0;
@@ -199,6 +221,40 @@ static void start_due_schedule(void)
     pump_control_set(true, PUMP_CAUSE_SCHEDULE);
 }
 
+/** Start a fill when the selected tank's almost-empty float drops. */
+static void start_due_auto_fill(void)
+{
+    const uint8_t slot = pump_tanks_active();
+    if (slot != s_af_slot) {
+        s_af_slot = slot;
+        s_af_armed = false;
+        s_af_paused = false;
+    }
+    if (!pump_tanks_auto_fill_on(slot) || !lora_link_tank_online()) {
+        s_af_armed = false;
+        return;
+    }
+    if (lora_link_active_tank_full()) {
+        s_af_paused = false;
+    }
+    if (!lora_link_active_tank_low()) {
+        s_af_armed = true; /* above the float: the next drop may start a fill */
+        return;
+    }
+    if (!s_af_armed || s_af_paused || s_on || !pump_pair_is_paired()) {
+        return;
+    }
+    if (relay_control_is_blocked() || pump_ota_is_active()) {
+        return; /* pairing or an update: wait, still armed */
+    }
+    if (s_stopped_us != 0 && esp_timer_get_time() - s_stopped_us < AUTO_FILL_COOLDOWN_US) {
+        return; /* stays armed: starts once the cooldown is over, if still low */
+    }
+    s_af_armed = false;
+    ESP_LOGI(TAG, "Auto-fill: slot %u is low", slot);
+    pump_control_set(true, PUMP_CAUSE_AUTO_FILL);
+}
+
 /** Stop the pump once it has run for the active tank's auto-off time. */
 static void enforce_auto_off(void)
 {
@@ -220,5 +276,6 @@ void pump_control_poll(void)
 {
     pump_runlog_poll(s_on, pump_control_run_seconds());
     start_due_schedule();
+    start_due_auto_fill();
     enforce_auto_off();
 }

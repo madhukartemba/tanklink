@@ -25,6 +25,7 @@ typedef enum {
     PUMP_CAUSE_AUTO_OFF = 5,
     PUMP_CAUSE_POWER = 6,  /* power cut or restart while running */
     PUMP_CAUSE_SYSTEM = 7, /* update, pairing, unpair or factory reset */
+    PUMP_CAUSE_AUTO_FILL = 8, /* the tank ran low (start only) */
 } pump_cause_t;
 
 typedef struct {

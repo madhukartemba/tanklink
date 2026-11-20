@@ -8,7 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../diag/app_log.dart';
 import '../util/error_text.dart';
+import '../util/water_use.dart';
 import 'battery_trend.dart';
+import 'fill_archive.dart';
 import 'models.dart';
 import 'ota_upload.dart';
 import 'protocol.dart';
@@ -61,6 +63,13 @@ class PumpSession extends ChangeNotifier {
 
   /// The pump's last fills, newest first.
   List<FillRecord> fills = [];
+
+  /// Every fill this phone has seen from the selected pump (newest first),
+  /// for the usage charts. Grows past the pump's own last 20.
+  List<FillRecord> archivedFills = [];
+
+  /// Flow, power and price for the selected pump's usage charts.
+  UsageSettings usageSettings = const UsageSettings();
 
   /// Each sensor's daily battery low/high, by sensor index, oldest first.
   Map<int, List<BatteryDay>> batteryLogs = {};
@@ -713,6 +722,71 @@ class PumpSession extends ChangeNotifier {
       ),
     );
     notifyListeners();
+  }
+
+  /// Whether [slot] can fill by itself: its sensor has both floats (almost
+  /// empty mode, pin-1 tank) and the pump knows the command.
+  bool canAutoFill(int slot) {
+    if (pumpProtoMinor < TankLinkUuids.autoFillMinor) return false;
+    final t = slotAt(slot);
+    if (t == null || t.sensor != 0) return false;
+    return sensorForSlot(t)?.mode == TankLinkUuids.sensorModeEmpty;
+  }
+
+  /// Turn auto-fill on or off for one tank. The pump notifies the tank list.
+  Future<void> setAutoFill(int slot, bool on) async {
+    final chr = _cmd;
+    if (chr == null || !authed) {
+      throw StateError('Connect to the pump first');
+    }
+    if (on && !canAutoFill(slot)) {
+      throw StateError('This tank needs an almost-empty float first');
+    }
+    await chr.write([
+      TankLinkUuids.cmdTankAutoFill,
+      slot,
+      on ? 1 : 0,
+    ], withoutResponse: false);
+    tanks = [
+      for (final t in tanks) t.index == slot ? t.copyWith(autoFill: on) : t,
+    ];
+    AppLog.i('pump', 'Auto-fill ${on ? 'on' : 'off'} for slot $slot');
+    notifyListeners();
+  }
+
+  String? get _usageId => selected?.deviceIdHex;
+
+  Future<void> _archiveFills(List<FillRecord> list) async {
+    final id = _usageId;
+    if (id == null) return;
+    archivedFills = await FillArchive.merge(id, list);
+    notifyListeners();
+  }
+
+  /// Load the selected pump's saved fills and usage settings (works offline).
+  Future<void> loadUsage() async {
+    final id = _usageId;
+    if (id == null) return;
+    archivedFills = FillArchive.mergeLists(await FillArchive.load(id), fills);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('usage_$id');
+      usageSettings = raw == null
+          ? const UsageSettings()
+          : UsageSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      usageSettings = const UsageSettings();
+    }
+    notifyListeners();
+  }
+
+  Future<void> setUsageSettings(UsageSettings s) async {
+    usageSettings = s;
+    notifyListeners();
+    final id = _usageId;
+    if (id == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('usage_$id', jsonEncode(s.toJson()));
   }
 
   /// Set one tank's auto-off. The pump notifies the new tank list.
@@ -1759,7 +1833,10 @@ class PumpSession extends ChangeNotifier {
     }
     _historyNotifySub = await _follow(_historyChr!, _historyNotifySub, (v) {
       final list = parseFillHistory(v);
-      if (list != null) fills = list;
+      if (list != null) {
+        fills = list;
+        unawaited(_archiveFills(list));
+      }
     });
     _batteryNotifySub = await _follow(_batteryChr!, _batteryNotifySub, (v) {
       final logs = parseBatteryLog(v);

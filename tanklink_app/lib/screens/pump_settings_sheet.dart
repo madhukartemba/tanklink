@@ -10,6 +10,7 @@ import '../update/firmware_update.dart';
 import '../util/format.dart';
 import 'error_codes_screen.dart';
 import 'fill_history_screen.dart';
+import 'usage_screen.dart';
 import 'schedules_screen.dart';
 import 'starter_settings_screen.dart';
 import 'settings/tank_sensor_screen.dart';
@@ -247,6 +248,18 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                         ),
                       );
                     },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.insights_rounded),
+              title: const Text('Water and power'),
+              subtitle: const Text('Litres, pump time and cost each day'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const UsageScreen()),
+                );
+              },
             ),
             const Divider(height: 28),
             ListTile(

@@ -73,7 +73,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 2
+#define TANKLINK_PROTO_MINOR 3
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -122,6 +122,9 @@ extern "C" {
 #define TANKLINK_CMD_TANK_SELECT 0xA4
 #define TANKLINK_CMD_TANK_RENAME 0xA5
 #define TANKLINK_CMD_TANK_AUTO_OFF 0xA6 /* slot(1) minutes(1), 1-240 */
+/* slot(1) on(1). Fill by itself when its almost-empty float drops; only for
+ * a tank with both floats. Minor 3. */
+#define TANKLINK_CMD_TANK_AUTO_FILL 0xA8
 #define TANKLINK_CMD_SENSOR_MODE 0xA7 /* sensor_id(6) mode(1) */
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
@@ -164,6 +167,7 @@ extern "C" {
  * slot_index(1) sensor_pin(1) sensor_index(1, 0xFF = none) auto_off_min(1)
  * name(16). */
 #define TANKLINK_TANKS_ENTRY_LEN 20
+/* After the entries (minor 3): auto_fill_mask(1), bit i = slot i. */
 
 /* Sensors: count(1) max(1), then count x entry:
  * index(1) id(6) mode(1) raw_flags(1) battery(1) online(1) age_sec(u16)
