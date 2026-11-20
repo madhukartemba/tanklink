@@ -76,7 +76,8 @@ First flash after the OTA partition change must be over **USB**. Later updates u
 - [x] Up to 4 tank sensors per pump (up to 8 tanks), one selected tank filled at a time
 - [x] DS3231 RTC: schedules and the tank's last-seen time survive a restart
 - [x] Tank solar: 5 V panel on VIN charges the LiPo through the XIAO charger; the app shows the battery trend
-- [x] Fill history: the last 20 fills, how long each took and why it stopped
+- [x] Fill history: the last 200 fills, how long each took and why it stopped
+- [x] Fill when low (both floats) and water and power charts
 
 ## License
 

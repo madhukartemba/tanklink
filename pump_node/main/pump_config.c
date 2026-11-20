@@ -11,11 +11,61 @@
 #define TAG "PUMP_CFG"
 #define NVS_NAMESPACE "pump"
 #define NVS_KEY "cfg"
+#define NVS_KEY_USAGE "usage"
 #define DEFAULT_BUZZ_FLAGS \
     (PUMP_BUZZ_FLAG_ENABLED | PUMP_BUZZ_FLAG_ON_BUTTON | PUMP_BUZZ_FLAG_ON_PUMP | \
      PUMP_BUZZ_FLAG_ON_AUTO)
 
 static pump_config_t s_cfg;
+static pump_usage_t s_usage;
+
+static void usage_defaults(pump_usage_t *u)
+{
+    memset(u, 0, sizeof(*u));
+    u->watts = PUMP_USAGE_WATTS_DEFAULT;
+    memcpy(u->currency, "\xE2\x82\xB9", 3); /* ₹ */
+}
+
+static void load_usage(void)
+{
+    usage_defaults(&s_usage);
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    size_t len = sizeof(s_usage);
+    if (nvs_get_blob(h, NVS_KEY_USAGE, &s_usage, &len) != ESP_OK || len != sizeof(s_usage)) {
+        usage_defaults(&s_usage);
+    }
+    nvs_close(h);
+}
+
+const pump_usage_t *pump_config_usage(void)
+{
+    return &s_usage;
+}
+
+esp_err_t pump_config_set_usage(const pump_usage_t *usage)
+{
+    if (!usage) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    s_usage = *usage;
+    if (s_usage.watts == 0) {
+        s_usage.watts = PUMP_USAGE_WATTS_DEFAULT;
+    }
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = nvs_set_blob(h, NVS_KEY_USAGE, &s_usage, sizeof(s_usage));
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
+    }
+    nvs_close(h);
+    return err;
+}
 
 static void load_defaults(pump_config_t *cfg)
 {
@@ -61,6 +111,7 @@ static uint16_t clamp_pulse_ms(uint32_t ms)
 esp_err_t pump_config_init(void)
 {
     load_defaults(&s_cfg);
+    load_usage();
 
     nvs_handle_t handle;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
@@ -112,6 +163,9 @@ const pump_config_t *pump_config_get(void)
 esp_err_t pump_config_reset_defaults(void)
 {
     load_defaults(&s_cfg);
+    pump_usage_t usage;
+    usage_defaults(&usage);
+    (void)pump_config_set_usage(&usage);
     return pump_config_set(&s_cfg);
 }
 

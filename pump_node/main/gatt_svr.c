@@ -62,6 +62,7 @@ typedef struct {
     bool in_use;
     bool authed;
     int8_t phone;                /* pump_pair phone index once authed, else -1 */
+    uint8_t history_start;       /* History page a read returns (fill index) */
     uint8_t nonce[TL_NONCE_LEN]; /* Auth challenge, new after every attempt */
     bool subscribed[SUB_COUNT];
 } conn_slot_t;
@@ -171,7 +172,7 @@ void gatt_svr_notify_nodes(void)
 void gatt_svr_notify_history(void)
 {
     uint8_t buf[GATT_HISTORY_MAX_LEN];
-    notify_all(SUB_HISTORY, buf, gatt_payload_history(buf));
+    notify_all(SUB_HISTORY, buf, gatt_payload_history(buf, 0));
 }
 
 void gatt_svr_notify_battery(void)
@@ -461,6 +462,19 @@ static int run_command(conn_slot_t *slot, const uint8_t *body, uint16_t len)
         gatt_svr_notify_tanks();
         return 0;
 
+    case TANKLINK_CMD_USAGE: {
+        if (len < 1 + TANKLINK_USAGE_LEN) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        pump_usage_t u;
+        memset(&u, 0, sizeof(u));
+        u.flow_dlpm = (uint16_t)(body[1] | (body[2] << 8));
+        u.watts = (uint16_t)(body[3] | (body[4] << 8));
+        u.price_centi = (uint16_t)(body[5] | (body[6] << 8));
+        memcpy(u.currency, &body[7], PUMP_USAGE_CURRENCY_LEN);
+        return pump_config_set_usage(&u) == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+    }
+
     case TANKLINK_CMD_TANK_AUTO_OFF:
         if (len < 3) {
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
@@ -647,17 +661,29 @@ static int on_nodes(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *c
     return reply(ctxt, buf, gatt_payload_nodes(buf));
 }
 
+/** Read: one page of fills from this connection's start. Write: start(1). */
 static int on_history(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
                       void *arg)
 {
-    if (!gatt_svr_is_authed_conn(conn)) {
-        return BLE_ATT_ERR_READ_NOT_PERMITTED;
+    conn_slot_t *slot = slot_find(conn);
+    if (!slot || !slot->authed) {
+        return is_read(ctxt) ? BLE_ATT_ERR_READ_NOT_PERMITTED : BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    }
+    if (is_write(ctxt)) {
+        uint8_t start = 0;
+        uint16_t len = 0;
+        const int rc = read_write(ctxt, &start, 1, 1, &len);
+        if (rc != 0) {
+            return rc;
+        }
+        slot->history_start = start;
+        return 0;
     }
     if (!is_read(ctxt)) {
         return BLE_ATT_ERR_UNLIKELY;
     }
     uint8_t buf[GATT_HISTORY_MAX_LEN];
-    return reply(ctxt, buf, gatt_payload_history(buf));
+    return reply(ctxt, buf, gatt_payload_history(buf, slot->history_start));
 }
 
 static int on_battery(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
@@ -785,7 +811,7 @@ static const struct ble_gatt_svc_def s_services[] = {
              .val_handle = &s_val_handle[SUB_TANKS]},
             {.uuid = &uuid_nodes.u, .access_cb = on_nodes, .flags = F_R | F_N,
              .val_handle = &s_val_handle[SUB_NODES]},
-            {.uuid = &uuid_history.u, .access_cb = on_history, .flags = F_R | F_N,
+            {.uuid = &uuid_history.u, .access_cb = on_history, .flags = F_R | F_W | F_N,
              .val_handle = &s_val_handle[SUB_HISTORY]},
             {.uuid = &uuid_battery.u, .access_cb = on_battery, .flags = F_R | F_N,
              .val_handle = &s_val_handle[SUB_BATTERY]},

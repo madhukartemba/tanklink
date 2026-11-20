@@ -41,6 +41,10 @@ class TankLinkUuids {
   /// History entry: started(u32) ran_sec(u32) slot started_by stopped_by pad.
   static const historyEntryLen = 12;
 
+  /// History: total(1) start(1) count(1) then fills; write start(1) to pick
+  /// the page. At most this many fills per read.
+  static const historyPage = 40;
+
   /// Battery day: day(u16) min max.
   static const batteryDayLen = 4;
 
@@ -96,6 +100,11 @@ class TankLinkUuids {
   /// slot(1) on(1): fill by itself when its almost-empty float drops. Only
   /// for a tank whose sensor has both floats.
   static const cmdTankAutoFill = 0xA8;
+
+  /// flow_dlpm(u16) watts(u16) price_centi(u16) currency(4): saved on the
+  /// pump so every phone shows the same water and cost figures.
+  static const cmdUsage = 0xA9;
+  static const usageCurrencyLen = 4;
 
   /// sensor_id(6) mode(1): one sensor's float mode.
   static const cmdSensorMode = 0xA7;

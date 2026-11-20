@@ -9,7 +9,11 @@ library;
 
 import 'dart:typed_data';
 
+import 'dart:convert';
+
 import 'package:crypto/crypto.dart';
+
+import '../util/water_use.dart';
 
 import 'models.dart';
 import 'tanklink_uuids.dart';
@@ -134,6 +138,7 @@ class PumpSettings {
     required this.starterType,
     required this.relayPulseMs,
     this.runSeconds = 0,
+    this.usage = const UsageSettings(),
   });
 
   final int buzzerFlags;
@@ -145,12 +150,32 @@ class PumpSettings {
   /// Only present on reads.
   final int runSeconds;
 
-  static const _readLen = 15;
+  /// Flow, power and price for the usage charts (read only here; written
+  /// with [encodeUsage]).
+  final UsageSettings usage;
 
-  /// run(4) serial(5) buzzer_flags tone led starter pulse_ms(2).
+  static const _readLen = 25;
+
+  /// run(4) serial(5) buzzer_flags tone led starter pulse_ms(2), then
+  /// flow_dlpm(2) watts(2) price_centi(2) currency(4).
   static PumpSettings? parse(List<int> b) {
     if (b.length < _readLen) return null;
+    final flow = _u16(b, 15);
+    final price = _u16(b, 19);
+    final cur = b.sublist(21, 25);
+    final end = cur.indexOf(0);
     return PumpSettings(
+      usage: UsageSettings(
+        flowLpm: flow == 0 ? null : flow / 10,
+        pumpWatts: _u16(b, 17) == 0
+            ? UsageSettings.defaultWatts
+            : _u16(b, 17).toDouble(),
+        pricePerKwh: price == 0 ? null : price / 100,
+        currency: utf8.decode(
+          end < 0 ? cur : cur.sublist(0, end),
+          allowMalformed: true,
+        ),
+      ),
       runSeconds: _u32(b, 0),
       buzzerFlags: b[9],
       buzzerTone: b[10].clamp(0, 3),
@@ -464,18 +489,67 @@ List<int> encodeTankName(String name) => String.fromCharCodes([
 ]).trim().codeUnits;
 
 /// History: count, then count × 12-byte fills, newest first.
-List<FillRecord>? parseFillHistory(List<int> b) {
-  if (b.isEmpty) return null;
-  const len = TankLinkUuids.historyEntryLen;
+/// One page of the History characteristic.
+class HistoryPage {
+  const HistoryPage({
+    required this.total,
+    required this.start,
+    required this.fills,
+  });
+
+  /// Fills the pump holds in all.
+  final int total;
+
+  /// Index of the first fill on this page (0 = newest).
+  final int start;
+  final List<FillRecord> fills;
+
+  /// total(1) start(1) count(1), then count × 12-byte fills, newest first.
+  static HistoryPage? parse(List<int> b) {
+    if (b.length < 3) return null;
+    const len = TankLinkUuids.historyEntryLen;
+    return HistoryPage(
+      total: b[0],
+      start: b[1],
+      fills: [
+        for (var i = 0, o = 3; i < b[2] && o + len <= b.length; i++, o += len)
+          FillRecord(
+            startedAt: _pumpLocalTime(_u32(b, o)),
+            ranSec: _u32(b, o + 4),
+            slot: b[o + 8],
+            startedBy: b[o + 9],
+            stoppedBy: b[o + 10],
+          ),
+      ],
+    );
+  }
+}
+
+/// Cmd that saves the usage settings on the pump. Flow in tenths of a litre
+/// a minute and price in hundredths, both 0 when not set; the currency is cut
+/// to whole characters that fit in 4 UTF-8 bytes.
+List<int> encodeUsage(UsageSettings s) {
+  int u16(double? v, double scale, int max) =>
+      v == null || v <= 0 ? 0 : (v * scale).round().clamp(1, max);
+  final flow = u16(s.flowLpm, 10, 0xFFFF);
+  final watts = u16(s.pumpWatts, 1, 0xFFFF);
+  final price = u16(s.pricePerKwh, 100, 0xFFFF);
+  final cur = <int>[];
+  for (final rune in s.currency.runes) {
+    final bytes = utf8.encode(String.fromCharCode(rune));
+    if (cur.length + bytes.length > TankLinkUuids.usageCurrencyLen) break;
+    cur.addAll(bytes);
+  }
   return [
-    for (var i = 0, o = 1; i < b[0] && o + len <= b.length; i++, o += len)
-      FillRecord(
-        startedAt: _pumpLocalTime(_u32(b, o)),
-        ranSec: _u32(b, o + 4),
-        slot: b[o + 8],
-        startedBy: b[o + 9],
-        stoppedBy: b[o + 10],
-      ),
+    TankLinkUuids.cmdUsage,
+    flow & 0xff,
+    flow >> 8,
+    watts & 0xff,
+    watts >> 8,
+    price & 0xff,
+    price >> 8,
+    ...cur,
+    ...List.filled(TankLinkUuids.usageCurrencyLen - cur.length, 0),
   ];
 }
 

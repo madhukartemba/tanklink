@@ -47,14 +47,6 @@ class _UsageScreenState extends State<UsageScreen> {
     return _report!;
   }
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<PumpSession>().loadUsage();
-    });
-  }
-
   UseMetric _defaultMetric(UsageSettings s) =>
       s.hasFlow ? UseMetric.water : UseMetric.time;
 
@@ -138,8 +130,8 @@ class _UsageScreenState extends State<UsageScreen> {
           const SizedBox(height: 16),
           Text(
             'Worked out from how long the pump ran, with the flow, power and '
-            'price you set. Fills older than the pump’s last 20 count only '
-            'if this phone saw them.',
+            'price saved on the pump. Every phone shows the same. The pump '
+            'keeps its last 200 fills.',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
@@ -158,7 +150,19 @@ class _UsageScreenState extends State<UsageScreen> {
       showDragHandle: true,
       builder: (_) => _SettingsSheet(initial: session.usageSettings),
     );
-    if (next != null) await session.setUsageSettings(next);
+    if (next == null || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await session.setUsageSettings(next);
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Couldn\u2019t save: ${'$e'.replaceFirst('StateError: ', '')}',
+          ),
+        ),
+      );
+    }
   }
 }
 
@@ -987,7 +991,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Saved on this phone, for this pump.',
+            'Saved on the pump, so every phone shows the same.',
             style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
           ),
           const SizedBox(height: 16),

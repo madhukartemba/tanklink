@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tanklink/ble/fill_archive.dart';
 import 'package:tanklink/ble/models.dart';
 import 'package:tanklink/util/water_use.dart';
 
@@ -63,28 +62,10 @@ void main() {
     expect(UseMetric.time.of(90, s), 1.5);
     const none = UsageSettings();
     expect(none.currency, '₹');
-    expect(UsageSettings.fromJson({}).currency, '₹');
     expect(none.hasFlow, isFalse);
     expect(none.litres(1800), 0);
     expect(UseMetric.water.available(none), isFalse);
     expect(UseMetric.energy.available(none), isTrue);
-  });
-
-  test('UsageSettings round-trips and drops bad numbers', () {
-    const s = UsageSettings(
-      flowLpm: 35.5,
-      pumpWatts: 1100,
-      pricePerKwh: 7.2,
-      currency: '₹',
-    );
-    final back = UsageSettings.fromJson(s.toJson());
-    expect(back.flowLpm, 35.5);
-    expect(back.pumpWatts, 1100);
-    expect(back.pricePerKwh, 7.2);
-    expect(back.currency, '₹');
-    final bad = UsageSettings.fromJson({'flow_lpm': -3, 'watts': 'x'});
-    expect(bad.flowLpm, isNull);
-    expect(bad.pumpWatts, UsageSettings.defaultWatts);
   });
 
   test('formatting', () {
@@ -95,21 +76,6 @@ void main() {
     expect(formatMoney(6, '₹'), '₹6.00');
     expect(formatMoney(240.4, ''), '240');
     expect(formatKwh(0.75), '0.8 kWh');
-  });
-
-  test('FillArchive.mergeLists dedupes, sorts newest first, drops untimed', () {
-    final a = fill(DateTime(2026, 11, 1, 7), 600);
-    final b = fill(DateTime(2026, 11, 2, 7), 600);
-    final c = fill(DateTime(2026, 11, 3, 7), 600);
-    final untimed = FillRecord(
-      startedAt: null,
-      ranSec: 5,
-      slot: 0,
-      startedBy: 0,
-      stoppedBy: 0,
-    );
-    final merged = FillArchive.mergeLists([b, a], [c, b, untimed]);
-    expect(merged.map((f) => f.startedAt!.day), [3, 2, 1]);
   });
 
   test('sampleFills: same every time, newest first, nothing in the future', () {

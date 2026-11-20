@@ -22,13 +22,13 @@
 extern "C" {
 #endif
 
-#define GATT_SETTINGS_READ_LEN 15
+#define GATT_SETTINGS_READ_LEN (15 + TANKLINK_USAGE_LEN)
 #define GATT_OTA_STATUS_LEN 6
 #define GATT_SCHED_MAX_LEN (4 + PUMP_SCHED_MAX * 4 + 1)
 #define GATT_TANKS_MAX_LEN (2 + PUMP_TANK_SLOT_MAX * TANKLINK_TANKS_ENTRY_LEN + 1)
 /* Entry list, then one fault byte per entry. */
 #define GATT_NODES_MAX_LEN (2 + PUMP_NODE_MAX * (TANKLINK_NODES_ENTRY_LEN + 1))
-#define GATT_HISTORY_MAX_LEN (1 + PUMP_HISTORY_MAX * TANKLINK_HISTORY_ENTRY_LEN)
+#define GATT_HISTORY_MAX_LEN (3 + TANKLINK_HISTORY_PAGE * TANKLINK_HISTORY_ENTRY_LEN)
 #define GATT_BATTERY_MAX_LEN (1 + PUMP_NODE_MAX * (2 + PUMP_BATLOG_DAYS * TANKLINK_BATTERY_DAY_LEN))
 
 /** Info (frozen layout). [authed] is whether the reading connection is signed in. */
@@ -47,7 +47,8 @@ size_t gatt_payload_sched(uint8_t out[GATT_SCHED_MAX_LEN]);
 size_t gatt_payload_tanks(uint8_t out[GATT_TANKS_MAX_LEN]);
 
 /** History: the last fills, newest first. */
-size_t gatt_payload_history(uint8_t out[GATT_HISTORY_MAX_LEN]);
+/** One page of the fill history, from fill [start] (0 = newest). */
+size_t gatt_payload_history(uint8_t out[GATT_HISTORY_MAX_LEN], uint8_t start);
 
 /** Battery: each sensor's daily low and high battery. */
 size_t gatt_payload_battery(uint8_t out[GATT_BATTERY_MAX_LEN]);

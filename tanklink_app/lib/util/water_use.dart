@@ -50,23 +50,6 @@ class UsageSettings {
     currency: currency ?? this.currency,
   );
 
-  Map<String, Object?> toJson() => {
-    'flow_lpm': flowLpm,
-    'watts': pumpWatts,
-    'price_kwh': pricePerKwh,
-    'currency': currency,
-  };
-
-  static UsageSettings fromJson(Map<String, dynamic> j) {
-    double? num_(Object? v) => v is num && v > 0 ? v.toDouble() : null;
-    return UsageSettings(
-      flowLpm: num_(j['flow_lpm']),
-      pumpWatts: num_(j['watts']) ?? defaultWatts,
-      pricePerKwh: num_(j['price_kwh']),
-      currency: (j['currency'] as String? ?? defaultCurrency).trim(),
-    );
-  }
-
   double litres(int runSec) => hasFlow ? runSec / 60 * flowLpm! : 0;
   double kwh(int runSec) => runSec / 3600 * pumpWatts / 1000;
   double cost(int runSec) => hasPrice ? kwh(runSec) * pricePerKwh! : 0;

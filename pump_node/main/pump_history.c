@@ -9,7 +9,9 @@
 #define TAG "HISTORY"
 #define NVS_NS "tl_hist"
 #define NVS_KEY "fills"
-#define HISTORY_MAGIC 0x46494C31u /* 'FIL1' */
+#define HISTORY_MAGIC 0x46494C32u /* 'FIL2': 200 fills */
+
+_Static_assert(PUMP_HISTORY_MAX <= 255, "count and newest are one byte");
 
 typedef struct {
     uint32_t magic;

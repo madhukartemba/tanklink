@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tanklink/ble/models.dart';
 import 'package:tanklink/ble/protocol.dart';
 import 'package:tanklink/ble/tanklink_uuids.dart';
+import 'package:tanklink/util/water_use.dart';
 
 List<int> u32(int v) => [
   v & 0xff,
@@ -105,8 +106,16 @@ void main() {
         70,
         1,
         ...[0xe8, 0x03], // flags tone led starter 1000ms
+        ...[0x7c, 0x01], // flow 38.0 L/min
+        ...[0xee, 0x02], // 750 W
+        ...[0x20, 0x03], // 8.00 per kWh
+        0xE2, 0x82, 0xB9, 0, // ₹
       ];
       final s = PumpSettings.parse(read)!;
+      expect(s.usage.flowLpm, 38);
+      expect(s.usage.pumpWatts, 750);
+      expect(s.usage.pricePerKwh, 8);
+      expect(s.usage.currency, '₹');
       expect(s.runSeconds, 30);
       expect(s.buzzerFlags, 0x0f);
       expect(s.buzzerTone, 2);
@@ -118,8 +127,68 @@ void main() {
 
     test('returns null when too short', () {
       expect(PumpSettings.parse(List.filled(10, 0)), isNull);
+      expect(PumpSettings.parse(List.filled(24, 0)), isNull);
+    });
+
+    test('unset flow and price read as null', () {
+      final s = PumpSettings.parse([
+        ...List.filled(15, 0),
+        ...List.filled(10, 0),
+      ])!;
+      expect(s.usage.flowLpm, isNull);
+      expect(s.usage.pricePerKwh, isNull);
+      expect(s.usage.pumpWatts, 750);
+      expect(s.usage.currency, '');
     });
   });
+
+  test(
+    'encodeUsage packs flow, power, price and a whole-character currency',
+    () {
+      expect(
+        encodeUsage(
+          const UsageSettings(
+            flowLpm: 38.04,
+            pumpWatts: 750,
+            pricePerKwh: 8,
+            currency: '₹',
+          ),
+        ),
+        [
+          TankLinkUuids.cmdUsage,
+          0x7c,
+          0x01,
+          0xee,
+          0x02,
+          0x20,
+          0x03,
+          0xE2,
+          0x82,
+          0xB9,
+          0,
+        ],
+      );
+      // Unset values are 0; "Rs. " fits 4 bytes, "₹₹" (6 bytes) keeps one ₹.
+      expect(encodeUsage(const UsageSettings(currency: 'Rs. ')).sublist(1), [
+        0,
+        0,
+        0xee,
+        0x02,
+        0,
+        0,
+        0x52,
+        0x73,
+        0x2e,
+        0x20,
+      ]);
+      expect(encodeUsage(const UsageSettings(currency: '₹₹')).sublist(7), [
+        0xE2,
+        0x82,
+        0xB9,
+        0,
+      ]);
+    },
+  );
 
   group('TankStatus', () {
     List<int> status({int reason = 0}) {
@@ -340,12 +409,12 @@ void main() {
     });
   });
 
-  test('parseFillHistory reads fills newest first', () {
+  test('HistoryPage reads a page of fills newest first', () {
     // 2026-11-18 06:00:00 pump-local, as seconds since 1970.
     final started =
         DateTime.utc(2026, 11, 18, 6).millisecondsSinceEpoch ~/ 1000;
-    final list = parseFillHistory([
-      2,
+    final page = HistoryPage.parse([
+      150, 40, 2, // 150 fills in all, this page starts at fill 40
       ...u32(started),
       ...u32(1080),
       1,
@@ -359,6 +428,9 @@ void main() {
       TankLinkUuids.causePower,
       0,
     ])!;
+    expect(page.total, 150);
+    expect(page.start, 40);
+    final list = page.fills;
     expect(list, hasLength(2));
     expect(list.first.startedAt, DateTime(2026, 11, 18, 6));
     expect(list.first.ranSec, 1080);

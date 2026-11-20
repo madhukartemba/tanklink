@@ -10,7 +10,6 @@ import '../diag/app_log.dart';
 import '../util/error_text.dart';
 import '../util/water_use.dart';
 import 'battery_trend.dart';
-import 'fill_archive.dart';
 import 'models.dart';
 import 'ota_upload.dart';
 import 'protocol.dart';
@@ -61,14 +60,10 @@ class PumpSession extends ChangeNotifier {
   /// Paired tank sensors, up to [TankLinkUuids.sensorMax].
   List<TankSensor> sensors = [];
 
-  /// The pump's last fills, newest first.
+  /// The pump's fills (up to 200), newest first. The same on every phone.
   List<FillRecord> fills = [];
 
-  /// Every fill this phone has seen from the selected pump (newest first),
-  /// for the usage charts. Grows past the pump's own last 20.
-  List<FillRecord> archivedFills = [];
-
-  /// Flow, power and price for the selected pump's usage charts.
+  /// Flow, power and price for the usage charts, saved on the pump.
   UsageSettings usageSettings = const UsageSettings();
 
   /// Each sensor's daily battery low/high, by sensor index, oldest first.
@@ -681,6 +676,7 @@ class PumpSession extends ChangeNotifier {
     ledBrightness = s.ledBrightness;
     starterType = s.starterType;
     relayPulseMs = s.relayPulseMs;
+    usageSettings = s.usage;
   }
 
   bool get buzzerEnabled => (buzzerFlags & TankLinkUuids.buzzEnabled) != 0;
@@ -719,6 +715,7 @@ class PumpSession extends ChangeNotifier {
         ledBrightness: next.ledBrightness,
         starterType: next.starterType,
         relayPulseMs: next.relayPulseMs,
+        usage: usageSettings,
       ),
     );
     notifyListeners();
@@ -753,39 +750,13 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? get _usageId => selected?.deviceIdHex;
-
-  Future<void> _archiveFills(List<FillRecord> list) async {
-    final id = _usageId;
-    if (id == null) return;
-    archivedFills = await FillArchive.merge(id, list);
-    notifyListeners();
-  }
-
-  /// Load the selected pump's saved fills and usage settings (works offline).
-  Future<void> loadUsage() async {
-    final id = _usageId;
-    if (id == null) return;
-    archivedFills = FillArchive.mergeLists(await FillArchive.load(id), fills);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('usage_$id');
-      usageSettings = raw == null
-          ? const UsageSettings()
-          : UsageSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    } catch (_) {
-      usageSettings = const UsageSettings();
-    }
-    notifyListeners();
-  }
-
   /// Debug builds only: show made-up fills on the usage screen. Nothing is
   /// saved; the real fills come back when it is turned off.
   bool simUsage = false;
   List<FillRecord> _simFills = [];
 
   /// Fills the usage screen shows: the phone's archive, or sample data.
-  List<FillRecord> get usageFills => simUsage ? _simFills : archivedFills;
+  List<FillRecord> get usageFills => simUsage ? _simFills : fills;
 
   /// Settings the usage screen draws with. With sample data, flow and price
   /// the user hasn't set are filled in so every chart has something to show.
@@ -811,13 +782,15 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Save flow, power and price on the pump, for every phone.
   Future<void> setUsageSettings(UsageSettings s) async {
+    final chr = _cmd;
+    if (chr == null || !authed) {
+      throw StateError('Connect to the pump first');
+    }
+    await chr.write(encodeUsage(s), withoutResponse: false);
     usageSettings = s;
     notifyListeners();
-    final id = _usageId;
-    if (id == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('usage_$id', jsonEncode(s.toJson()));
   }
 
   /// Set one tank's auto-off. The pump notifies the new tank list.
@@ -1862,11 +1835,14 @@ class PumpSession extends ChangeNotifier {
     } catch (e) {
       AppLog.w('pump', 'Sensor list read failed: $e');
     }
+    // Reads and notifies give the newest page; the rest is read page by page.
     _historyNotifySub = await _follow(_historyChr!, _historyNotifySub, (v) {
-      final list = parseFillHistory(v);
-      if (list != null) {
-        fills = list;
-        unawaited(_archiveFills(list));
+      final page = HistoryPage.parse(v);
+      if (page == null || page.start != 0) return;
+      if (page.total <= page.fills.length) {
+        fills = page.fills;
+      } else {
+        unawaited(_readAllHistory());
       }
     });
     _batteryNotifySub = await _follow(_batteryChr!, _batteryNotifySub, (v) {
@@ -1877,6 +1853,32 @@ class PumpSession extends ChangeNotifier {
   }
 
   /// Subscribe to [chr], apply each value with [apply], and read it once.
+  Future<void>? _historyRead;
+
+  /// All of the pump's fills, [TankLinkUuids.historyPage] at a time: write
+  /// the start, then read. One read at a time.
+  Future<void> _readAllHistory() => _historyRead ??= () async {
+    try {
+      final chr = _historyChr;
+      if (chr == null) return;
+      final all = <FillRecord>[];
+      var total = 1;
+      while (all.length < total) {
+        await chr.write([all.length], withoutResponse: false);
+        final page = HistoryPage.parse(await chr.read());
+        if (page == null || page.fills.isEmpty) break;
+        total = page.total;
+        all.addAll(page.fills);
+      }
+      fills = all;
+      notifyListeners();
+    } catch (e) {
+      AppLog.w('pump', 'History read failed: $e');
+    } finally {
+      _historyRead = null;
+    }
+  }();
+
   Future<StreamSubscription<List<int>>> _follow(
     BluetoothCharacteristic chr,
     StreamSubscription<List<int>>? old,

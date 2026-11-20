@@ -37,7 +37,7 @@ Pump (`pump_node/main/`):
 | --- | --- |
 | `main.c` | Boot order, NimBLE host and GAP events, advertising |
 | `pump_control.c` | Pump on/off (each call says why: `pump_cause_t`), start checks, run time, last error, schedules, per-tank auto-off |
-| `pump_history.c`, `pump_battery_log.c` | Last 20 fills with stop reason; each sensor's daily battery low/high |
+| `pump_history.c`, `pump_battery_log.c` | Last 200 fills with stop reason (read in pages); each sensor's daily battery low/high |
 | `gatt_svr.c` | BLE service table, one handler per characteristic, connections, notifications |
 | `gatt_payloads.c` | Byte layout of every characteristic read |
 | `relay_control.c`, `board.c` | Starter relays; button and LED wiring |
@@ -58,7 +58,7 @@ App (`tanklink_app/lib/`):
 | `update/` | GitHub release checks, downloads, update flows |
 | `screens/`, `screens/home/`, `screens/settings/` | UI. One widget family per file |
 | `util/format.dart` | Shared labels |
-| `util/water_use.dart`, `ble/fill_archive.dart`, `screens/usage_screen.dart` | Water and power: litres, energy and cost from run time (unit tested), the phone's own fill archive, the charts |
+| `util/water_use.dart`, `screens/usage_screen.dart` | Water and power: litres, energy and cost from run time (unit tested) and the charts. Flow, power, price and the 200-fill history all live on the pump |
 | `diag/` | App log (`app_log.dart`), report text and redaction (`report_builder.dart`, unit tested), sending and offline queue (`report_sender.dart`) |
 | `screens/report_problem_screen.dart` | Report a problem; opened from Settings, error banners and failed updates |
 

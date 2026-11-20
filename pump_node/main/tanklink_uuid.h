@@ -125,6 +125,10 @@ extern "C" {
 /* slot(1) on(1). Fill by itself when its almost-empty float drops; only for
  * a tank with both floats. */
 #define TANKLINK_CMD_TANK_AUTO_FILL 0xA8
+/* flow_dlpm(u16) watts(u16) price_centi(u16) currency(4, UTF-8, NUL-padded):
+ * what the app needs for litres and cost (see Settings). */
+#define TANKLINK_CMD_USAGE 0xA9
+#define TANKLINK_USAGE_LEN 10
 #define TANKLINK_CMD_SENSOR_MODE 0xA7 /* sensor_id(6) mode(1) */
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
@@ -174,10 +178,14 @@ extern "C" {
  * rssi(i8) snr(i8) fw(3) hw_rev(1) ble_token(16). */
 #define TANKLINK_NODES_ENTRY_LEN 35
 
-/* History: count(1), then count x fill, newest first:
+/* History (read + write + notify): total(1) start(1) count(1), then count x
+ * fill, newest first, starting at fill [start]. Write start(1) to choose the
+ * page a read returns; it resets to 0 on connect. A notify is always page 0.
+ * At most TANKLINK_HISTORY_PAGE fills per read. Each fill:
  * started_local(u32) ran_sec(u32) slot(1) started_by(1) stopped_by(1) reserved(1).
  * Causes are pump_cause_t (pump_history.h). */
 #define TANKLINK_HISTORY_ENTRY_LEN 12
+#define TANKLINK_HISTORY_PAGE 40
 
 /* Battery: count(1), then per sensor: index(1) days(1), then days x
  * (day(u16, pump-local days since 1970) min_pct(1) max_pct(1)), oldest first. */

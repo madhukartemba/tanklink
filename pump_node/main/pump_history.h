@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-#define PUMP_HISTORY_MAX 20
+#define PUMP_HISTORY_MAX 200 /* about 2-3 months; read by the app in pages */
 
 /** Why the pump started or stopped. Sent to the app as one byte. */
 typedef enum {

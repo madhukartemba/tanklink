@@ -59,7 +59,8 @@ size_t gatt_payload_info(uint8_t out[TANKLINK_INFO_LEN], bool authed)
 
 size_t gatt_payload_settings(uint8_t out[GATT_SETTINGS_READ_LEN])
 {
-    /* run(4) serial(5) buzzer_flags tone led starter pulse_ms(2) */
+    /* run(4) serial(5) buzzer_flags tone led starter pulse_ms(2), then usage:
+     * flow_dlpm(2) watts(2) price_centi(2) currency(4) */
     put_u32(&out[0], pump_control_run_seconds());
     memcpy(&out[4], pump_pair_serial(), TANKLINK_SERIAL_LEN + 1);
     out[9] = pump_config_buzzer_flags();
@@ -67,6 +68,11 @@ size_t gatt_payload_settings(uint8_t out[GATT_SETTINGS_READ_LEN])
     out[11] = pump_config_led_brightness();
     out[12] = pump_config_starter_type();
     put_u16(&out[13], pump_config_relay_pulse_ms());
+    const pump_usage_t *u = pump_config_usage();
+    put_u16(&out[15], u->flow_dlpm);
+    put_u16(&out[17], u->watts);
+    put_u16(&out[19], u->price_centi);
+    memcpy(&out[21], u->currency, PUMP_USAGE_CURRENCY_LEN);
     return GATT_SETTINGS_READ_LEN;
 }
 
@@ -199,12 +205,14 @@ size_t gatt_payload_nodes(uint8_t out[GATT_NODES_MAX_LEN])
     return o;
 }
 
-size_t gatt_payload_history(uint8_t out[GATT_HISTORY_MAX_LEN])
+size_t gatt_payload_history(uint8_t out[GATT_HISTORY_MAX_LEN], uint8_t start)
 {
-    size_t o = 1;
+    out[0] = (uint8_t)pump_history_count();
+    out[1] = start;
+    size_t o = 3;
     uint8_t count = 0;
     pump_fill_t f;
-    for (unsigned i = 0; i < PUMP_HISTORY_MAX && pump_history_get(i, &f); i++) {
+    for (unsigned i = start; count < TANKLINK_HISTORY_PAGE && pump_history_get(i, &f); i++) {
         put_u32(&out[o], f.started_local);
         put_u32(&out[o + 4], f.ran_sec);
         out[o + 8] = f.slot;
@@ -214,7 +222,7 @@ size_t gatt_payload_history(uint8_t out[GATT_HISTORY_MAX_LEN])
         o += TANKLINK_HISTORY_ENTRY_LEN;
         count++;
     }
-    out[0] = count;
+    out[2] = count;
     return o;
 }
 

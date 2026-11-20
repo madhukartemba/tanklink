@@ -105,6 +105,7 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xA6` | Set a tank slot's auto-off. Always on: clamped to 1–240 | `slot(1) minutes(1)` |
 | `0xA7` | Set a sensor's float mode (see Sensors). Leaving two-tank mode deletes that sensor's second tank and its schedules, refused while the pump fills it | `sensor_id(6) mode(1)` |
 | `0xA8` | Auto-fill on/off for a tank (see below). Turning it on is refused unless the tank has both floats: its sensor is in almost-empty mode and it is that sensor's pin-1 tank | `slot(1) on(1)` |
+| `0xA9` | Save the usage settings (see Settings) | `flow_dlpm(u16) watts(u16) price_centi(u16) currency(4)` |
 | `0xB1` | Test beep | — |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |
@@ -118,9 +119,11 @@ Maximum write length is 18 bytes.
 
 ### Settings (read no auth, write authed)
 
-Read, 15 bytes:
+Read, 25 bytes:
 
-`run_secs(u32) serial(4 chars + NUL) buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16)`
+`run_secs(u32) serial(4 chars + NUL) buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16) flow_dlpm(u16) watts(u16) price_centi(u16) currency(4)`
+
+- Usage, for the app's Water and power screen (set with Cmd `0xA9`): `flow_dlpm` pump flow in tenths of a litre a minute (0 = not set), `watts` pump power (default 750), `price_centi` price of a kWh in hundredths (0 = not set), `currency` UTF-8, NUL-padded (default ₹). Saved on the pump so every phone shows the same figures.
 
 Write, at least 6 bytes (extra bytes from a newer app are ignored):
 
@@ -206,9 +209,11 @@ After the entries, one fault byte per entry in the same order (the tank's own li
 
 Notified on every packet from any sensor, and when one goes out of range.
 
-### History (read + notify, authed)
+### History (read + write + notify, authed)
 
-The last 20 fills, newest first: `count(1)` followed by `count` × 12 bytes:
+The pump keeps its last 200 fills. A read returns one page: `total(1) start(1) count(1)` followed by `count` × 12 bytes, newest first, starting at fill `start` (0 = newest), at most 40 per page. Write `start(1)` (authed) to choose the page the next read returns; it is 0 after connecting. A notify (when a fill is added) is always page 0. The app reads every page on connect and after each notify.
+
+Each fill:
 
 | Offset | Size | Field |
 | --- | --- | --- |

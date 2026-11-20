@@ -108,6 +108,7 @@ Stored on the pump in NVS namespace `pump`, key `cfg`. Defaults apply after a fi
 | --- | --- | --- | --- |
 | Auto-off (per tank) | 30 min | 1 – 240 min (can't be turned off) | Pump settings. Stored with the tank slot in `tl_tanks` |
 | Auto-fill (per tank) | off | on / off, only for a tank with both floats | Pump settings → Fill when low. `auto_fill` in `tl_tanks` |
+| Water and power | flow not set, 750 W, price not set, ₹ | flow (L/min), power (W), price per kWh, currency | Water and power → Pump details. `usage` in `pump`, its own key, so it never resets the other settings |
 | Buzzer | on for button, pump start/stop, auto-off | per-event switches | Pump settings |
 | Buzzer tone | click | click, soft, sharp, double | Pump settings |
 | LED brightness | 70 % | 1 – 100 % | Pump settings |
@@ -126,7 +127,7 @@ Other data the pump saves (all cleared by factory reset or `erase-flash`):
 | `tl_tank` | Per paired sensor N: its LoRa link key (`key<N>`, the BLE OTA token is derived from it), the last seq it accepted (`seq<N>`, so replays stay refused after a restart) and its last packet (`last<N>`, for restoring last-seen after a restart). |
 | `tl_tanks` | Paired sensors (up to 4: MAC, float mode), tank slots (up to 8: sensor, which float, name, auto-off), and the selected tank (`slots`). Auto-fill per slot as a bit mask (`auto_fill`). |
 | `tl_sched` | Fill schedules (up to 4) |
-| `tl_hist` | The last 20 fills: start, length, tank, start and stop cause |
+| `tl_hist` | The last 200 fills: start, length, tank, start and stop cause |
 | `tl_bat` | Each sensor's daily battery low and high for 14 days (`b<N>`) |
 | `tl_run` | "Pump is running" record while a fill runs (refreshed each minute), and the interrupted-fill notice until it is dismissed |
 
@@ -155,6 +156,6 @@ The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, 
 | Release signing | `android/key.properties` + upload keystore. A release build fails without them; see [`app-release.md`](app-release.md) |
 | Backup | Off (`allowBackup=false`, `data_extraction_rules.xml`): pump tokens never leave the phone |
 | Saved pumps | Secure storage (`flutter_secure_storage`, key `saved_pumps`): name, device and sign-in token per pump |
-| Water and power | Per pump on the phone: flow (L/min), power (W, default 750), price per kWh and currency (default ₹) in SharedPreferences (`usage_<deviceId>`); every fill the phone has seen in `fills_<deviceId>.json` in the app support folder (up to 2000), since the pump keeps only its last 20 |
+| Water and power | Nothing on the phone: flow, power, price and currency are pump settings (`usage` in NVS namespace `pump`, Cmd `0xA9`), and the fills come from the pump's history |
 | Update source | GitHub Releases on this repo (`app-v*`, `pump-v*`, `tank-v*`). Highest semver wins, among firmware whose manifest matches the app's protocol major and the board's revision |
 | BLE UUIDs / opcodes | `lib/ble/tanklink_uuids.dart` |

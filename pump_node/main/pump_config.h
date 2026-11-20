@@ -21,6 +21,17 @@ extern "C" {
 #define PUMP_RELAY_PULSE_MS_MIN 50
 #define PUMP_RELAY_PULSE_MS_MAX 2000
 
+/* What the app needs to turn run time into litres and cost. Saved under its
+ * own key, so changing it never touches the other settings. */
+#define PUMP_USAGE_CURRENCY_LEN 4
+#define PUMP_USAGE_WATTS_DEFAULT 750
+typedef struct {
+    uint16_t flow_dlpm;   /* pump flow in tenths of a litre a minute, 0 = not set */
+    uint16_t watts;       /* pump power */
+    uint16_t price_centi; /* price of a kWh in hundredths, 0 = not set */
+    char currency[PUMP_USAGE_CURRENCY_LEN]; /* UTF-8, NUL-padded, e.g. "\xE2\x82\xB9" (₹) */
+} pump_usage_t;
+
 typedef struct {
     uint32_t magic;
     uint16_t dist_empty_cm;
@@ -42,6 +53,9 @@ const pump_config_t *pump_config_get(void);
 esp_err_t pump_config_set(const pump_config_t *cfg);
 /** Restore factory defaults and persist. */
 esp_err_t pump_config_reset_defaults(void);
+
+const pump_usage_t *pump_config_usage(void);
+esp_err_t pump_config_set_usage(const pump_usage_t *usage);
 esp_err_t pump_config_set_time_unix(int64_t unix_sec);
 
 uint8_t pump_config_buzzer_flags(void);
