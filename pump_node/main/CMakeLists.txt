@@ -18,6 +18,7 @@ idf_component_register(
         "gatt_svr.c"
         "gatt_payloads.c"
         "pump_control.c"
+        "pump_diag.c"
         "lora_link.c"
         "relay_control.c"
     INCLUDE_DIRS "."

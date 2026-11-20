@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "host/ble_hs.h"
@@ -51,20 +52,33 @@ static void restore_led_after_ota(void)
     }
 }
 
-static void err_led_restore_task(void *arg)
+/* One timer for every error, so a burst of failed writes can't start a task
+ * per write (each one used to take a 2 KB stack). */
+static esp_timer_handle_t s_err_led_timer;
+
+static void err_led_restore(void *arg)
 {
     (void)arg;
-    vTaskDelay(pdMS_TO_TICKS(2000));
     if (status_led_get_mode() == STATUS_LED_UPDATE_ERR) {
         restore_led_after_ota();
     }
-    vTaskDelete(NULL);
 }
 
 static void show_ota_err_led(void)
 {
     status_led_set_mode(STATUS_LED_UPDATE_ERR);
-    xTaskCreate(err_led_restore_task, "ota_led_err", 2048, NULL, 3, NULL);
+    if (!s_err_led_timer) {
+        const esp_timer_create_args_t args = {
+            .callback = err_led_restore,
+            .name = "ota_led_err",
+        };
+        if (esp_timer_create(&args, &s_err_led_timer) != ESP_OK) {
+            s_err_led_timer = NULL;
+            return;
+        }
+    }
+    esp_timer_stop(s_err_led_timer); /* restart the 2 s if already running */
+    esp_timer_start_once(s_err_led_timer, 2000 * 1000);
 }
 
 static void set_err(uint8_t err)

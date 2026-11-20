@@ -22,6 +22,7 @@
 #include "buzzer.h"
 #include "gatt_svr.h"
 #include "pump_control.h"
+#include "pump_diag.h"
 #include "lora_link.h"
 #include "pump_clock.h"
 #include "pump_config.h"
@@ -111,6 +112,7 @@ static void pair_poll_task(void *arg)
         pump_pair_poll();
         pump_clock_poll();
         pump_control_poll();
+        pump_diag_poll();
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
@@ -357,7 +359,8 @@ void app_main(void)
         buzzer_play(BUZZER_TONE_CLICK, true);
     }
 
-    if (xTaskCreate(pair_poll_task, "pair_poll", 3072, NULL, 3, NULL) != pdPASS) {
+    /* Room for a fill stopping here: the 2.4 KB history save and a notify. */
+    if (xTaskCreate(pair_poll_task, "pair_poll", 5120, NULL, 3, NULL) != pdPASS) {
         ESP_LOGW(TAG, "pair_poll task failed");
     }
 

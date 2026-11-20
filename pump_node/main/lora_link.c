@@ -755,7 +755,8 @@ esp_err_t lora_link_init(void)
         return err;
     }
     s_ready = true;
-    if (xTaskCreate(lora_task, "lora_rx", 4096, NULL, 5, NULL) != pdPASS) {
+    /* Room for a fill stopping here: the 2.4 KB history save and a notify. */
+    if (xTaskCreate(lora_task, "lora_rx", 5120, NULL, 5, NULL) != pdPASS) {
         ESP_LOGW(TAG, "lora_rx task failed");
         s_ready = false;
         return ESP_ERR_NO_MEM;

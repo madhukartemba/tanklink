@@ -220,7 +220,8 @@ esp_err_t board_init(void)
         return err;
     }
 
-    if (xTaskCreate(button_task, "pump_btn", 3072, NULL, 5, NULL) != pdPASS) {
+    /* Room for a fill stopping here: the 2.4 KB history save and a notify. */
+    if (xTaskCreate(button_task, "pump_btn", 4608, NULL, 5, NULL) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
     ESP_LOGI(TAG,

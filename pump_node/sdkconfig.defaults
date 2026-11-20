@@ -14,6 +14,9 @@ CONFIG_BT_NIMBLE_GAP_SERVICE=y
 CONFIG_BT_NIMBLE_MAX_CONNECTIONS=5
 # Room for every notify characteristic (9 today).
 CONFIG_BT_NIMBLE_MAX_CCCDS=16
+# GATT handlers run here: 512-byte History pages, OTA flash writes, factory
+# reset. The default 4096 leaves little room.
+CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=6144
 
 # ESP32-C3 SuperMini pin map — see docs/PINMAPS.md.
 # Relays on GPIO0/1 (quiet at boot), active-low opto module. Single button on GPIO9.

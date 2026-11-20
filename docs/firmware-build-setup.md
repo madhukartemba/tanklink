@@ -167,6 +167,18 @@ I (317) PUMP: PAIRED — advertising as TankLink-E5FE
 
 A `W`/`E` line on `RTC`, `LORA` or `SX1278` usually means wiring. The pump soft-fails each missing part and keeps running.
 
+**Memory report.** The pump logs `DIAG` lines 30 s after boot and then every 10 minutes (`pump_diag.c`):
+
+```
+I (30326) DIAG: heap free 184104, lowest 179816, largest block 114688, up 30s
+I (30326) DIAG: nvs entries used 233, free 397, total 630, namespaces 12
+I (30326) DIAG: stack pair_poll   never used 2396 B
+```
+
+- `lowest` is the least free heap since boot. If it keeps falling over days of normal use, something leaks.
+- `nvs entries`: each is 32 bytes. Keep plenty free: a 200-fill history save writes about 80 entries before the old copy is erased.
+- `never used` is each task's stack headroom. Anything under about 512 B needs a bigger stack. Stack overflow detection (canary) is on, so an overflow stops the pump with a message instead of corrupting memory.
+
 The tank sleeps most of the time, so its USB port disappears. To watch it, set `TANK_DEMO_NO_SLEEP=y` (see [`CONFIGURATION.md`](CONFIGURATION.md)), or press its button and open the monitor straight away.
 
 **From a script or a non-interactive shell** (no TTY, so `idf.py monitor` won't start): use pyserial from the ESP-IDF Python environment. **Open the port with DTR and RTS low.** On macOS, opening it with the default settings can hold the chip in reset.
