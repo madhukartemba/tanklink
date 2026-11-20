@@ -155,6 +155,6 @@ The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, 
 | Release signing | `android/key.properties` + upload keystore. A release build fails without them; see [`app-release.md`](app-release.md) |
 | Backup | Off (`allowBackup=false`, `data_extraction_rules.xml`): pump tokens never leave the phone |
 | Saved pumps | Secure storage (`flutter_secure_storage`, key `saved_pumps`): name, device and sign-in token per pump |
-| Water and power | Per pump on the phone: flow (L/min), power (W, default 750) and price per kWh in SharedPreferences (`usage_<deviceId>`); every fill the phone has seen in `fills_<deviceId>.json` in the app support folder (up to 2000), since the pump keeps only its last 20 |
+| Water and power | Per pump on the phone: flow (L/min), power (W, default 750), price per kWh and currency (default ₹) in SharedPreferences (`usage_<deviceId>`); every fill the phone has seen in `fills_<deviceId>.json` in the app support folder (up to 2000), since the pump keeps only its last 20 |
 | Update source | GitHub Releases on this repo (`app-v*`, `pump-v*`, `tank-v*`). Highest semver wins, among firmware whose manifest matches the app's protocol major and the board's revision |
 | BLE UUIDs / opcodes | `lib/ble/tanklink_uuids.dart` |

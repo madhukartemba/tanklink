@@ -62,6 +62,8 @@ void main() {
     expect(s.cost(3600), closeTo(6, 1e-9));
     expect(UseMetric.time.of(90, s), 1.5);
     const none = UsageSettings();
+    expect(none.currency, '₹');
+    expect(UsageSettings.fromJson({}).currency, '₹');
     expect(none.hasFlow, isFalse);
     expect(none.litres(1800), 0);
     expect(UseMetric.water.available(none), isFalse);

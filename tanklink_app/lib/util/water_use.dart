@@ -14,11 +14,14 @@ class UsageSettings {
     this.flowLpm,
     this.pumpWatts = defaultWatts,
     this.pricePerKwh,
-    this.currency = '',
+    this.currency = defaultCurrency,
   });
 
   /// About 1 HP, a common home pump. Shown as an estimate until changed.
   static const double defaultWatts = 750;
+
+  /// Rupees until the user picks another symbol.
+  static const String defaultCurrency = '\u20b9';
 
   /// Litres a minute, or null when not set.
   final double? flowLpm;
@@ -27,7 +30,7 @@ class UsageSettings {
   /// Price of one kWh, or null when not set.
   final double? pricePerKwh;
 
-  /// Shown before money amounts, e.g. "₹". May be empty.
+  /// Shown before money amounts. ₹ by default; may be set to empty.
   final String currency;
 
   bool get hasFlow => (flowLpm ?? 0) > 0;
@@ -58,7 +61,7 @@ class UsageSettings {
       flowLpm: num_(j['flow_lpm']),
       pumpWatts: num_(j['watts']) ?? defaultWatts,
       pricePerKwh: num_(j['price_kwh']),
-      currency: (j['currency'] as String? ?? '').trim(),
+      currency: (j['currency'] as String? ?? defaultCurrency).trim(),
     );
   }
 
