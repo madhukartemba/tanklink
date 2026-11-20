@@ -22,7 +22,7 @@
 
 /* Our tasks, the NimBLE host and the system tasks that run our callbacks. */
 static const char *const k_tasks[] = {
-    "pair_poll", "lora_rx", "pump_btn", "status_led", "nimble_host", "esp_timer", "ipc0",
+    "pair_poll", "lora_rx", "pump_btn", "status_led", "nimble_host", "esp_timer",
 };
 
 static int64_t s_next_us = FIRST_REPORT_US;

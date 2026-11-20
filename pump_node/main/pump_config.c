@@ -51,9 +51,6 @@ esp_err_t pump_config_set_usage(const pump_usage_t *usage)
         return ESP_ERR_INVALID_ARG;
     }
     s_usage = *usage;
-    if (s_usage.watts == 0) {
-        s_usage.watts = PUMP_USAGE_WATTS_DEFAULT;
-    }
     nvs_handle_t h;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
     if (err != ESP_OK) {

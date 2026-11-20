@@ -133,7 +133,8 @@ void main() {
     test('unset flow and price read as null', () {
       final s = PumpSettings.parse([
         ...List.filled(15, 0),
-        ...List.filled(10, 0),
+        0, 0, 0xee, 0x02, 0, 0, // flow unset, 750 W, price unset
+        0, 0, 0, 0,
       ])!;
       expect(s.usage.flowLpm, isNull);
       expect(s.usage.pricePerKwh, isNull);

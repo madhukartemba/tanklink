@@ -167,14 +167,9 @@ class PumpSettings {
     return PumpSettings(
       usage: UsageSettings(
         flowLpm: flow == 0 ? null : flow / 10,
-        pumpWatts: _u16(b, 17) == 0
-            ? UsageSettings.defaultWatts
-            : _u16(b, 17).toDouble(),
+        pumpWatts: _u16(b, 17).toDouble(),
         pricePerKwh: price == 0 ? null : price / 100,
-        currency: utf8.decode(
-          end < 0 ? cur : cur.sublist(0, end),
-          allowMalformed: true,
-        ),
+        currency: utf8.decode(end < 0 ? cur : cur.sublist(0, end)),
       ),
       runSeconds: _u32(b, 0),
       buzzerFlags: b[9],
