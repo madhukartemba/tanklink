@@ -107,9 +107,16 @@ class PumpSession extends ChangeNotifier {
   /// The pump's clock lost power since it started (flat clock battery).
   bool clockLostPower = false;
 
-  /// The clock battery banner was dismissed; it comes back when the pump
-  /// reports it again after its next start.
-  bool clockLostDismissed = false;
+  /// Pumps (device ids) whose clock battery banner was dismissed, saved on
+  /// the phone. A pump leaves this set once it reports its clock is fine
+  /// (after a new cell and a restart), so a later power loss shows it again.
+  final Set<String> _clockLostDismissed = {};
+  static const _clockDismissedKey = 'clock_lost_dismissed';
+
+  bool get clockLostDismissed {
+    final id = selected?.deviceIdHex;
+    return id != null && _clockLostDismissed.contains(id);
+  }
 
   /// Debug builds only: codes that replace the pump's reported ones so the
   /// error banners and reports can be tried without breaking hardware.
@@ -384,6 +391,9 @@ class PumpSession extends ChangeNotifier {
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
+    _clockLostDismissed
+      ..clear()
+      ..addAll(prefs.getStringList(_clockDismissedKey) ?? const []);
 
     // Saved pumps hold each pump's sign-in token: Keystore/Keychain backed.
     String? listRaw;
@@ -911,7 +921,10 @@ class PumpSession extends ChangeNotifier {
     tankSnrDb = t.snrDb;
     pumpLastError = t.pumpLastError;
     tankFault = t.tankFault;
-    if (!t.clockLostPower) clockLostDismissed = false;
+    final id = selected?.deviceIdHex;
+    if (!t.clockLostPower && id != null && _clockLostDismissed.remove(id)) {
+      unawaited(_saveClockDismissed());
+    }
     clockLostPower = t.clockLostPower;
     tankHwRev = t.hwRev;
     fillInterruption = t.interruption;
@@ -1054,8 +1067,16 @@ class PumpSession extends ChangeNotifier {
   }
 
   void dismissClockLost() {
-    clockLostDismissed = true;
+    final id = selected?.deviceIdHex;
+    if (id == null) return;
+    _clockLostDismissed.add(id);
     notifyListeners();
+    unawaited(_saveClockDismissed());
+  }
+
+  Future<void> _saveClockDismissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_clockDismissedKey, _clockLostDismissed.toList());
   }
 
   Future<void> clearPumpError() async {
