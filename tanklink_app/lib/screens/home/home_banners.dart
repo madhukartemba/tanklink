@@ -238,9 +238,8 @@ class ClockBatteryBanner extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'The pump forgot the time when its power went off (8 red flashes). '
-                    'The app set it again, but schedules won\u2019t run after the next power cut '
-                    'until a phone connects. Replace the CR2032 coin cell on the clock module.',
+                    'The pump forgot the time when its power went off. '
+                    'Replace the CR2032 cell on its clock module.',
                     style: TextStyle(
                       color: scheme.onTertiaryContainer,
                       height: 1.3,

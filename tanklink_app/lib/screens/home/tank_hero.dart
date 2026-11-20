@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:material_ui/material_ui.dart';
 
 import '../../ble/pump_session.dart';
@@ -182,7 +184,11 @@ class TankHero extends StatelessWidget {
       accent: accent,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final h = constraints.maxHeight;
+          // Below this the content can't shrink further: with banners above
+          // it (clock battery, errors), scroll inside the card instead of
+          // overflowing the screen.
+          const minHeight = 340.0;
+          final h = math.max(constraints.maxHeight, minHeight);
           final tight = h < 420;
           final veryTight = h < 340;
           final gap = veryTight ? 6.0 : (tight ? 10.0 : 20.0);
@@ -193,7 +199,7 @@ class TankHero extends StatelessWidget {
                 color: accent,
               );
 
-          return Column(
+          final body = Column(
             children: [
               Spacer(flex: veryTight ? 1 : 2),
               Flexible(
@@ -311,6 +317,10 @@ class TankHero extends StatelessWidget {
               ],
               Spacer(flex: 1),
             ],
+          );
+          if (constraints.maxHeight >= minHeight) return body;
+          return SingleChildScrollView(
+            child: SizedBox(height: minHeight, child: body),
           );
         },
       ),

@@ -32,6 +32,9 @@
 static uint8_t s_own_addr_type;
 static bool s_nimble_ready;
 static bool s_stack_up;
+/* Once a phone connects, the window stays open at least this long. */
+#define CONNECTED_WINDOW_MS 60000
+
 static bool s_window_active;
 static bool s_connected;
 static int64_t s_window_deadline_us;
@@ -142,6 +145,16 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         } else {
             s_connected = true;
             tank_gatt_on_connect(event->connect.conn_handle);
+            /* The phone still has to find the services, sign in and start
+             * the update: keep the window open for it, or the tank would
+             * sleep and drop the link mid-way (Android GATT error 133). */
+            if (s_window_active) {
+                const int64_t need =
+                    esp_timer_get_time() + (int64_t)CONNECTED_WINDOW_MS * 1000;
+                if (s_window_deadline_us < need) {
+                    s_window_deadline_us = need;
+                }
+            }
             ble_att_set_preferred_mtu(512);
             ble_gattc_exchange_mtu(event->connect.conn_handle, NULL, NULL);
             ESP_LOGI(TAG, "connected");

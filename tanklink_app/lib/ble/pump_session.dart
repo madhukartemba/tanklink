@@ -1385,10 +1385,27 @@ class PumpSession extends ChangeNotifier {
       }
 
       final device = tankDevice!;
-      await device.connect(
-        license: License.nonprofit,
-        timeout: const Duration(seconds: 20),
-      );
+      AppLog.i('tank', 'Update: tank found, connecting');
+      // Until the first data is sent, a dropped link means the tank's
+      // 10 s update window ran out (older tank firmware closes it even with
+      // a phone connected) and the tank went back to sleep.
+      var sent = 0;
+      Never asleep(Object e) {
+        AppLog.w('tank', 'Update: link lost before the transfer: $e');
+        throw StateError(
+          'The tank went back to sleep before the update started. '
+          'Press its button once and tap Try again straight away.',
+        );
+      }
+
+      try {
+        await device.connect(
+          license: License.nonprofit,
+          timeout: const Duration(seconds: 20),
+        );
+      } catch (e) {
+        asleep(e);
+      }
       try {
         await device.requestMtu(512);
       } catch (_) {}
@@ -1403,18 +1420,42 @@ class PumpSession extends ChangeNotifier {
           orElse: () =>
               throw StateError('Tank firmware cannot be updated from the app'),
         );
-        await signInWith(chr(TankLinkUuids.auth), token);
-        await uploadFirmware(
-          OtaCharacteristics(
-            ctrl: chr(TankLinkUuids.otaCtrl),
-            data: chr(TankLinkUuids.otaData),
-            status: chr(TankLinkUuids.otaStatus),
-          ),
-          image,
-          mtu: device.mtuNow,
-          onProgress: onProgress,
-          onVerifying: onVerifying,
+        AppLog.i(
+          'tank',
+          'Update: connected (MTU ${device.mtuNow}), signing in',
         );
+        try {
+          await signInWith(chr(TankLinkUuids.auth), token);
+        } on StateError {
+          rethrow;
+        } catch (e) {
+          asleep(e);
+        }
+        AppLog.i('tank', 'Update: signed in, sending ${image.length} bytes');
+        try {
+          await uploadFirmware(
+            OtaCharacteristics(
+              ctrl: chr(TankLinkUuids.otaCtrl),
+              data: chr(TankLinkUuids.otaData),
+              status: chr(TankLinkUuids.otaStatus),
+            ),
+            image,
+            mtu: device.mtuNow,
+            onProgress: (d, t) {
+              sent = d;
+              onProgress?.call(d, t);
+            },
+            onVerifying: onVerifying,
+          );
+        } catch (e) {
+          if (sent == 0) asleep(e);
+          AppLog.w(
+            'tank',
+            'Update: stopped at $sent of ${image.length} bytes: $e',
+          );
+          rethrow;
+        }
+        AppLog.i('tank', 'Update: image checked, tank restarting');
         onRebooting?.call();
         await Future<void>.delayed(const Duration(seconds: 2));
       } finally {
