@@ -24,6 +24,29 @@ class _UsageScreenState extends State<UsageScreen> {
   int _days = 30;
   UseMetric? _metric;
 
+  // The last report and what it was built from, so the totals over up to
+  // 2000 fills are only worked out again when the fills, the period or the
+  // day change.
+  UsageReport? _report;
+  List<FillRecord>? _reportFills;
+  int? _reportDays;
+  DateTime? _reportDay;
+
+  UsageReport _reportFor(List<FillRecord> fills) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (_report == null ||
+        !identical(fills, _reportFills) ||
+        _days != _reportDays ||
+        today != _reportDay) {
+      _report = buildUsage(fills, now: now, days: _days);
+      _reportFills = fills;
+      _reportDays = _days;
+      _reportDay = today;
+    }
+    return _report!;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -37,13 +60,15 @@ class _UsageScreenState extends State<UsageScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final session = context.watch<PumpSession>();
+    // Only what this screen draws: the session also notifies for the run
+    // timer, signal strength and sensor ages, several times a second.
+    final (fills, _, _) = context
+        .select<PumpSession, (List<FillRecord>, UsageSettings, bool)>(
+          (p) => (p.usageFills, p.usageSettings, p.simUsage),
+        );
+    final session = context.read<PumpSession>();
     final s = session.usageSettingsShown;
-    final report = buildUsage(
-      session.usageFills,
-      now: DateTime.now(),
-      days: _days,
-    );
+    final report = _reportFor(fills);
     var metric = _metric ?? _defaultMetric(s);
     if (!metric.available(s)) metric = _defaultMetric(s);
 
@@ -672,7 +697,8 @@ class _ByTankCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final session = context.watch<PumpSession>();
+    context.select<PumpSession, List<TankSlot>>((p) => p.tanks); // names
+    final session = context.read<PumpSession>();
     final scheme = Theme.of(context).colorScheme;
     final entries = report.runSecBySlot.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
