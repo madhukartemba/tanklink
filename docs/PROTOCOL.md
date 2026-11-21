@@ -12,7 +12,7 @@ Every link carries a protocol version, and every board reports its hardware revi
 
 | | Where | Current |
 | --- | --- | --- |
-| BLE protocol (app ↔ pump, app ↔ tank) | `TANKLINK_PROTO_MAJOR` / `_MINOR` in both BLE headers, `TankLinkUuids.protoMajor` in the app | pump 1.2 |
+| BLE protocol (app ↔ pump, app ↔ tank) | `TANKLINK_PROTO_MAJOR` / `_MINOR` in both BLE headers, `TankLinkUuids.protoMajor` in the app | pump 1.3 |
 | LoRa protocol (tank ↔ pump) | `TANKLINK_LORA_VER` | 5 |
 | Pump board revision | Kconfig `PUMP_HW_REV` | 1 |
 | Tank board revision | Kconfig `TANK_HW_REV` | 1 |
@@ -99,6 +99,7 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | --- | --- | --- |
 | `0x00` / `0x01` | Pump off / on | — |
 | `0xA1` | Open LoRa tank-pair window (60 s default). A PAIR adds that sensor, or takes its new link key if already paired. Ignored when 4 sensors are paired | — |
+| `0xA3` | Close the LoRa tank-pair window early (the app's Cancel); the pump's light goes back to standby. Minor 3 | — |
 | `0xA2` | Unpair a sensor: deletes its tanks and their schedules. Refused while the pump fills one of its tanks. The last sensor's first tank stays, without a sensor | `sensor_id(6)` |
 | `0xA4` | Select active tank slot (rejected for a different slot while running) | `slot(1)` |
 | `0xA5` | Rename tank slot | `slot(1) name(≤16, UTF-8)` |

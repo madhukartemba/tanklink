@@ -29,6 +29,8 @@ class _PairTankPromptScreenState extends State<PairTankPromptScreen> {
         barrierDismissible: false,
         builder: (ctx) => _ListeningDialog(session: session),
       );
+      // Closed while still listening: that was Cancel, so stop the pump too.
+      if (session.tankPairing) await session.stopTankPair();
       if (!mounted) return;
       if (session.tankBound) {
         Navigator.of(context).popUntil((route) => route.isFirst);
@@ -148,7 +150,13 @@ class _ListeningDialogState extends State<_ListeningDialog> {
           actions: [
             TextButton(
               onPressed: _close,
-              child: Text(session.tankBound ? 'Done' : 'Close'),
+              child: Text(
+                session.tankBound
+                    ? 'Done'
+                    : session.tankPairing
+                    ? 'Cancel'
+                    : 'Close',
+              ),
             ),
           ],
         );

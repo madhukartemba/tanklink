@@ -89,6 +89,9 @@ class TankLinkUuids {
   static const cmdTestBeep = 0xB1;
   static const cmdTankPair = 0xA1;
 
+  /// Close the tank-pair window early (proto minor 3).
+  static const cmdTankPairStop = 0xA3;
+
   /// sensor_id(6).
   static const cmdTankUnpair = 0xA2;
   static const cmdTankSelect = 0xA4;

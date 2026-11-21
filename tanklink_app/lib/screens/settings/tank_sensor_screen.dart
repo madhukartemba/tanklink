@@ -48,6 +48,8 @@ Future<void> pairTankSensor(BuildContext context) async {
     barrierDismissible: false,
     builder: (ctx) => _TankPairDialog(session: session, before: before),
   );
+  // Closed while still listening: that was Cancel, so stop the pump too.
+  if (session.tankPairing) await session.stopTankPair();
 }
 
 /// Every tank sensor on this pump, the tanks they watch, and which tank the
@@ -507,8 +509,14 @@ class _TankPairDialog extends StatelessWidget {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(added != null ? 'Done' : 'Close'),
+              onPressed: () => popSelf(context),
+              child: Text(
+                added != null
+                    ? 'Done'
+                    : session.tankPairing
+                    ? 'Cancel'
+                    : 'Close',
+              ),
             ),
           ],
         );

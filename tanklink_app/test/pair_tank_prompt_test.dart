@@ -8,9 +8,18 @@ import 'package:tanklink/ble/pump_session.dart';
 import 'package:tanklink/screens/pair_tank_prompt_screen.dart';
 
 class _FakeSession extends PumpSession {
+  int stops = 0;
+
   @override
   Future<void> startTankPair() async {
     tankPairing = true;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> stopTankPair() async {
+    stops++;
+    tankPairing = false;
     notifyListeners();
   }
 }
@@ -59,7 +68,9 @@ void main() {
     expect(nav.currentState!.canPop(), isFalse); // home is the only route
   });
 
-  testWidgets('Close while listening closes only the dialog', (t) async {
+  testWidgets('Cancel while listening stops pairing, closes only the dialog', (
+    t,
+  ) async {
     final session = _FakeSession();
     await t.pumpWidget(
       ChangeNotifierProvider<PumpSession>.value(
@@ -71,9 +82,12 @@ void main() {
     // The dialog's progress bar never settles: pump a fixed time instead.
     await t.pump();
     await t.pump(const Duration(milliseconds: 500));
-    await t.tap(find.text('Close'));
+    await t.tap(find.text('Cancel'));
     await t.pumpAndSettle();
     expect(find.text('Listening…'), findsNothing);
     expect(find.text('Pair a tank sensor?'), findsOneWidget);
+    // The pump is told to stop listening (its light goes back to standby).
+    expect(session.stops, 1);
+    expect(session.tankPairing, isFalse);
   });
 }

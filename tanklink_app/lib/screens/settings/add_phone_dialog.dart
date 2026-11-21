@@ -49,6 +49,16 @@ class _AddPhoneDialogState extends State<_AddPhoneDialog> {
   @override
   void dispose() {
     _poll?.cancel();
+    // Gone some other way (Back): don't leave the pump open for any phone
+    // to add it until its window times out.
+    if (_stage == _Stage.open) {
+      _stage = _Stage.ended;
+      unawaited(
+        widget.session.closePhonePairing().catchError(
+          (Object e) => AppLog.w('pump', 'Close pairing failed: $e'),
+        ),
+      );
+    }
     super.dispose();
   }
 
@@ -85,7 +95,14 @@ class _AddPhoneDialogState extends State<_AddPhoneDialog> {
 
   Future<void> _stop() async {
     _poll?.cancel();
-    if (_stage == _Stage.open) await widget.session.closePhonePairing();
+    if (_stage == _Stage.open) {
+      _stage = _Stage.ended; // so dispose doesn't close it a second time
+      try {
+        await widget.session.closePhonePairing();
+      } catch (e) {
+        AppLog.w('pump', 'Close pairing failed: $e');
+      }
+    }
     if (mounted) popSelf(context);
   }
 

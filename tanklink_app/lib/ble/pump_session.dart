@@ -1045,6 +1045,21 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Cancel: close the pump's tank-pair window, so it stops listening and its
+  /// light goes back to standby. Safe to call when it is already closed.
+  Future<void> stopTankPair() async {
+    final chr = _cmd;
+    tankPairing = false;
+    notifyListeners();
+    if (chr == null || !authed) return;
+    try {
+      await chr.write([TankLinkUuids.cmdTankPairStop], withoutResponse: false);
+    } catch (e) {
+      // The window still closes by itself after its timeout.
+      AppLog.w('tank', 'Stop tank pairing failed: $e');
+    }
+  }
+
   /// Forget one tank sensor, its tanks, and their schedules.
   Future<void> unpairSensor(TankSensor sensor) async {
     final chr = _cmd;

@@ -73,7 +73,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 2
+#define TANKLINK_PROTO_MINOR 3
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -118,6 +118,8 @@ extern "C" {
 #define TANKLINK_CMD_ON        0x01
 #define TANKLINK_CMD_TEST_BEEP 0xB1
 #define TANKLINK_CMD_TANK_PAIR 0xA1
+/* Close the tank-pair window early (minor 3): the app's Cancel. */
+#define TANKLINK_CMD_TANK_PAIR_STOP 0xA3
 #define TANKLINK_CMD_TANK_UNPAIR 0xA2 /* sensor_id(6) */
 #define TANKLINK_CMD_TANK_SELECT 0xA4
 #define TANKLINK_CMD_TANK_RENAME 0xA5

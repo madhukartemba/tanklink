@@ -394,6 +394,10 @@ static int run_command(conn_slot_t *slot, const uint8_t *body, uint16_t len)
         buzzer_play_user(true);
         return 0;
 
+    case TANKLINK_CMD_TANK_PAIR_STOP:
+        lora_link_stop_tank_pair();
+        return 0;
+
     case TANKLINK_CMD_TANK_PAIR:
         return lora_link_start_tank_pair(CONFIG_PUMP_TANK_PAIR_TIMEOUT_MS) == ESP_OK
                    ? 0
