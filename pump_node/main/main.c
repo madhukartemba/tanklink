@@ -53,11 +53,17 @@ static int gap_event(struct ble_gap_event *event, void *arg);
 
 static void on_ble_pair_hold(void)
 {
+    if (pump_update_in_progress()) {
+        return; /* not in the middle of an update */
+    }
     pump_pair_enter_pairing_mode();
 }
 
 static void on_factory_reset_hold(void)
 {
+    if (pump_update_in_progress()) {
+        return;
+    }
     pump_factory_reset();
 }
 
@@ -75,8 +81,8 @@ static void maybe_exit_ble_pairing(void)
 static void on_start(void)
 {
     status_led_notify_activity();
-    if (pump_ota_is_active()) {
-        return;
+    if (pump_update_in_progress()) {
+        return; /* an update is running: the pump doesn't start meanwhile */
     }
     if (pump_pair_pairing_active()) {
         maybe_exit_ble_pairing();

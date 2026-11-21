@@ -408,6 +408,11 @@ esp_err_t pump_update_request_install(void)
  * Status
  * ------------------------------------------------------------------------- */
 
+bool pump_update_in_progress(void)
+{
+    return s_busy == JOB_INSTALL || s_busy == JOB_INSTALL_AUTO || pump_ota_is_active();
+}
+
 uint8_t pump_update_state(void)
 {
     switch (s_busy) {

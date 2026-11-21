@@ -263,6 +263,70 @@ class ClockBatteryBanner extends StatelessWidget {
   }
 }
 
+/// The pump is installing an update that this phone didn't start (the pump
+/// downloading one itself, or another phone sending it).
+class PumpUpdatingBanner extends StatelessWidget {
+  const PumpUpdatingBanner({super.key, required this.session, this.total = 0});
+
+  final PumpSession session;
+
+  /// The update's size in bytes, when known, for a progress bar.
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final writing = session.otaState == TankLinkUuids.otaStWriting;
+    final progress = writing && total > 0 && session.otaOffset > 0
+        ? (session.otaOffset / total).clamp(0.0, 1.0)
+        : null;
+    final step = switch (session.otaState) {
+      TankLinkUuids.otaStVerifyOk => 'Checking the update…',
+      TankLinkUuids.otaStRebooting => 'Restarting…',
+      _ when writing && progress != null =>
+        'Installing… ${(progress * 100).round()}%',
+      _ => 'Downloading the update…',
+    };
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.system_update_alt_rounded, color: scheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Pump is updating itself',
+                  style: Theme.of(context).textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$step Starting the pump is paused until it finishes. '
+            'Please keep it powered.',
+            style: TextStyle(color: scheme.onSurfaceVariant, height: 1.3),
+          ),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+            value: progress,
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class PumpErrorBanner extends StatelessWidget {
   const PumpErrorBanner({super.key, required this.session});
 

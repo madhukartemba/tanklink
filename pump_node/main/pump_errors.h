@@ -17,6 +17,9 @@ extern "C" {
 #define PUMP_ERR_RTC_MISSING   7 /* DS3231 did not answer */
 #define PUMP_ERR_RTC_LOST      8 /* DS3231 oscillator stopped (lost power) */
 #define PUMP_ERR_RTC_COMM      9 /* DS3231 read or write failed */
+/* Start denied because a firmware update is running. Not shown as a light
+ * code: the update light is already on, and this is not a fault. */
+#define PUMP_ERR_UPDATING      10
 
 #ifdef __cplusplus
 }

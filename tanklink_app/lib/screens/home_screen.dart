@@ -95,6 +95,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (session.connected && session.protocolMismatch) return 'Update needed';
       return session.connecting ? 'Connecting…' : 'Not connected';
     }
+    if (session.pumpUpdating && !session.pumpOn) {
+      return 'Updating pump…';
+    }
     if (session.pumpOn) {
       return 'Running · ${session.runLabel}${_autoOffSuffix(session)}';
     }
@@ -176,6 +179,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (linked && session.pumpUpdatingElsewhere) ...[
+                          PumpUpdatingBanner(
+                            session: session,
+                            total: context
+                                .watch<PumpFirmwareUpdate>()
+                                .bytesTotal,
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                         if (session.connectFailed &&
                             !session.connecting &&
                             !session.connected) ...[

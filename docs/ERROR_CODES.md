@@ -40,7 +40,7 @@ Same flash pattern as the tank: **N short red flashes**, a long pause, then the 
 | **1** | Tank full | Start denied because the selected tank reports full (or a full packet for it while running forces stop). Other tanks being full never blocks or stops the pump. |
 | **2** | LoRa missing | RA-02 did not initialize at boot — tank link offline until fixed. |
 | **3** | Tank offline | The selected tank's sensor missed its heartbeat window (out of range / power). Cleared when a packet returns or another tank is selected. |
-| **4** | Blocked | Start denied during OTA or while BLE pairing lockout is active. |
+| **4** | Blocked | Start denied while the BLE pairing lockout is active. (A start during a firmware update is not an error: the update light stays on and the press is just ignored.) |
 | **5** | Not paired | Local Start held while the pump has no phone owner token. |
 | **6** | I2C failed | The I2C bus for the DS3231 did not start. |
 | **7** | Clock chip missing | The I2C bus started, but the DS3231 did not answer. |

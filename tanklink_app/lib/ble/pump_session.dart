@@ -167,6 +167,13 @@ class PumpSession extends ChangeNotifier {
   WifiStatus? wifiStatus;
   StreamSubscription<List<int>>? _wifiNotifySub;
   StreamSubscription<List<int>>? _alertNotifySub;
+  StreamSubscription<List<int>>? _otaNotifySub;
+
+  /// The pump's own update status (OtaStatus): state and bytes written. Lets the
+  /// app see an update it didn't start: the pump downloading one itself, or
+  /// another phone sending one.
+  int otaState = TankLinkUuids.otaStIdle;
+  int otaOffset = 0;
   Timer? _wifiProbeTimer;
   DateTime _skipWifiUntil = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -398,8 +405,24 @@ class PumpSession extends ChangeNotifier {
 
   String? get tankFaultDetail => TankLinkErrors.tankDetail(tankFault);
 
+  /// The pump is installing a firmware update, whoever started it (this phone,
+  /// another phone, or the pump itself). It won't start, pair or reset
+  /// meanwhile, so the app doesn't offer those.
+  bool get pumpUpdating {
+    if (!authed || !connected) return false;
+    if (wifiStatus?.update == PumpUpdateState.installing) return true;
+    return otaState == TankLinkUuids.otaStReady ||
+        otaState == TankLinkUuids.otaStWriting ||
+        otaState == TankLinkUuids.otaStVerifyOk ||
+        otaState == TankLinkUuids.otaStRebooting;
+  }
+
+  /// An update this phone isn't running itself (its own shows a dialog).
+  bool get pumpUpdatingElsewhere => pumpUpdating && !updating;
+
   bool get canStartPump {
     if (!authed || !connected) return false;
+    if (pumpUpdating) return false;
     if (tankBound && tankOnline && tankFull) return false;
     return true;
   }
@@ -778,6 +801,23 @@ class PumpSession extends ChangeNotifier {
       // Not reachable from here: stay on Bluetooth.
     } finally {
       _probing = false;
+    }
+  }
+
+  /// Follow the pump's update status, so an update started elsewhere is seen.
+  Future<void> _bindOtaStatus() async {
+    final chr = _otaStatus;
+    if (chr == null) return;
+    try {
+      _otaNotifySub = await _follow(chr, _otaNotifySub, (v) {
+        if (v.length < 2) return;
+        otaState = v[0];
+        otaOffset = v.length >= 6
+            ? v[2] | (v[3] << 8) | (v[4] << 16) | (v[5] << 24)
+            : 0;
+      });
+    } catch (e) {
+      AppLog.w('pump', 'Update status not available: $e');
     }
   }
 
@@ -1694,6 +1734,7 @@ class PumpSession extends ChangeNotifier {
       debugPrint('settings read failed: $e');
     }
     await _bindWifi();
+    await _bindOtaStatus();
     await _bindAlerts();
     if (link == LinkKind.bluetooth) _startWifiProbe();
     status = 'Connected';
@@ -1716,6 +1757,12 @@ class PumpSession extends ChangeNotifier {
   }
 
   Future<void> setPump(bool on) async {
+    if (on && pumpUpdating) {
+      // The pump would refuse; don't send it, and say why.
+      status = 'Pump is updating. Starting is paused.';
+      notifyListeners();
+      return;
+    }
     if (_cmd == null || !authed) {
       status = 'Not connected';
       notifyListeners();
@@ -2053,6 +2100,10 @@ class PumpSession extends ChangeNotifier {
     _wifiNotifySub = null;
     await _alertNotifySub?.cancel();
     _alertNotifySub = null;
+    await _otaNotifySub?.cancel();
+    _otaNotifySub = null;
+    otaState = TankLinkUuids.otaStIdle;
+    otaOffset = 0;
     _wifiProbeTimer?.cancel();
     _wifiProbeTimer = null;
     final wifi = _wifi;

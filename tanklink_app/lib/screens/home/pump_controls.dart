@@ -58,11 +58,12 @@ class PumpControls extends StatelessWidget {
                     const SizedBox(height: 14),
                     SlideToStart(
                       enabled: ready && session.canStartPump,
-                      label:
-                          ready &&
-                              session.tankBound &&
-                              session.tankOnline &&
-                              session.tankFull
+                      label: session.pumpUpdating
+                          ? 'Updating…'
+                          : ready &&
+                                session.tankBound &&
+                                session.tankOnline &&
+                                session.tankFull
                           ? 'Tank is full'
                           : 'Slide to start',
                       onCompleted: onStart,

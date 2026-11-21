@@ -247,6 +247,9 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
         return PUMP_API_OK;
 
     case TANKLINK_CMD_UNPAIR:
+        if (pump_update_in_progress()) {
+            return PUMP_API_ERR_REFUSED; /* not in the middle of an update */
+        }
         if (pump_pair_unpair() != ESP_OK) {
             return PUMP_API_ERR_REFUSED;
         }
@@ -256,7 +259,7 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
 
     case TANKLINK_CMD_PAIRING_OPEN:
         /* The window switches the pump off; don't stop a fill from afar. */
-        if (pump_control_is_on() || pump_ota_is_active()) {
+        if (pump_control_is_on() || pump_update_in_progress()) {
             return PUMP_API_ERR_REFUSED;
         }
         return refused_if(pump_pair_enter_pairing_mode() != ESP_OK);
@@ -308,6 +311,9 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
     }
 
     case TANKLINK_CMD_FACTORY_RESET:
+        if (pump_update_in_progress()) {
+            return PUMP_API_ERR_REFUSED;
+        }
         return refused_if(pump_factory_reset() != ESP_OK);
 
     case TANKLINK_CMD_CLEAR_ERROR:

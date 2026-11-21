@@ -33,6 +33,11 @@ esp_err_t pump_update_request_check(void);
  * pump runs, during another update, or without Wi-Fi or a found update. */
 esp_err_t pump_update_request_install(void);
 
+/** True from the moment an install is asked for until it ends, including the
+ * gaps between download tries, or while any update (from a phone too) is
+ * being written. The pump won't start, pair or reset meanwhile. */
+bool pump_update_in_progress(void);
+
 /** TANKLINK_UPDATE_* */
 uint8_t pump_update_state(void);
 /** TANKLINK_CHECK_* */

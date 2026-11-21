@@ -36,7 +36,7 @@ class WifiScreen extends StatelessWidget {
     final w = session.wifiStatus;
     final pump = session.selected;
     final scheme = Theme.of(context).colorScheme;
-    final ready = session.ready;
+    final ready = session.ready && !session.pumpUpdating;
     final hasNetwork = w != null && w.state != WifiState.off;
     final connected = w?.state == WifiState.connected;
 
@@ -51,7 +51,13 @@ class WifiScreen extends StatelessWidget {
               connected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
               color: connected ? scheme.primary : scheme.onSurfaceVariant,
             ),
-            title: Text(ready ? stateText(w) : 'Connect to the pump first'),
+            title: Text(
+              session.pumpUpdating
+                  ? 'The pump is updating. Wi-Fi changes are paused.'
+                  : ready
+                  ? stateText(w)
+                  : 'Connect to the pump first',
+            ),
             subtitle: connected
                 ? Text(
                     '${signalText(w!.rssi ?? -100)} signal'

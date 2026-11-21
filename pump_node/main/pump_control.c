@@ -18,6 +18,7 @@
 #include "pump_runlog.h"
 #include "pump_sched.h"
 #include "pump_tanks.h"
+#include "pump_update.h"
 #include "relay_control.h"
 #include "status_led.h"
 #include "tanklink_lora_proto.h"
@@ -127,6 +128,12 @@ void pump_control_refresh_idle_led(void)
 
 static void deny_start(uint8_t code)
 {
+    if (code == PUMP_ERR_UPDATING) {
+        /* Not a fault: keep the update light, no error code, no banner in the
+         * app. A soft pulse shows the press was seen. */
+        status_led_notify_activity();
+        return;
+    }
     s_last_error = code;
     status_led_show_error(code);
     gatt_svr_notify_tank();
@@ -135,6 +142,9 @@ static void deny_start(uint8_t code)
 /** Returns the reason the pump may not start now, or PUMP_ERR_NONE. */
 static uint8_t start_blocker(void)
 {
+    if (pump_update_in_progress()) {
+        return PUMP_ERR_UPDATING;
+    }
     if (relay_control_is_blocked() || pump_ota_is_active()) {
         return PUMP_ERR_BLOCKED;
     }

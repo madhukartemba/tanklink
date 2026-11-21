@@ -136,7 +136,34 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
             const SizedBox(height: 20),
             const AppUpdateTile(),
             // Firmware updates also work when the protocol versions differ.
-            FirmwareTile(ready: session.authed && session.connected),
+            if (session.pumpUpdating)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: scheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.system_update_alt_rounded,
+                      color: scheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'The pump is updating. Updates, pairing, Wi-Fi and '
+                        'reset are paused until it finishes.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            FirmwareTile(
+              ready:
+                  session.authed && session.connected && !session.pumpUpdating,
+            ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.badge_outlined),
@@ -169,8 +196,8 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                     : 'Connect to change',
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
-              enabled: ready,
-              onTap: !ready
+              enabled: ready && !session.pumpUpdating,
+              onTap: !ready || session.pumpUpdating
                   ? null
                   : () {
                       Navigator.of(context).pop();
@@ -411,8 +438,9 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                           'button until the light turns blue.',
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
-              enabled: ready && session.canControlPairing,
-              onTap: ready && session.canControlPairing
+              enabled:
+                  ready && session.canControlPairing && !session.pumpUpdating,
+              onTap: ready && session.canControlPairing && !session.pumpUpdating
                   ? () => showAddPhoneDialog(context, session)
                   : null,
             ),
@@ -425,8 +453,8 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                     ? 'For a lost or old phone. The others must add the pump again.'
                     : 'Connect to the pump first',
               ),
-              enabled: ready,
-              onTap: !ready
+              enabled: ready && !session.pumpUpdating,
+              onTap: !ready || session.pumpUpdating
                   ? null
                   : () async {
                       final ok = await showDialog<bool>(
@@ -509,33 +537,37 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
               const Divider(height: 28),
               TextButton(
                 style: TextButton.styleFrom(foregroundColor: scheme.error),
-                onPressed: () async {
-                  final ok = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => const FactoryResetDialog(),
-                  );
-                  if (ok == true && context.mounted) {
-                    try {
-                      await session.factoryResetOnDevice();
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Factory reset sent — pump will reboot.',
-                            ),
-                          ),
+                onPressed: session.pumpUpdating
+                    ? null
+                    : () async {
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => const FactoryResetDialog(),
                         );
-                        popSelf(context);
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Factory reset failed: $e')),
-                        );
-                      }
-                    }
-                  }
-                },
+                        if (ok == true && context.mounted) {
+                          try {
+                            await session.factoryResetOnDevice();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Factory reset sent — pump will reboot.',
+                                  ),
+                                ),
+                              );
+                              popSelf(context);
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Factory reset failed: $e'),
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      },
                 child: const Text('Factory reset pump…'),
               ),
               Text(
