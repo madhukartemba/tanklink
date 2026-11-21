@@ -5,10 +5,46 @@ import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ble/pump_session.dart';
+import '../link/pump_link.dart';
 import 'firmware_update.dart';
 import '../diag/report_builder.dart';
 import '../screens/report_problem_screen.dart';
 import '../util/nav.dart';
+
+/// Ways to get a pump update onto the pump, best first.
+enum PumpUpdateMethod { pumpDownloads, phoneWifi, bluetooth }
+
+/// The methods that can work right now: the pump's own download needs its
+/// Wi-Fi up and an update it found; sending from the phone over Wi-Fi needs
+/// the phone to be talking to the pump over Wi-Fi; Bluetooth always works.
+List<PumpUpdateMethod> availableUpdateMethods(
+  PumpSession session,
+  PumpFirmwareUpdate fw,
+) {
+  final wifi = session.wifiStatus;
+  return [
+    if (wifi != null &&
+        wifi.state == WifiState.connected &&
+        wifi.update == PumpUpdateState.available)
+      PumpUpdateMethod.pumpDownloads,
+    // Sending from the phone needs the release this phone has found.
+    if (session.link == LinkKind.wifi && fw.latestBinUrl != null)
+      PumpUpdateMethod.phoneWifi,
+    PumpUpdateMethod.bluetooth,
+  ];
+}
+
+String _methodLabel(PumpUpdateMethod m) => switch (m) {
+  PumpUpdateMethod.pumpDownloads => 'Let the pump download it',
+  PumpUpdateMethod.phoneWifi => 'Send from this phone over Wi-Fi',
+  PumpUpdateMethod.bluetooth => 'Send over Bluetooth',
+};
+
+String _methodHint(PumpUpdateMethod m) => switch (m) {
+  PumpUpdateMethod.pumpDownloads => 'Fastest. Uses the pump’s own Wi-Fi.',
+  PumpUpdateMethod.phoneWifi => 'Usually under a minute.',
+  PumpUpdateMethod.bluetooth => 'Slower: stay close to the pump.',
+};
 
 String _fmtBytes(int n) {
   if (n < 1024) return '$n B';
@@ -29,13 +65,15 @@ String _fmtEta(Duration? d) {
 Future<void> showFirmwareConfirmSheet(BuildContext context) async {
   final session = context.read<PumpSession>();
   final fw = context.read<PumpFirmwareUpdate>();
-  final latest = fw.latestVersion ?? '—';
+  final latest =
+      fw.latestVersion ?? session.wifiStatus?.availableVersion ?? '—';
   final current = session.firmware.isEmpty ? '—' : session.firmware;
   final size = fw.bytesTotal > 0 ? _fmtBytes(fw.bytesTotal) : '—';
   final ready = session.authed && session.connected;
   final running = session.pumpOn;
 
-  final action = await showModalBottomSheet<String>(
+  final methods = availableUpdateMethods(session, fw);
+  final action = await showModalBottomSheet<Object>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -126,30 +164,49 @@ Future<void> showFirmwareConfirmSheet(BuildContext context) async {
                   ? 'Stop the pump before updating'
                   : 'Pump must stay stopped during the update',
             ),
-            const _Bullet(
-              icon: Icons.bluetooth_rounded,
-              text: 'Stay within Bluetooth range of the pump',
-            ),
-            const _Bullet(
+            if (methods.first == PumpUpdateMethod.bluetooth)
+              const _Bullet(
+                icon: Icons.bluetooth_rounded,
+                text: 'Stay within Bluetooth range of the pump',
+              ),
+            _Bullet(
               icon: Icons.schedule_rounded,
-              text: 'Usually takes 1–4 minutes',
+              text: methods.first == PumpUpdateMethod.bluetooth
+                  ? 'Usually takes 1–4 minutes'
+                  : 'Usually takes under a minute',
             ),
             const SizedBox(height: 20),
-            FilledButton(
-              onPressed: !ready || running
-                  ? null
-                  : () => Navigator.pop(ctx, 'update'),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+            for (final m in methods) ...[
+              (m == methods.first ? FilledButton.new : OutlinedButton.new)(
+                onPressed: !ready || running
+                    ? null
+                    : () => Navigator.pop(ctx, m),
+                style: ButtonStyle(
+                  padding: const WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  shape: WidgetStatePropertyAll(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      running ? 'Stop pump first' : _methodLabel(m),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    if (!running)
+                      Text(
+                        _methodHint(m),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                  ],
                 ),
               ),
-              child: Text(
-                running ? 'Stop pump first' : 'Update now',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
+              const SizedBox(height: 8),
+            ],
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => Navigator.pop(ctx, 'snooze'),
@@ -166,8 +223,8 @@ Future<void> showFirmwareConfirmSheet(BuildContext context) async {
     await fw.snoozeLatest();
     return;
   }
-  if (action == 'update') {
-    await runFirmwareUpdate(context, fromRelease: true);
+  if (action is PumpUpdateMethod) {
+    await runFirmwareUpdate(context, fromRelease: true, method: action);
   }
 }
 
@@ -175,9 +232,20 @@ Future<void> runFirmwareUpdate(
   BuildContext context, {
   required bool fromRelease,
   Uint8List? localBytes,
+  PumpUpdateMethod? method,
 }) async {
   final session = context.read<PumpSession>();
   final fw = context.read<PumpFirmwareUpdate>();
+  // A file from the phone can't be fetched by the pump itself.
+  var how =
+      method ??
+      availableUpdateMethods(
+        session,
+        fw,
+      ).firstWhere((m) => m != PumpUpdateMethod.pumpDownloads || fromRelease);
+  if (!fromRelease && how == PumpUpdateMethod.pumpDownloads) {
+    how = PumpUpdateMethod.bluetooth;
+  }
 
   if (!(session.authed && session.connected)) {
     ScaffoldMessenger.of(
@@ -195,14 +263,23 @@ Future<void> runFirmwareUpdate(
   // The dialog returns true for Retry. It can't start the retry itself: its
   // own context is gone once it closes.
   while (true) {
-    final retry = await showDialog<bool>(
+    final retry = await showDialog<Object>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) =>
-          _OtaProgressDialog(fromRelease: fromRelease, localBytes: localBytes),
+      builder: (ctx) => _OtaProgressDialog(
+        fromRelease: fromRelease,
+        localBytes: localBytes,
+        method: how,
+      ),
     );
     fw.resetPhase();
-    if (retry != true || !context.mounted) return;
+    if (!context.mounted) return;
+    // Retry (true) or "Try over Bluetooth" (the next method to use).
+    if (retry is PumpUpdateMethod) {
+      how = retry;
+    } else if (retry != true) {
+      return;
+    }
     if (!(session.authed && session.connected)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Connect to the pump first')),
@@ -257,10 +334,15 @@ class _Bullet extends StatelessWidget {
 }
 
 class _OtaProgressDialog extends StatefulWidget {
-  const _OtaProgressDialog({required this.fromRelease, this.localBytes});
+  const _OtaProgressDialog({
+    required this.fromRelease,
+    required this.method,
+    this.localBytes,
+  });
 
   final bool fromRelease;
   final Uint8List? localBytes;
+  final PumpUpdateMethod method;
 
   @override
   State<_OtaProgressDialog> createState() => _OtaProgressDialogState();
@@ -279,6 +361,23 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
     HapticFeedback.mediumImpact();
     await WakelockPlus.enable();
     try {
+      if (widget.method == PumpUpdateMethod.pumpDownloads) {
+        // The pump fetches and checks the image itself; the phone follows.
+        final total = fw.bytesTotal;
+        fw.beginTransfer(total);
+        await session.pumpDownloadsUpdate(
+          onProgress: (done) => fw.setTransferProgress(done, total),
+          onVerifying: fw.setVerifying,
+          onRebooting: fw.setRebooting,
+        );
+        fw.setDone();
+        HapticFeedback.heavyImpact();
+        return;
+      }
+      if (widget.method == PumpUpdateMethod.bluetooth &&
+          session.link != LinkKind.bluetooth) {
+        await session.forceBluetooth();
+      }
       late Uint8List image;
       if (widget.fromRelease) {
         image = await fw.ensureBinaryDownloaded();
@@ -371,29 +470,30 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
                 ),
               ],
               const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: scheme.primary.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.near_me_rounded, color: scheme.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Stay near the pump — don’t lock the phone or walk away until this finishes.',
-                        style: TextStyle(
-                          color: scheme.primary,
-                          fontWeight: FontWeight.w600,
-                          height: 1.3,
+              if (widget.method == PumpUpdateMethod.bluetooth)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.near_me_rounded, color: scheme.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Stay near the pump — don’t lock the phone or walk away until this finishes.',
+                          style: TextStyle(
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w600,
+                            height: 1.3,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
             ],
             if (done)
               Text(
@@ -432,6 +532,11 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
               },
               child: const Text('Report'),
             ),
+            if (widget.method != PumpUpdateMethod.bluetooth)
+              TextButton(
+                onPressed: () => popSelf(context, PumpUpdateMethod.bluetooth),
+                child: const Text('Try over Bluetooth'),
+              ),
             FilledButton(
               onPressed: () => popSelf(context, true),
               child: const Text('Retry'),

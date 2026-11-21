@@ -110,8 +110,10 @@ void main() {
         ...[0xee, 0x02], // 750 W
         ...[0x20, 0x03], // 8.00 per kWh
         0xE2, 0x82, 0xB9, 0, // ₹
+        1, // install updates by itself at night (minor 5)
       ];
       final s = PumpSettings.parse(read)!;
+      expect(s.autoUpdate, isTrue);
       expect(s.usage.flowLpm, 38);
       expect(s.usage.pumpWatts, 750);
       expect(s.usage.pricePerKwh, 8);
@@ -122,7 +124,7 @@ void main() {
       expect(s.ledBrightness, 70);
       expect(s.starterType, 1);
       expect(s.relayPulseMs, 1000);
-      expect(s.encode(), [0x0f, 2, 70, 1, 0xe8, 0x03]);
+      expect(s.encode(), [0x0f, 2, 70, 1, 0xe8, 0x03, 1]);
     });
 
     test('returns null when too short', () {

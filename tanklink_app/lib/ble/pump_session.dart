@@ -7,6 +7,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../diag/app_log.dart';
+import '../link/ble_link.dart';
+import '../link/pump_link.dart';
+import '../link/pump_finder.dart';
+import '../link/wifi_link.dart';
 import '../util/error_text.dart';
 import '../util/water_use.dart';
 import 'battery_trend.dart';
@@ -17,7 +21,14 @@ import 'tanklink_uuids.dart';
 
 export 'models.dart';
 export 'battery_trend.dart';
-export 'protocol.dart' show TankSensor;
+export 'protocol.dart'
+    show
+        TankSensor,
+        WifiState,
+        WifiStatus,
+        WifiNetwork,
+        PumpUpdateState,
+        PumpCheckResult;
 
 class PumpSession extends ChangeNotifier {
   final List<SavedPump> pumps = [];
@@ -144,22 +155,41 @@ class PumpSession extends ChangeNotifier {
   List<FillSchedule> schedules = [];
   final List<ScanResult> scanResults = [];
 
+  /// How the phone reaches the pump right now.
+  LinkKind link = LinkKind.bluetooth;
+  WifiLink? _wifi;
+
+  /// The nonce this connection signed in with, to encrypt a Wi-Fi password.
+  List<int>? _authNonce;
+
+  /// The pump's own Wi-Fi status (null until read, or before Wi-Fi exists).
+  WifiStatus? wifiStatus;
+  StreamSubscription<List<int>>? _wifiNotifySub;
+  Timer? _wifiProbeTimer;
+  DateTime _skipWifiUntil = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// An update is running: never change links in the middle of one.
+  bool updating = false;
+
+  /// The pump installs its own updates at night.
+  bool autoUpdate = false;
+
   BluetoothDevice? _device;
-  BluetoothCharacteristic? _info;
+  PumpChr? _info;
   BluetoothCharacteristic? _pair;
-  BluetoothCharacteristic? _auth;
-  BluetoothCharacteristic? _state;
-  BluetoothCharacteristic? _cmd;
-  BluetoothCharacteristic? _settings;
-  BluetoothCharacteristic? _otaCtrl;
-  BluetoothCharacteristic? _otaData;
-  BluetoothCharacteristic? _otaStatus;
-  BluetoothCharacteristic? _tank;
-  BluetoothCharacteristic? _sched;
-  BluetoothCharacteristic? _tanks;
-  BluetoothCharacteristic? _sensorsChr;
-  BluetoothCharacteristic? _historyChr;
-  BluetoothCharacteristic? _batteryChr;
+  PumpChr? _auth;
+  PumpChr? _state;
+  PumpChr? _cmd;
+  PumpChr? _settings;
+  PumpChr? _otaCtrl;
+  PumpChr? _otaData;
+  PumpChr? _otaStatus;
+  PumpChr? _tank;
+  PumpChr? _sched;
+  PumpChr? _tanks;
+  PumpChr? _sensorsChr;
+  PumpChr? _historyChr;
+  PumpChr? _batteryChr;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<List<int>>? _pairNotifySub;
   StreamSubscription<List<int>>? _stateNotifySub;
@@ -566,13 +596,14 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (await _connectWifi(pump)) return;
       // Direct connect often fails on Android after a cold start while another
       // phone is already linked — scan first so the stack can see advertising.
       final device = await _resolveDeviceForConnect(pump);
       await _connectWithRetries(device, attempts);
       final tokenPump = selected ?? pump;
       try {
-        await signInWith(_auth!, tokenPump.token);
+        _authNonce = await signInWith(_auth!, tokenPump.token);
       } catch (e) {
         AppLog.w('ble', 'Auth write failed: $e');
         await disconnect();
@@ -600,6 +631,255 @@ class PumpSession extends ChangeNotifier {
       status = 'Couldn’t connect';
       notifyListeners();
     }
+  }
+
+  /// Try the pump over Wi-Fi: its saved address first (1.5 s), then a lookup
+  /// by mDNS. False means "use Bluetooth" (no Wi-Fi on the pump, off the home
+  /// network, or Bluetooth only). Only a pump that has reported Wi-Fi is
+  /// tried, so a pump without it never waits on this.
+  Future<bool> _connectWifi(SavedPump pump) async {
+    final saved = pump.lastIp;
+    if (pump.bleOnly ||
+        saved == null ||
+        DateTime.now().isBefore(_skipWifiUntil)) {
+      return false;
+    }
+    Future<WifiLink?> open(String? ip) async {
+      if (ip == null) return null;
+      try {
+        return await WifiLink.connect(ip);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    var found = await open(saved);
+    if (found == null) {
+      final ip = await PumpFinder.find(pump.deviceIdHex);
+      if (ip != null && ip != saved) found = await open(ip);
+    }
+    if (found == null) return false;
+    final wifi = found;
+
+    try {
+      await wifi.signIn(pump.token);
+    } on WifiRequestError catch (e) {
+      wifi.close();
+      if (e.status == 1) {
+        // The pump knows no such phone: say so, as over Bluetooth.
+        authRejected = true;
+        connecting = false;
+        connectFailed = true;
+        status = 'This phone was signed out of the pump. Add it again.';
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (_) {
+      wifi.close();
+      return false;
+    }
+
+    _wifi = wifi;
+    link = LinkKind.wifi;
+    _authNonce = wifi.nonce;
+    connected = true;
+    unawaited(
+      wifi.closed.then((why) {
+        if (identical(_wifi, wifi)) _onWifiLost(why);
+      }),
+    );
+    try {
+      _info = _chr(TankLinkUuids.info);
+      _auth = _chr(TankLinkUuids.auth);
+      _otaCtrl = _chr(TankLinkUuids.otaCtrl);
+      _otaData = _chr(TankLinkUuids.otaData);
+      _otaStatus = _chr(TankLinkUuids.otaStatus);
+      authRejected = false;
+      authed = true;
+      AppLog.i('wifi', 'Connected over Wi-Fi (${wifi.host})');
+      if (wifi.host != pump.lastIp) {
+        await _upsertPump((selected ?? pump).copyWith(lastIp: wifi.host));
+      }
+      await _startSession();
+      connecting = false;
+      connectFailed = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      AppLog.w('wifi', 'Wi-Fi session failed, using Bluetooth: $e');
+      await disconnect();
+      connecting = true; // the caller carries on over Bluetooth
+      return false;
+    }
+  }
+
+  /// The Wi-Fi link dropped (router, phone left the network): go back to
+  /// Bluetooth, which the pump keeps running alongside.
+  void _onWifiLost(String why) {
+    AppLog.w('wifi', 'Wi-Fi link lost: $why');
+    connected = false;
+    authed = false;
+    _clockSyncTimer?.cancel();
+    _clockSyncTimer = null;
+    _applyPumpOn(false);
+    status = 'Disconnected';
+    connectFailed = true;
+    _skipWifiUntil = DateTime.now().add(const Duration(seconds: 20));
+    notifyListeners();
+    if (!updating) unawaited(_reconnectAfterLoss());
+  }
+
+  Future<void> _reconnectAfterLoss() async {
+    await disconnect();
+    await connectSelected(attempts: 2);
+  }
+
+  /// While on Bluetooth, look for the pump on Wi-Fi every 30 s and move over
+  /// when it answers. Never during an update.
+  void _startWifiProbe() {
+    _wifiProbeTimer?.cancel();
+    _wifiProbeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      unawaited(_probeWifi());
+    });
+  }
+
+  bool _probing = false;
+
+  Future<void> _probeWifi() async {
+    final pump = selected;
+    if (_probing ||
+        DateTime.now().isBefore(_skipWifiUntil) ||
+        pump == null ||
+        pump.bleOnly ||
+        pump.lastIp == null ||
+        link != LinkKind.bluetooth ||
+        !ready ||
+        updating) {
+      return;
+    }
+    _probing = true;
+    try {
+      final probe = await WifiLink.connect(pump.lastIp!);
+      probe.close();
+      if (link != LinkKind.bluetooth || !ready || updating) return;
+      AppLog.i('wifi', 'Pump reachable over Wi-Fi: switching');
+      _skipWifiUntil = DateTime.fromMillisecondsSinceEpoch(0);
+      await disconnect();
+      await connectSelected(attempts: 2);
+    } catch (_) {
+      // Not reachable from here: stay on Bluetooth.
+    } finally {
+      _probing = false;
+    }
+  }
+
+  /// Follow the pump's own Wi-Fi status and remember its address.
+  Future<void> _bindWifi() async {
+    try {
+      final chr = _chr(TankLinkUuids.wifi);
+      _wifiNotifySub = await _follow(chr, _wifiNotifySub, (v) {
+        _applyWifi(WifiStatus.parse(v));
+      });
+    } catch (e) {
+      AppLog.w('wifi', 'Wi-Fi status not available: $e');
+    }
+  }
+
+  void _applyWifi(WifiStatus? st) {
+    if (st == null) return;
+    wifiStatus = st;
+    final cur = selected;
+    if (cur != null && st.ip != null && cur.lastIp != st.ip) {
+      unawaited(_upsertPump(cur.copyWith(lastIp: st.ip), select: false));
+    }
+  }
+
+  /// "Connect over: Automatic / Bluetooth only" for the selected pump.
+  Future<void> setBleOnly(bool value) async {
+    final pump = selected;
+    if (pump == null || pump.bleOnly == value) return;
+    await _upsertPump(pump.copyWith(bleOnly: value), select: false);
+    if (value && link == LinkKind.wifi) {
+      await disconnect();
+      await connectSelected();
+    }
+  }
+
+  /// Wi-Fi write helper: [bytes] to the Wifi characteristic.
+  Future<void> _wifiWrite(List<int> bytes) async {
+    if (!authed) throw StateError('Not connected');
+    await _chr(TankLinkUuids.wifi).write(bytes, withoutResponse: false);
+  }
+
+  /// Ask the pump to scan, wait for it, and return the networks it heard.
+  Future<List<WifiNetwork>> wifiScan() async {
+    await _wifiWrite(WifiCommands.scan());
+    final chr = _chr(TankLinkUuids.wifi);
+    final nets = <WifiNetwork>[];
+    try {
+      for (var tries = 0; tries < 12; tries++) {
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        await _wifiWrite(WifiCommands.scanPage(0));
+        final first = WifiScanPage.parse(await chr.read());
+        if (first == null || first.scanning) continue;
+        nets.addAll(first.networks);
+        for (var page = 1; nets.length < first.total; page++) {
+          await _wifiWrite(WifiCommands.scanPage(page));
+          final more = WifiScanPage.parse(await chr.read());
+          if (more == null || more.networks.isEmpty) break;
+          nets.addAll(more.networks);
+        }
+        break;
+      }
+    } finally {
+      await _wifiWrite(WifiCommands.status()); // later reads are status again
+    }
+    return nets;
+  }
+
+  /// Give the pump a network. The password travels encrypted.
+  Future<void> wifiSet(String ssid, String password) async {
+    final pump = selected;
+    final nonce = _authNonce;
+    if (pump == null || nonce == null) throw StateError('Not connected');
+    await _wifiWrite(WifiCommands.set(ssid, password, pump.token, nonce));
+  }
+
+  Future<void> wifiForget() async {
+    await _wifiWrite(WifiCommands.forget());
+    final pump = selected;
+    if (pump != null && pump.lastIp != null) {
+      await _upsertPump(pump.copyWith(clearLastIp: true), select: false);
+    }
+  }
+
+  /// Use Bluetooth for the next while (an update the user chose to send that
+  /// way, even though Wi-Fi works): drops the Wi-Fi link and reconnects.
+  Future<void> forceBluetooth() async {
+    _skipWifiUntil = DateTime.now().add(const Duration(minutes: 10));
+    if (link == LinkKind.wifi || !connected) {
+      await disconnect();
+      await connectSelected();
+    }
+  }
+
+  /// Ask the pump to look for a firmware update now (needs its Wi-Fi).
+  Future<void> pumpCheckUpdate() async {
+    if (!authed) throw StateError('Not connected');
+    await _cmd!.write([TankLinkUuids.cmdUpdateCheck], withoutResponse: false);
+  }
+
+  /// Have the pump download and install the update it found.
+  Future<void> pumpInstallUpdate() async {
+    if (!authed) throw StateError('Not connected');
+    if (pumpOn) throw StateError('Stop the pump before updating');
+    await _cmd!.write([TankLinkUuids.cmdUpdateInstall], withoutResponse: false);
+  }
+
+  Future<void> dismissOvernightUpdate() async {
+    if (!authed) return;
+    await _cmd!.write([TankLinkUuids.cmdUpdateDismiss], withoutResponse: false);
   }
 
   /// Find the saved pump via a short scan (required when another central is
@@ -703,6 +983,7 @@ class PumpSession extends ChangeNotifier {
     starterType = s.starterType;
     relayPulseMs = s.relayPulseMs;
     usageSettings = s.usage;
+    autoUpdate = s.autoUpdate;
   }
 
   bool get buzzerEnabled => (buzzerFlags & TankLinkUuids.buzzEnabled) != 0;
@@ -716,6 +997,7 @@ class PumpSession extends ChangeNotifier {
     int? brightness,
     int? starter,
     int? pulseMs,
+    bool? autoUpdate,
   }) async {
     if (_settings == null || !authed) {
       status = 'Not connected';
@@ -731,6 +1013,7 @@ class PumpSession extends ChangeNotifier {
         TankLinkUuids.relayPulseMsMin,
         TankLinkUuids.relayPulseMsMax,
       ),
+      autoUpdate: autoUpdate ?? this.autoUpdate,
     );
     await _settings!.write(next.encode(), withoutResponse: false);
     _applySettings(
@@ -742,10 +1025,14 @@ class PumpSession extends ChangeNotifier {
         starterType: next.starterType,
         relayPulseMs: next.relayPulseMs,
         usage: usageSettings,
+        autoUpdate: next.autoUpdate,
       ),
     );
     notifyListeners();
   }
+
+  /// "Install pump updates automatically" (needs Wi-Fi on the pump).
+  Future<void> setAutoUpdate(bool on) => _writeSettings(autoUpdate: on);
 
   /// Whether [slot] can fill by itself: its sensor has both floats (almost
   /// empty mode, pin-1 tank).
@@ -1294,7 +1581,7 @@ class PumpSession extends ChangeNotifier {
     );
     await _upsertPump(pump);
 
-    await signInWith(_auth!, token);
+    _authNonce = await signInWith(_auth!, token);
     authed = true;
     authRejected = false;
     connecting = false;
@@ -1324,6 +1611,8 @@ class PumpSession extends ChangeNotifier {
     } catch (e) {
       debugPrint('settings read failed: $e');
     }
+    await _bindWifi();
+    if (link == LinkKind.bluetooth) _startWifiProbe();
     status = 'Connected';
   }
 
@@ -1469,7 +1758,7 @@ class PumpSession extends ChangeNotifier {
           'Update: connected (MTU ${device.mtuNow}), signing in',
         );
         try {
-          await signInWith(chr(TankLinkUuids.auth), token);
+          await signInWith(BleChr(chr(TankLinkUuids.auth)), token);
         } on StateError {
           rethrow;
         } catch (e) {
@@ -1479,9 +1768,9 @@ class PumpSession extends ChangeNotifier {
         try {
           await uploadFirmware(
             OtaCharacteristics(
-              ctrl: chr(TankLinkUuids.otaCtrl),
-              data: chr(TankLinkUuids.otaData),
-              status: chr(TankLinkUuids.otaStatus),
+              ctrl: BleChr(chr(TankLinkUuids.otaCtrl)),
+              data: BleChr(chr(TankLinkUuids.otaData)),
+              status: BleChr(chr(TankLinkUuids.otaStatus)),
             ),
             image,
             mtu: device.mtuNow,
@@ -1515,8 +1804,30 @@ class PumpSession extends ChangeNotifier {
     }
   }
 
-  /// Push a firmware image over BLE OTA. [onProgress] reports bytes written.
   Future<void> otaUpdate(
+    Uint8List image, {
+    void Function(int done, int total)? onProgress,
+    void Function()? onVerifying,
+    void Function()? onRebooting,
+  }) async {
+    // Stays set through the reconnect after the restart, so the dropped link
+    // isn't answered by a second reconnect.
+    updating = true;
+    try {
+      await _otaUpdate(
+        image,
+        onProgress: onProgress,
+        onVerifying: onVerifying,
+        onRebooting: onRebooting,
+      );
+    } finally {
+      updating = false;
+    }
+  }
+
+  /// Push a firmware image to the pump, over whichever link is open (Wi-Fi
+  /// is much faster). [onProgress] reports bytes written.
+  Future<void> _otaUpdate(
     Uint8List image, {
     void Function(int done, int total)? onProgress,
     void Function()? onVerifying,
@@ -1533,12 +1844,17 @@ class PumpSession extends ChangeNotifier {
       OtaCharacteristics(ctrl: _otaCtrl!, data: _otaData!, status: _otaStatus!),
       image,
       mtu: _device?.mtuNow ?? 23,
+      // Over Wi-Fi the chunks are big: much faster than Bluetooth.
+      chunkSize: _wifi != null ? 4096 : null,
       onProgress: onProgress,
       onVerifying: onVerifying,
     );
     onRebooting?.call();
+    await _reconnectAfterRestart();
+  }
 
-    // The pump reboots into the new image: wait, then reconnect.
+  /// The pump reboots into the new image: wait, then reconnect.
+  Future<void> _reconnectAfterRestart() async {
     await Future<void>.delayed(const Duration(seconds: 2));
     for (var i = 0; i < 20; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 800));
@@ -1549,6 +1865,67 @@ class PumpSession extends ChangeNotifier {
       } catch (_) {}
     }
     throw StateError('Updated, but couldn’t reconnect. Tap Connect.');
+  }
+
+  /// The pump downloads and installs the update it found (over its own
+  /// Wi-Fi), and the phone follows OtaStatus. [onProgress] gets the bytes
+  /// written so far.
+  Future<void> pumpDownloadsUpdate({
+    required void Function(int offset) onProgress,
+    void Function()? onVerifying,
+    void Function()? onRebooting,
+  }) async {
+    if (!authed || _otaStatus == null) throw StateError('Not connected');
+    updating = true;
+    StreamSubscription<List<int>>? sub;
+    Timer? watch;
+    try {
+      final status = _otaStatus!;
+      await status.setNotifyValue(true);
+      final done = Completer<void>();
+      sub = status.onValueReceived.listen((v) {
+        if (v.length < 2 || done.isCompleted) return;
+        if (v[1] != 0) {
+          done.completeError(
+            StateError('The pump refused the update: ${otaErrorText(v[1])}'),
+          );
+        } else if (v[0] == TankLinkUuids.otaStWriting && v.length >= 6) {
+          onProgress(v[2] | (v[3] << 8) | (v[4] << 16) | (v[5] << 24));
+        } else if (v[0] == TankLinkUuids.otaStVerifyOk) {
+          onVerifying?.call();
+        } else if (v[0] == TankLinkUuids.otaStRebooting) {
+          done.complete();
+        }
+      });
+      await pumpInstallUpdate();
+
+      // If the pump never starts, or its download fails, its Wi-Fi status
+      // says so: "installing" shows up and then goes away without a restart.
+      final started = DateTime.now();
+      var sawInstalling = false;
+      watch = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (done.isCompleted) return;
+        final u = wifiStatus?.update;
+        if (u == PumpUpdateState.installing) sawInstalling = true;
+        if (sawInstalling && u != PumpUpdateState.installing) {
+          done.completeError(
+            StateError(
+              'The pump couldn’t download the update. Check its Wi-Fi.',
+            ),
+          );
+        } else if (!sawInstalling &&
+            DateTime.now().difference(started) > const Duration(seconds: 30)) {
+          done.completeError(StateError('The pump didn’t start the download.'));
+        }
+      });
+      await done.future.timeout(const Duration(minutes: 8));
+      onRebooting?.call();
+      await _reconnectAfterRestart();
+    } finally {
+      watch?.cancel();
+      await sub?.cancel();
+      updating = false;
+    }
   }
 
   Future<void> disconnect() async {
@@ -1567,6 +1944,15 @@ class PumpSession extends ChangeNotifier {
     await _sensorsNotifySub?.cancel();
     await _historyNotifySub?.cancel();
     await _batteryNotifySub?.cancel();
+    await _wifiNotifySub?.cancel();
+    _wifiNotifySub = null;
+    _wifiProbeTimer?.cancel();
+    _wifiProbeTimer = null;
+    final wifi = _wifi;
+    _wifi = null; // before close, so the closed handler sees a deliberate end
+    wifi?.close();
+    wifiStatus = null;
+    link = LinkKind.bluetooth;
     await _connSub?.cancel();
     _pairNotifySub = null;
     _stateNotifySub = null;
@@ -1682,6 +2068,8 @@ class PumpSession extends ChangeNotifier {
       await Future<void>.delayed(const Duration(milliseconds: 400));
     }
     _device = device;
+    link = LinkKind.bluetooth;
+    _wifi = null;
     await device.connect(
       license: License.nonprofit,
       timeout: const Duration(seconds: 15),
@@ -1714,7 +2102,10 @@ class PumpSession extends ChangeNotifier {
     _service = svc;
     // The frozen set (see docs/PROTOCOL.md): present on every protocol major.
     _info = _chr(TankLinkUuids.info);
-    _pair = _chr(TankLinkUuids.pair);
+    _pair = _service!.characteristics.firstWhere(
+      (c) => c.uuid == TankLinkUuids.pair,
+      orElse: () => throw StateError('Pump is missing a characteristic'),
+    );
     _auth = _chr(TankLinkUuids.auth);
     _otaCtrl = _chr(TankLinkUuids.otaCtrl);
     _otaData = _chr(TankLinkUuids.otaData);
@@ -1759,11 +2150,17 @@ class PumpSession extends ChangeNotifier {
 
   BluetoothService? _service;
 
-  BluetoothCharacteristic _chr(Guid uuid) =>
+  /// A characteristic over whichever link is open.
+  PumpChr _chr(Guid uuid) {
+    final wifi = _wifi;
+    if (wifi != null) return wifi.chr(uuid);
+    return BleChr(
       _service!.characteristics.firstWhere(
         (c) => c.uuid == uuid,
         orElse: () => throw StateError('Pump is missing a characteristic'),
-      );
+      ),
+    );
+  }
 
   /// Only called once the protocol major matches.
   Future<void> _bindControlCharacteristics() async {
@@ -1979,7 +2376,7 @@ class PumpSession extends ChangeNotifier {
   }();
 
   Future<StreamSubscription<List<int>>> _follow(
-    BluetoothCharacteristic chr,
+    PumpChr chr,
     StreamSubscription<List<int>>? old,
     void Function(List<int>) apply,
   ) async {
@@ -2018,9 +2415,10 @@ class PumpSession extends ChangeNotifier {
 
 /// Sign in on a pump's or tank's Auth characteristic: read its nonce, write
 /// the answer. The token itself is never sent.
-Future<void> signInWith(BluetoothCharacteristic auth, List<int> token) async {
+Future<List<int>> signInWith(PumpChr auth, List<int> token) async {
   final nonce = await auth.read();
   await auth.write(authResponse(token, nonce), withoutResponse: false);
+  return nonce;
 }
 
 const _secure = FlutterSecureStorage();

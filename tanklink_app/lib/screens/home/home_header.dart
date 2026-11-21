@@ -62,6 +62,7 @@ class PumpHeader extends StatelessWidget {
     required this.connected,
     required this.status,
     this.bleRssiDbm,
+    this.overWifi = false,
     required this.onOpenList,
     required this.onSettings,
     required this.onRename,
@@ -74,6 +75,9 @@ class PumpHeader extends StatelessWidget {
 
   /// Phone-to-pump BLE RSSI in dBm, when the link is up.
   final int? bleRssiDbm;
+
+  /// Talking to the pump over Wi-Fi: a Wi-Fi icon instead of the BLE bars.
+  final bool overWifi;
   final VoidCallback onOpenList;
   final VoidCallback onSettings;
   final VoidCallback onRename;
@@ -131,7 +135,17 @@ class PumpHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              if (bleRssiDbm != null) ...[
+              if (overWifi && connected) ...[
+                Tooltip(
+                  message: 'Connected over Wi-Fi',
+                  child: Icon(
+                    Icons.wifi_rounded,
+                    size: 20,
+                    color: scheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ] else if (bleRssiDbm != null) ...[
                 _BleSignal(rssi: bleRssiDbm!),
                 const SizedBox(width: 2),
               ],

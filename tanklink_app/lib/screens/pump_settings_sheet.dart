@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
+import '../link/pump_link.dart';
 import '../update/app_self_update.dart';
 import '../update/firmware_update.dart';
 import '../util/format.dart';
@@ -16,6 +17,7 @@ import 'starter_settings_screen.dart';
 import 'settings/tank_sensor_screen.dart';
 import 'settings/add_phone_dialog.dart';
 import 'settings/update_tiles.dart';
+import 'settings/wifi_screen.dart';
 import 'settings/buzzer_settings_sheet.dart';
 import 'settings/led_brightness_tile.dart';
 import 'settings/auto_off_section.dart';
@@ -150,6 +152,32 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 },
                 icon: const Icon(Icons.copy_rounded),
               ),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                session.link == LinkKind.wifi
+                    ? Icons.wifi_rounded
+                    : Icons.wifi_outlined,
+              ),
+              title: const Text('Wi-Fi'),
+              subtitle: Text(
+                ready
+                    ? WifiScreen.stateText(session.wifiStatus)
+                    : 'Connect to change',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              enabled: ready,
+              onTap: !ready
+                  ? null
+                  : () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const WifiScreen(),
+                        ),
+                      );
+                    },
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,

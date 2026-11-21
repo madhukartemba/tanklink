@@ -165,6 +165,31 @@ List<_UpdateItem> _pendingUpdates(BuildContext context, BuildContext actions) {
     );
   }
 
+  // The pump found an update itself (daily check over its Wi-Fi): show it even
+  // when this phone hasn't looked at GitHub.
+  final pumpFound = session.wifiStatus;
+  if (session.authed &&
+      session.connected &&
+      pumpFound?.update == PumpUpdateState.available &&
+      pumpFound?.availableVersion != null &&
+      !pumpFw.showHomeBanner(session.firmware)) {
+    final current = session.firmware.isEmpty ? '—' : session.firmware;
+    final latest = pumpFound!.availableVersion!;
+    items.add(
+      _UpdateItem(
+        name: 'Pump',
+        tint: scheme.primary,
+        backgroundAlpha: 0.14,
+        icon: Icons.system_update_alt_rounded,
+        title: 'Pump update available',
+        subtitle: '$current → $latest',
+        latest: latest,
+        onUpdate: () => showFirmwareConfirmSheet(actions),
+        onDismiss: () => pumpFw.snoozeLatest(),
+      ),
+    );
+  }
+
   final tankFw = context.watch<TankFirmwareUpdate>();
   if (session.ready) {
     // The first sensor in range that can take the update; the rest follow

@@ -139,6 +139,7 @@ class PumpSettings {
     required this.relayPulseMs,
     this.runSeconds = 0,
     this.usage = const UsageSettings(),
+    this.autoUpdate = false,
   });
 
   final int buzzerFlags;
@@ -153,6 +154,9 @@ class PumpSettings {
   /// Flow, power and price for the usage charts (read only here; written
   /// with [encodeUsage]).
   final UsageSettings usage;
+
+  /// The pump installs its own updates at night (minor 5, last byte).
+  final bool autoUpdate;
 
   static const _readLen = 25;
 
@@ -171,6 +175,7 @@ class PumpSettings {
         pricePerKwh: price == 0 ? null : price / 100,
         currency: utf8.decode(end < 0 ? cur : cur.sublist(0, end)),
       ),
+      autoUpdate: b.length > _readLen && b[_readLen] != 0,
       runSeconds: _u32(b, 0),
       buzzerFlags: b[9],
       buzzerTone: b[10].clamp(0, 3),
@@ -182,7 +187,7 @@ class PumpSettings {
     );
   }
 
-  /// buzzer_flags tone led starter pulse_ms(2).
+  /// buzzer_flags tone led starter pulse_ms(2) auto_update(1).
   List<int> encode() => [
     buzzerFlags,
     buzzerTone,
@@ -190,6 +195,7 @@ class PumpSettings {
     starterType,
     relayPulseMs & 0xff,
     (relayPulseMs >> 8) & 0xff,
+    autoUpdate ? 1 : 0,
   ];
 }
 

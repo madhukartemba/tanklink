@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+import '../link/pump_link.dart';
 import 'tanklink_uuids.dart';
 
 /// The three OTA characteristics. Pump and tank share the same, frozen,
@@ -15,9 +15,9 @@ class OtaCharacteristics {
     required this.status,
   });
 
-  final BluetoothCharacteristic ctrl;
-  final BluetoothCharacteristic data;
-  final BluetoothCharacteristic status;
+  final PumpChr ctrl;
+  final PumpChr data;
+  final PumpChr status;
 }
 
 /// Sends [image] to a board that is already connected and authenticated,
@@ -29,6 +29,7 @@ Future<void> uploadFirmware(
   OtaCharacteristics ota,
   Uint8List image, {
   required int mtu,
+  int? chunkSize,
   void Function(int done, int total)? onProgress,
   void Function()? onVerifying,
 }) async {
@@ -57,7 +58,8 @@ Future<void> uploadFirmware(
     }, const Duration(seconds: 20));
 
     // Data: offset(u32) + payload. An ATT write carries MTU - 3 bytes.
-    final maxChunk = (mtu - 3 - 4).clamp(20, 480);
+    // Over Wi-Fi the caller names a bigger chunk; over BLE it follows the MTU.
+    final maxChunk = chunkSize ?? (mtu - 3 - 4).clamp(20, 480);
     for (var offset = 0; offset < size;) {
       final end = (offset + maxChunk).clamp(0, size);
       await ota.data.write([
@@ -101,7 +103,7 @@ List<int> _u32(int v) => [
 /// The board's own reason for a failed OTA (OtaStatus: state, error), or
 /// the phone's error when the board can't be read (it restarted or the link
 /// dropped).
-Future<String> _boardReason(BluetoothCharacteristic status, Object e) async {
+Future<String> _boardReason(PumpChr status, Object e) async {
   try {
     final v = await status.read().timeout(const Duration(seconds: 3));
     if (v.length >= 2 && v[1] != 0) {
@@ -111,6 +113,9 @@ Future<String> _boardReason(BluetoothCharacteristic status, Object e) async {
   } catch (_) {}
   return 'The link dropped while the board was checking the update: $e';
 }
+
+/// The board's words for an OtaStatus error byte.
+String otaErrorText(int code) => _otaErrors[code] ?? 'error $code';
 
 /// OTA_STATUS error byte (tanklink_uuid.h / tanklink_ble_uuid.h).
 const _otaErrors = {

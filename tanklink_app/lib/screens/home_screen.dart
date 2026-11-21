@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
+import '../link/pump_link.dart';
 import '../update/app_self_update.dart';
 import '../update/home_update_banner.dart';
 import '../update/firmware_update.dart';
@@ -141,6 +142,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   connecting: session.connecting,
                   connected: ready,
                   bleRssiDbm: session.connected ? session.bleRssiDbm : null,
+                  overWifi: session.link == LinkKind.wifi,
                   status: session.status,
                   onOpenList: () {
                     Navigator.of(context).push(

@@ -20,6 +20,8 @@ class SavedPump {
     required this.token,
     String? name,
     String? serial,
+    this.lastIp,
+    this.bleOnly = false,
   }) : serial = (serial != null && serial.isNotEmpty)
            ? serial.toUpperCase()
            : serialFromDeviceId(deviceIdHex),
@@ -30,6 +32,13 @@ class SavedPump {
   final Uint8List token;
   final String name;
   final String serial;
+
+  /// The pump's address on the home Wi-Fi when last seen (from its Wi-Fi
+  /// status), tried first on connect. Null until the pump has Wi-Fi.
+  final String? lastIp;
+
+  /// "Connect over: Bluetooth only". Off = automatic (Wi-Fi when reachable).
+  final bool bleOnly;
 
   static String _resolveName(String? name, String serial) {
     if (name == null || name.trim().isEmpty) {
@@ -47,6 +56,9 @@ class SavedPump {
     String? deviceIdHex,
     String? serial,
     Uint8List? token,
+    String? lastIp,
+    bool clearLastIp = false,
+    bool? bleOnly,
   }) {
     final id = deviceIdHex ?? this.deviceIdHex;
     return SavedPump(
@@ -55,10 +67,14 @@ class SavedPump {
       token: token ?? this.token,
       name: name ?? this.name,
       serial: serial ?? this.serial,
+      lastIp: clearLastIp ? null : (lastIp ?? this.lastIp),
+      bleOnly: bleOnly ?? this.bleOnly,
     );
   }
 
   Map<String, dynamic> toJson() => {
+    if (lastIp != null) 'lastIp': lastIp,
+    'bleOnly': bleOnly,
     'remoteId': remoteId,
     'deviceIdHex': deviceIdHex,
     'token': base64Encode(token),
@@ -80,6 +96,8 @@ class SavedPump {
       token: Uint8List.fromList(base64Decode(tokenB64)),
       name: json['name'] as String?,
       serial: json['serial'] as String?,
+      lastIp: json['lastIp'] as String?,
+      bleOnly: json['bleOnly'] as bool? ?? false,
     );
   }
 }
