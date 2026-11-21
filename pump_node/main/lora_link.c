@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -523,6 +524,7 @@ static void apply_tank_packet(uint8_t node, const tanklink_lora_status_t *pkt,
              fault, (int)rssi_dbm, (int)snr_db);
     note_last_changed(node);
     notify_after_packet(active);
+    status_led_notify_activity();
 }
 
 /**
@@ -682,11 +684,46 @@ static void poll_online(void)
     }
 }
 
+/* How often the task checks the radio is still listening. */
+#define RADIO_CHECK_US (30LL * 1000000)
+
+/**
+ * The SX1278 can drop out of receive on its own (a supply glitch resets it
+ * to FSK standby), and the pump would then never hear a tank again. Check
+ * its mode now and then, and reset and set it up again if it changed.
+ */
+static void check_radio(void)
+{
+    static int64_t s_next_check_us;
+    const int64_t now = esp_timer_get_time();
+    if (now < s_next_check_us) {
+        return;
+    }
+    s_next_check_us = now + RADIO_CHECK_US;
+    if (sx1278_rx_running()) {
+        return;
+    }
+    ESP_LOGW(TAG, "radio left receive mode — resetting it");
+    esp_err_t err = sx1278_recover();
+    if (err == ESP_OK) {
+        err = sx1278_start_rx();
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "radio recovery failed: %s", esp_err_to_name(err));
+    }
+}
+
 static void lora_task(void *arg)
 {
     (void)arg;
     uint8_t buf[64];
+    /* Full-tank stops come through here: watched like the poll task. */
+    const bool watched = esp_task_wdt_add(NULL) == ESP_OK;
     while (true) {
+        if (watched) {
+            esp_task_wdt_reset();
+        }
+        check_radio();
         (void)pairing_window_open();
         poll_last_save();
         poll_online();

@@ -352,6 +352,7 @@ static int node_from_id(const uint8_t *body, uint16_t len, uint16_t at)
 /** Runs one Cmd opcode from [slot]. [body] is the whole write, [len] at least 1. */
 static int run_command(conn_slot_t *slot, const uint8_t *body, uint16_t len)
 {
+    status_led_notify_activity();
     switch (body[0]) {
     case TANKLINK_CMD_OFF:
     case TANKLINK_CMD_ON:

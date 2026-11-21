@@ -18,6 +18,11 @@ CONFIG_BT_NIMBLE_MAX_CCCDS=16
 # reset. The default 4096 leaves little room.
 CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=6144
 
+# A hang in the poll or LoRa task (schedules, auto-off, full-tank stop)
+# restarts the pump, which leaves the relays idle and pulses Stop.
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+
 # ESP32-C3 SuperMini pin map — see docs/PINMAPS.md.
 # Relays on GPIO0/1 (quiet at boot), active-low opto module. Single button on GPIO9.
 CONFIG_PUMP_ENABLE_NEOPIXEL=y

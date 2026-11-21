@@ -17,6 +17,9 @@
 extern "C" {
 #endif
 
+/** Call once in app_main, before any task can switch the pump. */
+void pump_control_init(void);
+
 bool pump_control_is_on(void);
 
 /**

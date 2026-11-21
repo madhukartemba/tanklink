@@ -12,7 +12,7 @@ typedef enum {
     STATUS_LED_BOOT = 0,
     STATUS_LED_UNPAIRED,
     STATUS_LED_PAIRING,       /* BLE phone pair — blue ping-pong */
-    STATUS_LED_TANK_PAIRING,  /* LoRa tank search — teal ping-pong */
+    STATUS_LED_TANK_PAIRING,  /* LoRa tank search — blue ping-pong */
     STATUS_LED_IDLE,          /* standby — color reflects tank full */
     STATUS_LED_PUMP_ON,
     STATUS_LED_HOLD_PROGRESS, /* both-button hold feedback 0..100% */
@@ -38,6 +38,8 @@ bool status_led_get_tank_full(void);
 
 /** Short center accent pulse on standby when a phone links, then back to glow. */
 void status_led_notify_ble_connect(void);
+/** One soft standby pulse: something happened (tank packet, command, button). */
+void status_led_notify_activity(void);
 
 /**
  * Show pump error code as long hard red blinks (N, pause, N), then restore

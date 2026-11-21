@@ -235,20 +235,34 @@ esp_err_t pump_tanks_init(void)
 {
     memset(&s_blob, 0, sizeof(s_blob));
     s_auto_fill = 0;
+    /* Only a missing or bad blob means "no tanks". A read error keeps the
+     * stored sensors: saving over them would unpair every tank. */
+    bool read_failed = false;
     nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+    esp_err_t err = nvs_open(NVS_NS, NVS_READONLY, &h);
+    if (err == ESP_OK) {
         size_t len = sizeof(s_blob);
-        if (nvs_get_blob(h, NVS_KEY, &s_blob, &len) != ESP_OK || len != sizeof(s_blob) ||
-            s_blob.magic != TANKS_MAGIC) {
+        err = nvs_get_blob(h, NVS_KEY, &s_blob, &len);
+        if (err == ESP_OK && (len != sizeof(s_blob) || s_blob.magic != TANKS_MAGIC)) {
+            err = ESP_ERR_NVS_NOT_FOUND; /* old layout: start fresh */
+        }
+        if (err != ESP_OK) {
+            read_failed = err != ESP_ERR_NVS_NOT_FOUND && err != ESP_ERR_NVS_INVALID_LENGTH;
             memset(&s_blob, 0, sizeof(s_blob));
         } else if (nvs_get_u8(h, NVS_KEY_AUTO_FILL, &s_auto_fill) != ESP_OK) {
             s_auto_fill = 0;
         }
         nvs_close(h);
+    } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+        read_failed = true;
     }
     normalize();
     ESP_LOGI(TAG, "%u sensor(s), %u tank(s), active slot %u", pump_tanks_node_count(),
              pump_tanks_count(), s_blob.active);
+    if (read_failed) {
+        ESP_LOGE(TAG, "tank list read failed: %s — not saving over it", esp_err_to_name(err));
+        return err;
+    }
     return save_blob();
 }
 

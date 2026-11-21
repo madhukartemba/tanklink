@@ -111,6 +111,14 @@ esp_err_t pump_pair_init(void)
     err = nvs_get_blob(h, NVS_KEY_BLOB, &s_pair, &len);
     nvs_close(h);
 
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND && err != ESP_ERR_NVS_INVALID_LENGTH) {
+        /* A read error is not "never paired": a new identity saved over the
+         * old one would unpair every phone. Stay locked until a restart. */
+        memset(&s_pair, 0, sizeof(s_pair));
+        refresh_identity_strings();
+        ESP_LOGE(TAG, "pairing read failed: %s", esp_err_to_name(err));
+        return err;
+    }
     if (err != ESP_OK || len != sizeof(s_pair)) {
         memset(&s_pair, 0, sizeof(s_pair));
         esp_fill_random(s_pair.device_id, sizeof(s_pair.device_id));

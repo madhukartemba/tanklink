@@ -239,6 +239,80 @@ static void set_frequency(uint32_t freq_hz)
     write_reg(REG_FRF_LSB, (uint8_t)(frf & 0xff));
 }
 
+/** LoRa mode, version check and every modem register; ends in sleep. */
+static esp_err_t configure(void)
+{
+    set_mode(MODE_SLEEP);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    set_mode(MODE_SLEEP); /* enter LoRa sleep */
+
+    uint8_t ver = 0;
+    esp_err_t err = read_reg(REG_VERSION, &ver);
+    if (err != ESP_OK || ver == 0x00 || ver == 0xff) {
+        ESP_LOGE(TAG, "SX1278 not detected (ver=0x%02x)", ver);
+        return ESP_ERR_NOT_FOUND;
+    }
+    s_freq_hz = s_cfg.freq_hz ? s_cfg.freq_hz : 433000000UL;
+    ESP_LOGI(TAG, "SX1278 version 0x%02x freq=%lu", ver, (unsigned long)s_freq_hz);
+
+    set_mode(MODE_STDBY);
+    set_frequency(s_freq_hz);
+
+    /* PA boost, ~14 dBm starting point */
+    write_reg(REG_PA_CONFIG, 0x8F);
+    write_reg(REG_PA_DAC, 0x84);
+    write_reg(REG_LNA, 0x23);
+
+    /* BW 125 kHz, CR 4/5, explicit header */
+    write_reg(REG_MODEM_CONFIG_1, 0x72);
+    /* SF7, CRC on */
+    write_reg(REG_MODEM_CONFIG_2, 0x74);
+    write_reg(REG_MODEM_CONFIG_3, 0x04);
+    write_reg(REG_PREAMBLE_MSB, 0x00);
+    write_reg(REG_PREAMBLE_LSB, 0x08);
+    write_reg(REG_FIFO_TX_BASE_ADDR, 0x00);
+    write_reg(REG_FIFO_RX_BASE_ADDR, 0x00);
+    write_reg(REG_IRQ_FLAGS, 0xFF);
+
+    /* Stay in sleep between TX/RX — standby alone is ~1.5–2 mA. */
+    set_mode(MODE_SLEEP);
+    return ESP_OK;
+}
+
+static void pulse_reset(void)
+{
+    if (s_cfg.pin_rst >= 0) {
+        gpio_set_level(s_cfg.pin_rst, 0);
+        esp_rom_delay_us(1000);
+        gpio_set_level(s_cfg.pin_rst, 1);
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+}
+
+bool sx1278_rx_running(void)
+{
+    if (!s_ok) {
+        return false;
+    }
+    uint8_t op = 0;
+    if (read_reg(REG_OP_MODE, &op) != ESP_OK) {
+        return false;
+    }
+    return op == (MODE_LONG_RANGE_BIT | MODE_RX_CONTINUOUS);
+}
+
+esp_err_t sx1278_recover(void)
+{
+    if (!s_spi) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    s_ok = false;
+    pulse_reset();
+    esp_err_t err = configure();
+    s_ok = (err == ESP_OK);
+    return err;
+}
+
 uint8_t sx1278_read_version(void)
 {
     uint8_t v = 0;
@@ -309,44 +383,14 @@ esp_err_t sx1278_init(const sx1278_config_t *cfg)
         return err;
     }
 
-    set_mode(MODE_SLEEP);
-    vTaskDelay(pdMS_TO_TICKS(10));
-    set_mode(MODE_SLEEP); /* enter LoRa sleep */
-
-    uint8_t ver = 0;
-    err = read_reg(REG_VERSION, &ver);
-    if (err != ESP_OK || ver == 0x00 || ver == 0xff) {
-        ESP_LOGE(TAG, "SX1278 not detected (ver=0x%02x)", ver);
+    err = configure();
+    if (err != ESP_OK) {
         /* Release the bus so a later init can start clean. */
         spi_bus_remove_device(s_spi);
         s_spi = NULL;
         (void)spi_bus_free(SPI2_HOST);
-        return ESP_ERR_NOT_FOUND;
+        return err;
     }
-    s_freq_hz = cfg->freq_hz ? cfg->freq_hz : 433000000UL;
-    ESP_LOGI(TAG, "SX1278 version 0x%02x freq=%lu", ver, (unsigned long)s_freq_hz);
-
-    set_mode(MODE_STDBY);
-    set_frequency(s_freq_hz);
-
-    /* PA boost, ~14 dBm starting point */
-    write_reg(REG_PA_CONFIG, 0x8F);
-    write_reg(REG_PA_DAC, 0x84);
-    write_reg(REG_LNA, 0x23);
-
-    /* BW 125 kHz, CR 4/5, explicit header */
-    write_reg(REG_MODEM_CONFIG_1, 0x72);
-    /* SF7, CRC on */
-    write_reg(REG_MODEM_CONFIG_2, 0x74);
-    write_reg(REG_MODEM_CONFIG_3, 0x04);
-    write_reg(REG_PREAMBLE_MSB, 0x00);
-    write_reg(REG_PREAMBLE_LSB, 0x08);
-    write_reg(REG_FIFO_TX_BASE_ADDR, 0x00);
-    write_reg(REG_FIFO_RX_BASE_ADDR, 0x00);
-    write_reg(REG_IRQ_FLAGS, 0xFF);
-
-    /* Stay in sleep between TX/RX — standby alone is ~1.5–2 mA. */
-    set_mode(MODE_SLEEP);
     s_ok = true;
     return ESP_OK;
 }

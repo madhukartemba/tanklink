@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -70,6 +71,7 @@ static void maybe_exit_ble_pairing(void)
 
 static void on_start(void)
 {
+    status_led_notify_activity();
     if (pump_ota_is_active()) {
         return;
     }
@@ -90,6 +92,7 @@ static void on_start(void)
 
 static void on_stop(void)
 {
+    status_led_notify_activity();
     if (pump_ota_is_active()) {
         /* Still allow stop for safety during OTA. */
         pump_control_set_silent(false, PUMP_CAUSE_BUTTON);
@@ -105,15 +108,32 @@ static void on_stop(void)
     pump_control_set_silent(false, PUMP_CAUSE_BUTTON);
 }
 
+/* Runs schedules, auto-fill and auto-off: watched, so a hang here restarts
+ * the pump (relays idle, Stop pulsed) instead of leaving a motor unattended. */
 static void pair_poll_task(void *arg)
 {
     (void)arg;
+    const bool watched = esp_task_wdt_add(NULL) == ESP_OK;
     while (1) {
         pump_pair_poll();
         pump_clock_poll();
         pump_control_poll();
+        pump_ota_poll();
         pump_diag_poll();
+        if (watched) {
+            esp_task_wdt_reset();
+        }
         vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
+/** Log a failed init and carry on: an abort here would only restart into the
+ * same failure, over and over. Each module falls back to its defaults. */
+static void soft(esp_err_t err, const char *what)
+{
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "%s init failed: %s — continuing with defaults", what,
+                 esp_err_to_name(err));
     }
 }
 
@@ -293,32 +313,35 @@ void app_main(void)
     ESP_LOGI(TAG, "TankLink pump fw=%s hw_rev=%d proto=%d.%d", TANKLINK_FW_VERSION,
              TANKLINK_HW_REV, TANKLINK_PROTO_MAJOR, TANKLINK_PROTO_MINOR);
 
+    pump_control_init();
+
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
+        if (nvs_flash_erase() == ESP_OK) {
+            err = nvs_flash_init();
+        }
     }
-    ESP_ERROR_CHECK(err);
+    soft(err, "NVS");
 
     /* Peripherals soft-fail so LoRa-only / partial wiring still boots. */
     if (buzzer_init() != ESP_OK) {
         ESP_LOGW(TAG, "buzzer init failed — continuing");
     }
-    ESP_ERROR_CHECK(pump_config_init());
+    soft(pump_config_init(), "config");
     /* Clock before schedules and LoRa: both need the time from the RTC. */
     pump_clock_init();
     /* Before anything can start the pump: spot a fill cut short by a power cut. */
     pump_runlog_init();
-    ESP_ERROR_CHECK(pump_sched_init());
+    soft(pump_sched_init(), "schedules");
     {
         pump_civil_time_t now;
         if (pump_clock_now(&now)) {
             pump_sched_skip_minute(&now);
         }
     }
-    ESP_ERROR_CHECK(pump_tanks_init());
-    ESP_ERROR_CHECK(pump_history_init());
-    ESP_ERROR_CHECK(pump_battery_log_init());
+    soft(pump_tanks_init(), "tanks");
+    soft(pump_history_init(), "history");
+    soft(pump_battery_log_init(), "battery log");
     if (pump_runlog_interrupted_this_boot()) {
         /* The selected tank cannot change while running, so it is the one. */
         const pump_runlog_event_t *ev = pump_runlog_event();
@@ -338,7 +361,7 @@ void app_main(void)
         ESP_LOGW(TAG, "board/LED/button init failed — continuing");
     }
     pump_config_apply_led();
-    ESP_ERROR_CHECK(pump_pair_init());
+    soft(pump_pair_init(), "pairing");
     pump_pair_set_change_callback(on_pair_state_changed);
     board_set_long_press_callback(on_ble_pair_hold);
     board_set_factory_reset_callback(on_factory_reset_hold);

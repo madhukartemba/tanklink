@@ -33,6 +33,8 @@ void pump_ota_on_disconnect(uint16_t conn_handle);
 uint8_t pump_ota_state(void);
 uint8_t pump_ota_last_error(void);
 uint32_t pump_ota_offset(void);
+/** Call about every 500 ms: drops a stalled update and backs up the restart. */
+void pump_ota_poll(void);
 
 typedef void (*pump_ota_status_cb_t)(void);
 void pump_ota_set_status_cb(pump_ota_status_cb_t cb);

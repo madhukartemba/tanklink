@@ -2,6 +2,8 @@
 
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include "board.h"
 #include "buzzer.h"
@@ -41,6 +43,33 @@ static int64_t s_stopped_us; /* when the pump last stopped, 0 = not since boot *
  * than "tank full" pauses auto-fill until the tank is next seen full, so a
  * dry source or a stuck float can't cycle the pump.
  */
+/* The button task, the BLE host, the LoRa task and the poll task all switch
+ * the pump. One lock keeps a start and a stop from interleaving (a fill
+ * counted twice, or the relay and s_on disagreeing). Recursive: the poll
+ * holds it while it starts or stops a fill. */
+static SemaphoreHandle_t s_lock;
+
+static void lock(void)
+{
+    if (s_lock) {
+        xSemaphoreTakeRecursive(s_lock, portMAX_DELAY);
+    }
+}
+
+static void unlock(void)
+{
+    if (s_lock) {
+        xSemaphoreGiveRecursive(s_lock);
+    }
+}
+
+void pump_control_init(void)
+{
+    if (!s_lock) {
+        s_lock = xSemaphoreCreateRecursiveMutex();
+    }
+}
+
 static uint8_t s_af_slot = 0xFF;
 static bool s_af_armed;
 static bool s_af_paused;
@@ -174,12 +203,16 @@ static void set_state(bool on, bool beep, pump_cause_t cause)
 
 void pump_control_set(bool on, pump_cause_t cause)
 {
+    lock();
     set_state(on, true, cause);
+    unlock();
 }
 
 void pump_control_set_silent(bool on, pump_cause_t cause)
 {
+    lock();
     set_state(on, false, cause);
+    unlock();
 }
 
 void pump_control_toggle(void)
@@ -193,7 +226,9 @@ void pump_control_toggle(void)
         return;
     }
     /* The button handler already clicked. */
-    pump_control_set_silent(!s_on, PUMP_CAUSE_BUTTON);
+    lock();
+    set_state(!s_on, false, PUMP_CAUSE_BUTTON);
+    unlock();
 }
 
 /** Start a fill if a schedule is due now. Switches to its tank first. */
@@ -274,8 +309,10 @@ static void enforce_auto_off(void)
 
 void pump_control_poll(void)
 {
+    lock();
     pump_runlog_poll(s_on, pump_control_run_seconds());
     start_due_schedule();
     start_due_auto_fill();
     enforce_auto_off();
+    unlock();
 }

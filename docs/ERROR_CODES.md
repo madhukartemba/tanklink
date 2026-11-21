@@ -33,7 +33,7 @@ Pairing mode lasts **30 s** by default (`CONFIG_TANK_PAIR_WINDOW_MS`). Press t
 
 ## Pump NeoPixel codes
 
-Same flash pattern as the tank: **N short red flashes**, a long pause, then the same count again. Soft animations (idle glow, pump-on wave, blue/amber pairing) are unrelated to these codes. The last code is also shown in the app on the home screen. A tank sensor's own code is a second banner.
+Same flash pattern as the tank: **N short red flashes**, a long pause, then the same count again. Soft animations (idle glow, pump-on wave, blue pairing sweep, OTA fill with a running light; the standby glow pulses once on activity) are unrelated to these codes. The last code is also shown in the app on the home screen. A tank sensor's own code is a second banner.
 
 | Code | Name | When |
 | --- | --- | --- |

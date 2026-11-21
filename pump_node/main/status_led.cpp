@@ -57,6 +57,7 @@ extern "C" bool status_led_get_tank_full(void)
     return false;
 }
 extern "C" void status_led_notify_ble_connect(void) {}
+extern "C" void status_led_notify_activity(void) {}
 extern "C" void status_led_show_error(uint8_t code)
 {
     (void)code;
@@ -84,6 +85,7 @@ volatile uint8_t s_ota_pct_target = 0;
 volatile uint8_t s_brightness_pct = 70;
 volatile bool s_tank_full = false;
 volatile bool s_connect_pulse_req = false;
+volatile bool s_activity_pulse_req = false;
 volatile uint8_t s_error_code = 1;
 volatile uint8_t s_pending_error = 0;
 volatile status_led_mode_t s_mode_before_error = STATUS_LED_IDLE;
@@ -124,12 +126,11 @@ static uint32_t scale_bri(uint32_t c, float t)
     return Color::scale(c, clamp01(t) * s_bri);
 }
 
-/** Progress fill — from_center expands outward; else left→right (OTA). */
-class ProgressFill final : public pixelengine::Animation {
+/** Button-hold feedback: a soft bloom growing out from the center. */
+class HoldBloom final : public pixelengine::Animation {
    public:
-    ProgressFill(size_t led_count, const float *pct, const uint32_t *color,
-                 bool from_center = false)
-        : pct_(pct), color_(color), from_center_(from_center)
+    HoldBloom(size_t led_count, const float *pct, const uint32_t *color)
+        : pct_(pct), color_(color)
     {
         led_count_ = led_count;
         layout_ = Layout::Linear;
@@ -145,38 +146,19 @@ class ProgressFill final : public pixelengine::Animation {
         const uint32_t color = *color_;
         /* Ease progress so expansion feels continuous, not stepped. */
         const float p = smoother01(clamp01(*pct_ / 100.0f));
-        if (from_center_) {
-            /* Soft bloom from center — wide falloff, never hard on/off edges. */
-            const float max_r =
-                (led_count_ > 1) ? (static_cast<float>(led_count_ - 1) * 0.5f) : 0.5f;
-            const float radius = 0.35f + p * (max_r + 0.85f);
-            const float soft = 1.6f + 0.9f * p; /* wider penumbra as it grows */
-            for (size_t i = 0; i < led_count_; ++i) {
-                const float d = std::fabs(static_cast<float>(i) - center_);
-                float t = 1.0f - (d - (radius - soft)) / soft;
-                t = clamp01(t);
-                t = t * t * (3.0f - 2.0f * t); /* smoothstep */
-                /* Dim floor under the bloom so mode changes don't flash black. */
-                const float floor = 0.04f + 0.06f * p;
-                const float core = (d < 0.55f) ? (0.12f * p) : 0.0f;
-                const float bri = floor + (0.55f + 0.33f * p) * t + core;
-                buffer_[i] = scale_bri(color, bri);
-            }
-            return;
-        }
-
-        const float lit = p * static_cast<float>(led_count_);
+        /* Wide falloff, never hard on/off edges. */
+        const float max_r = (led_count_ > 1) ? (static_cast<float>(led_count_ - 1) * 0.5f) : 0.5f;
+        const float radius = 0.35f + p * (max_r + 0.85f);
+        const float soft = 1.6f + 0.9f * p; /* wider penumbra as it grows */
         for (size_t i = 0; i < led_count_; ++i) {
-            float fill = lit - static_cast<float>(i);
-            if (fill <= 0.001f) {
-                buffer_[i] = 0;
-                continue;
-            }
-            fill = clamp01(fill);
-            float bri = 0.55f + 0.45f * fill;
-            if (fill < 1.0f) {
-                bri = 0.35f + 0.65f * fill;
-            }
+            const float d = std::fabs(static_cast<float>(i) - center_);
+            float t = 1.0f - (d - (radius - soft)) / soft;
+            t = clamp01(t);
+            t = t * t * (3.0f - 2.0f * t); /* smoothstep */
+            /* Dim floor under the bloom so mode changes don't flash black. */
+            const float floor = 0.04f + 0.06f * p;
+            const float core = (d < 0.55f) ? (0.12f * p) : 0.0f;
+            const float bri = floor + (0.55f + 0.33f * p) * t + core;
             buffer_[i] = scale_bri(color, bri);
         }
     }
@@ -184,8 +166,56 @@ class ProgressFill final : public pixelengine::Animation {
    private:
     const float *pct_;
     const uint32_t *color_;
-    bool from_center_ = false;
     float center_ = 0.0f;
+};
+
+/**
+ * OTA: solid bar for the bytes received, plus a small soft wave running left
+ * to right over the whole strip, so a slow stretch still looks alive.
+ */
+class UpdateProgress final : public pixelengine::Animation {
+   public:
+    UpdateProgress(size_t led_count, const float *pct, const uint32_t *color)
+        : pct_(pct), color_(color)
+    {
+        led_count_ = led_count;
+        layout_ = Layout::Linear;
+        buffer_.assign(led_count_, 0);
+        t0_ = now_sec();
+    }
+
+    void update() override
+    {
+        if (led_count_ == 0 || pct_ == nullptr || color_ == nullptr) {
+            return;
+        }
+        constexpr float kSweepS = 1.6f;  /* one pass across the strip */
+        constexpr float kHalfWidth = 1.6f; /* LEDs either side of the crest */
+        const float n = static_cast<float>(led_count_);
+        const float lit = clamp01(*pct_ / 100.0f) * n;
+        /* Start and end off the strip, so the crest enters and leaves smoothly. */
+        const float u = std::fmod(now_sec() - t0_, kSweepS) / kSweepS;
+        const float crest = -kHalfWidth + u * (n + 2.0f * kHalfWidth);
+        for (size_t i = 0; i < led_count_; ++i) {
+            const float x = static_cast<float>(i);
+            const float fill = clamp01(lit - x);
+            const float d = std::fabs(x - crest);
+            float wave = 0.0f;
+            if (d < kHalfWidth) {
+                const float t = 1.0f - d / kHalfWidth;
+                wave = t * t * (3.0f - 2.0f * t);
+            }
+            /* Solid where received; the wave brightens that, and shows dimly
+             * on the part still to come. */
+            const float bri = fill > 0.001f ? 0.50f * fill + 0.45f * wave : 0.22f * wave;
+            buffer_[i] = scale_bri(*color_, bri);
+        }
+    }
+
+   private:
+    const float *pct_;
+    const uint32_t *color_;
+    float t0_ = 0.0f;
 };
 
 /** Short red flashes for numbered error codes (same count pattern as the tank). */
@@ -276,8 +306,9 @@ class ErrorBlink final : public pixelengine::Animation {
 };
 
 /**
- * Standby glow: mostly dim, brief bright pulse (10s low → 1s pulse).
- * Color follows tank full; BLE connect triggers a short sky-blue center bloom.
+ * Standby glow: a steady dim center. A short pulse shows only when something
+ * happens (a tank packet, a phone command, a button); a phone connecting
+ * gives a sky-blue one. No pulse on a timer.
  */
 class CenterIdleGlow final : public pixelengine::Animation {
    public:
@@ -287,7 +318,6 @@ class CenterIdleGlow final : public pixelengine::Animation {
         layout_ = Layout::Linear;
         buffer_.assign(led_count_, 0);
         center_ = (led_count_ > 0) ? (static_cast<float>(led_count_ - 1) * 0.5f) : 0.0f;
-        t0_ = now_sec();
     }
 
     void update() override
@@ -301,6 +331,11 @@ class CenterIdleGlow final : public pixelengine::Animation {
             s_connect_pulse_req = false;
             connect_t0_ = now_sec();
             connect_active_ = true;
+        }
+        if (s_activity_pulse_req) {
+            s_activity_pulse_req = false;
+            activity_t0_ = now_sec();
+            activity_active_ = true;
         }
 
         std::fill(buffer_.begin(), buffer_.end(), 0);
@@ -323,20 +358,16 @@ class CenterIdleGlow final : public pixelengine::Animation {
             }
         }
 
-        constexpr float kDim = 10.0f;
         constexpr float kPulse = 1.0f;
-        constexpr float kPeriod = kDim + kPulse;
         constexpr float kFloor = 0.20f;
         constexpr float kPeak = 0.48f;
 
-        float t = std::fmod(now_sec() - t0_, kPeriod);
-        if (t < 0.0f) {
-            t += kPeriod;
-        }
         float pulse = 0.0f;
-        if (t >= kDim) {
-            const float u = (t - kDim) / kPulse;
-            if (u < 0.35f) {
+        if (activity_active_) {
+            const float u = (now_sec() - activity_t0_) / kPulse;
+            if (u >= 1.0f) {
+                activity_active_ = false;
+            } else if (u < 0.35f) {
                 pulse = smoother01(u / 0.35f);
             } else {
                 pulse = 1.0f - smoother01((u - 0.35f) / 0.65f);
@@ -368,9 +399,10 @@ class CenterIdleGlow final : public pixelengine::Animation {
     }
 
     float center_ = 0.0f;
-    float t0_ = 0.0f;
     float connect_t0_ = 0.0f;
     bool connect_active_ = false;
+    float activity_t0_ = 0.0f;
+    bool activity_active_ = false;
 };
 
 /** Traveling soft wave — pump-on (punchy blue). */
@@ -415,7 +447,7 @@ class SoftWave final : public pixelengine::Animation {
     float t0_ = 0.0f;
 };
 
-/** Soft comet bouncing left↔right — BLE pair (blue) / tank search (teal). */
+/** Soft comet bouncing left↔right on a dark strip — phone and tank pairing (blue). */
 class PingPong final : public pixelengine::Animation {
    public:
     PingPong(size_t led_count, uint32_t color = Color::rgb(40, 120, 255),
@@ -447,8 +479,7 @@ class PingPong final : public pixelengine::Animation {
                 const float t = 1.0f - dist / static_cast<float>(trail_);
                 bri = t * t;
             }
-            bri = std::max(bri, 0.03f);
-            buffer_[i] = scale_bri(color_, bri);
+            buffer_[i] = bri > 0.001f ? scale_bri(color_, bri) : 0;
         }
     }
 
@@ -481,6 +512,9 @@ class BootLoading final : public pixelengine::Animation {
             return;
         }
         const float now = now_sec();
+        if (s_pending_error != 0 && (stage_ == Stage::Success || stage_ == Stage::SuccessFade)) {
+            stage_ = Stage::Done; /* error arrived during the green: cut it */
+        }
         float fill = 0.0f;
         float fade = 1.0f;
         uint32_t color = Color::rgb(170, 175, 195);
@@ -509,7 +543,8 @@ class BootLoading final : public pixelengine::Animation {
             fill = static_cast<float>(led_count_);
             fade = 1.0f - smoother01(std::min(1.0f, (now - t0_) / 0.4f));
             if (now - t0_ >= 0.4f) {
-                stage_ = Stage::Success;
+                /* An error found during boot is shown next: no green first. */
+                stage_ = s_pending_error != 0 ? Stage::Done : Stage::Success;
                 t0_ = now;
                 fade = 0.0f;
             }
@@ -628,8 +663,7 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<PingPong>(kN, Color::rgb(40, 120, 255)));
         break;
     case STATUS_LED_TANK_PAIRING:
-        /* Warm amber — distinct from BLE blue and idle teal. */
-        s_px.addAnimation(std::make_unique<PingPong>(kN, Color::rgb(255, 150, 30)));
+        s_px.addAnimation(std::make_unique<PingPong>(kN, Color::rgb(40, 120, 255)));
         break;
     case STATUS_LED_IDLE:
         s_px.addAnimation(std::make_unique<CenterIdleGlow>(kN));
@@ -638,12 +672,10 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::Blue, 9.5f, 0.42f, 0.05f, 2.2f));
         break;
     case STATUS_LED_HOLD_PROGRESS:
-        s_px.addAnimation(std::make_unique<ProgressFill>(
-            kN, &s_hold_pct, &s_hold_color, /*from_center=*/true));
+        s_px.addAnimation(std::make_unique<HoldBloom>(kN, &s_hold_pct, &s_hold_color));
         break;
     case STATUS_LED_UPDATING:
-        s_px.addAnimation(std::make_unique<ProgressFill>(
-            kN, &s_ota_pct, &s_ota_color, /*from_center=*/false));
+        s_px.addAnimation(std::make_unique<UpdateProgress>(kN, &s_ota_pct, &s_ota_color));
         break;
     case STATUS_LED_UPDATE_OK:
         s_px.setAnimationImmediate(std::make_unique<pixelengine::SolidColor>(
@@ -794,6 +826,11 @@ extern "C" bool status_led_get_tank_full(void)
 extern "C" void status_led_notify_ble_connect(void)
 {
     s_connect_pulse_req = true;
+}
+
+extern "C" void status_led_notify_activity(void)
+{
+    s_activity_pulse_req = true;
 }
 
 extern "C" void status_led_show_error(uint8_t code)

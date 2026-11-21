@@ -31,6 +31,22 @@ static struct tc_sha256_state_struct s_sha;
 static pump_ota_status_cb_t s_status_cb;
 static status_led_mode_t s_led_before;
 static uint16_t s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
+/* Milliseconds since boot, 32-bit so the poll task can't read half a write. */
+static volatile uint32_t s_last_activity_ms;
+static volatile uint32_t s_rebooting_since_ms;
+
+static uint32_t now_ms(void)
+{
+    return (uint32_t)(esp_timer_get_time() / 1000);
+}
+
+/* No progress this long: drop the phone's link, so starts are not blocked
+ * by a phone that stalled while still connected. */
+#define OTA_STALL_DISCONNECT_MS 30000u
+/* Still stuck after that: restart. The pump is off during an update and the
+ * boot partition only changes after a verified image, so this is safe. */
+#define OTA_STALL_RESTART_MS 60000u
+#define OTA_REBOOT_FALLBACK_MS 10000u
 
 static void notify_status(void)
 {
@@ -213,6 +229,7 @@ uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
     s_offset = 0;
     s_active = true;
     s_owner_conn = conn_handle;
+    s_last_activity_ms = now_ms();
     s_err = TANKLINK_OTA_ERR_OK;
     s_state = TANKLINK_OTA_ST_READY;
     relay_control_set_blocked(true);
@@ -256,6 +273,7 @@ uint8_t pump_ota_write(uint16_t conn_handle, uint32_t offset, const uint8_t *dat
 
     (void)tc_sha256_update(&s_sha, data, len);
     s_offset += len;
+    s_last_activity_ms = now_ms();
     s_state = TANKLINK_OTA_ST_WRITING;
     s_err = TANKLINK_OTA_ERR_OK;
     if (s_image_size > 0) {
@@ -331,19 +349,18 @@ uint8_t pump_ota_finish(uint16_t conn_handle)
     esp_err_t err = esp_ota_end(s_handle);
     s_active = false;
     s_handle = 0;
-    if (err != ESP_OK) {
+    if (err == ESP_OK) {
+        err = esp_ota_set_boot_partition(s_part);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "set_boot: %s", esp_err_to_name(err));
+        }
+    } else {
         ESP_LOGE(TAG, "esp_ota_end: %s", esp_err_to_name(err));
-        s_part = NULL;
-        s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
-        set_err(TANKLINK_OTA_ERR_FLASH);
-        return TANKLINK_OTA_ERR_FLASH;
     }
-
-    err = esp_ota_set_boot_partition(s_part);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "set_boot: %s", esp_err_to_name(err));
-        s_part = NULL;
-        s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
+        /* The image was rejected (check or signature): the session is over,
+         * so the pump may start again. */
+        cleanup_session(true);
         set_err(TANKLINK_OTA_ERR_FLASH);
         return TANKLINK_OTA_ERR_FLASH;
     }
@@ -352,9 +369,39 @@ uint8_t pump_ota_finish(uint16_t conn_handle)
     s_err = TANKLINK_OTA_ERR_OK;
     status_led_set_mode(STATUS_LED_UPDATE_OK);
     notify_status();
+    s_rebooting_since_ms = now_ms(); /* before the state, which the poll reads */
     s_state = TANKLINK_OTA_ST_REBOOTING;
     notify_status();
     ESP_LOGI(TAG, "OTA OK — rebooting");
-    xTaskCreate(reboot_task, "ota_reboot", 2048, NULL, 5, NULL);
+    if (xTaskCreate(reboot_task, "ota_reboot", 2048, NULL, 5, NULL) != pdPASS) {
+        esp_restart(); /* the new image is already the boot partition */
+    }
     return TANKLINK_OTA_ERR_OK;
+}
+
+void pump_ota_poll(void)
+{
+    const uint32_t now = now_ms();
+    if (s_state == TANKLINK_OTA_ST_REBOOTING) {
+        if (now - s_rebooting_since_ms > OTA_REBOOT_FALLBACK_MS) {
+            ESP_LOGE(TAG, "restart after update did not happen — restarting");
+            esp_restart();
+        }
+        return;
+    }
+    if (!s_active) {
+        return;
+    }
+    const uint32_t idle = now - s_last_activity_ms;
+    if (idle > OTA_STALL_RESTART_MS) {
+        ESP_LOGE(TAG, "update stalled %u s — restarting", (unsigned)(idle / 1000));
+        esp_restart();
+    }
+    if (idle > OTA_STALL_DISCONNECT_MS) {
+        const uint16_t conn = s_owner_conn;
+        if (conn != BLE_HS_CONN_HANDLE_NONE) {
+            ESP_LOGW(TAG, "update stalled %u s — dropping the link", (unsigned)(idle / 1000));
+            (void)ble_gap_terminate(conn, BLE_ERR_REM_USER_CONN_TERM);
+        }
+    }
 }

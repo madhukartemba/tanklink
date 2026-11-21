@@ -96,16 +96,25 @@ class ErrorCodesScreen extends StatelessWidget {
 /// What the pump's LED strip shows besides numbered codes (status_led.cpp).
 const _pumpLights = [
   ('Amber, breathing slowly', 'No phone has added this pump yet.'),
-  ('Blue, sweeping side to side', 'Ready for a phone to add it (pairing).'),
-  ('Orange, sweeping side to side', 'Listening for a tank sensor to pair.'),
+  (
+    'Blue light sweeping side to side',
+    'Pairing: ready for a phone to add it, or listening for a tank sensor.',
+  ),
   ('Soft white glow in the middle', 'Standby. The selected tank is not full.'),
   ('Soft teal glow in the middle', 'Standby. The selected tank is full.'),
+  (
+    'One brighter pulse in the middle',
+    'Something just happened: a tank sensor reported, the app sent a command, or a button was pressed.',
+  ),
   ('Blue wave', 'The pump is running.'),
   (
     'Filling from the middle while you hold the button',
     'Blue: let go to start setup. Red: keep holding to reset the pump.',
   ),
-  ('Filling from one end', 'A firmware update is being received.'),
+  (
+    'Filling from one end, with a light running across',
+    'A firmware update is being received. The fill shows how much has arrived.',
+  ),
   ('Solid green', 'Update checked. The pump restarts.'),
   (
     'Solid red for 2 seconds',

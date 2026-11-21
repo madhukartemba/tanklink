@@ -38,6 +38,11 @@ esp_err_t sx1278_poll_recv(uint8_t *buf, size_t buf_len, size_t *out_len);
 esp_err_t sx1278_poll_recv_ex(uint8_t *buf, size_t buf_len, size_t *out_len,
                               int16_t *rssi_dbm, int8_t *snr_db);
 uint8_t sx1278_read_version(void);
+/** True while the radio is in LoRa continuous receive (what the pump expects). */
+bool sx1278_rx_running(void);
+/** Reset the radio and write its configuration again (ends asleep). Needs a
+ * successful sx1278_init first; call sx1278_start_rx after. */
+esp_err_t sx1278_recover(void);
 
 #ifdef __cplusplus
 }
