@@ -37,7 +37,7 @@ menu "Pump Board"
         int "NeoPixel count"
         depends on PUMP_ENABLE_NEOPIXEL
         range 1 16
-        default 11
+        default 13
         help
             Number of LEDs on the status strip (linear bar).
 

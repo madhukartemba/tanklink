@@ -38,7 +38,7 @@ Menu: **Pump Board**. The values below are the ones in `sdkconfig.defaults`.
 | **Status LED** | | |
 | `PUMP_ENABLE_NEOPIXEL` | `y` | WS2812 status bar |
 | `PUMP_NEOPIXEL_GPIO` | `20` | |
-| `PUMP_NEOPIXEL_COUNT` | `11` | LEDs on the bar |
+| `PUMP_NEOPIXEL_COUNT` | `13` | LEDs on the bar |
 | **Button** | | |
 | `PUMP_ENABLE_BUTTON` | `y` | Single button |
 | `PUMP_BUTTON_GPIO` | `9` | Parallel with the onboard BOOT button |

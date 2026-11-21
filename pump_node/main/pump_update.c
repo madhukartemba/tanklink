@@ -34,7 +34,7 @@
 #define NVS_KEY_AUTO_VER "overnight"
 
 /* ---- When to check ---- */
-#define CHECK_EVERY_US (6LL * 3600 * 1000000)
+#define CHECK_EVERY_US (3LL * 3600 * 1000000)
 /* The first check after a start: a random minute, so pumps don't all ask at once. */
 #define FIRST_CHECK_MIN_S 60
 #define FIRST_CHECK_SPAN_S 3600
