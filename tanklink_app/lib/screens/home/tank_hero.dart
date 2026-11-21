@@ -67,6 +67,12 @@ class TankHero extends StatelessWidget {
               textAlign: TextAlign.center,
               style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
             ),
+            const SizedBox(height: 16),
+            // Closes the pump's pairing window too, not just this screen.
+            TextButton(
+              onPressed: session.stopTankPair,
+              child: const Text('Cancel'),
+            ),
           ],
         ),
       );

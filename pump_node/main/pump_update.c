@@ -22,6 +22,8 @@
 #include "pump_control.h"
 #include "pump_ota.h"
 #include "pump_sched.h"
+#include "pump_tanks.h"
+#include "lora_link.h"
 #include "pump_wifi.h"
 #include "tanklink_uuid.h"
 
@@ -32,10 +34,11 @@
 #define CHECK_EVERY_US (24LL * 3600 * 1000000)
 #define FIRST_CHECK_MIN_S 60
 #define FIRST_CHECK_SPAN_S 3600
-/* Overnight window, pump-local. */
-#define NIGHT_FROM_H 2
-#define NIGHT_TO_H 4
-#define SCHED_GUARD_MIN 30
+/* Automatic install: stay clear of fills (see auto_install_ok). */
+#define SCHED_GUARD_MIN 60
+#define AUTO_IDLE_US (10LL * 60 * 1000000)
+#define AUTO_MIN_UPTIME_US (10LL * 60 * 1000000)
+#define AUTO_RETRY_US (6LL * 3600 * 1000000)
 
 #define URL_MAX 320
 #define REPLY_MAX 768
@@ -54,7 +57,8 @@ static char s_url[URL_MAX];
 
 static uint8_t s_overnight[3];
 static int64_t s_next_check_us; /* 0 = not scheduled yet */
-static int64_t s_last_auto_day = -1;
+static int64_t s_next_auto_try_us; /* no automatic install before this */
+static int64_t s_last_on_us;       /* last time the pump was seen running */
 
 /* ---------------------------------------------------------------------------
  * Helpers
@@ -443,8 +447,8 @@ void pump_update_init(void)
  * Poll
  * ------------------------------------------------------------------------- */
 
-/** True if a fill schedule is due within SCHED_GUARD_MIN minutes of [now]. */
-static bool schedule_soon(const pump_civil_time_t *now)
+/** True if a fill schedule is due within [minutes] of [now]. */
+static bool schedule_within(const pump_civil_time_t *now, int minutes)
 {
     const int m = (int)now->hour * 60 + (int)now->minute;
     const pump_sched_entry_t *e = pump_sched_entries();
@@ -453,38 +457,56 @@ static bool schedule_soon(const pump_civil_time_t *now)
             continue;
         }
         const int d = ((int)e[i].hour * 60 + (int)e[i].minute - m + 1440) % 1440;
-        if (d < SCHED_GUARD_MIN) {
+        if (d < minutes) {
             return true;
         }
     }
     return false;
 }
 
-/** Overnight install: in the window, pump idle, clock known, no fill soon,
- * once a night (a failed try waits for tomorrow). */
-static bool night_install_ok(void)
+/**
+ * Automatic install, whenever it is least likely to get in the way:
+ *  - the pump is off, and has been for a while (someone may start it again);
+ *  - no fill schedule is due within the next SCHED_GUARD_MIN minutes. With
+ *    schedules set the clock must be known, or the pump can't tell;
+ *  - a tank that fills by itself is not low, so auto-fill isn't about to start;
+ *  - the pump has been up for a while (not straight after a restart).
+ * A failed try waits AUTO_RETRY_US before the next.
+ */
+static bool auto_install_ok(int64_t t)
 {
-    pump_civil_time_t now;
-    int64_t unix_now;
-    if (!pump_config_auto_update() || !s_avail || !pump_clock_now(&now) ||
-        !pump_clock_unix_now(&unix_now)) {
+    if (!pump_config_auto_update() || !s_avail || t < s_next_auto_try_us ||
+        t < AUTO_MIN_UPTIME_US) {
         return false;
     }
-    if (now.hour < NIGHT_FROM_H || now.hour >= NIGHT_TO_H) {
+    if (pump_control_is_on() || pump_ota_is_active()) {
         return false;
     }
-    if (pump_control_is_on() || pump_ota_is_active() || schedule_soon(&now)) {
+    if (s_last_on_us != 0 && t - s_last_on_us < AUTO_IDLE_US) {
         return false;
     }
-    return unix_now / 86400 != s_last_auto_day;
+    if (pump_sched_count() > 0) {
+        pump_civil_time_t now;
+        if (!pump_clock_now(&now) || schedule_within(&now, SCHED_GUARD_MIN)) {
+            return false;
+        }
+    }
+    const uint8_t slot = pump_tanks_active();
+    if (pump_tanks_auto_fill_on(slot) && lora_link_active_tank_low()) {
+        return false;
+    }
+    return true;
 }
 
 void pump_update_poll(void)
 {
+    const int64_t t = esp_timer_get_time();
+    if (pump_control_is_on()) {
+        s_last_on_us = t;
+    }
     if (s_busy != JOB_NONE || pump_wifi_state() != PUMP_WIFI_CONNECTED) {
         return;
     }
-    const int64_t t = esp_timer_get_time();
     if (s_next_check_us == 0) {
         /* A random minute, so pumps don't all ask at once. */
         s_next_check_us = t + (int64_t)(FIRST_CHECK_MIN_S + esp_random() % FIRST_CHECK_SPAN_S) *
@@ -496,12 +518,10 @@ void pump_update_poll(void)
         }
         return;
     }
-    if (night_install_ok()) {
-        int64_t unix_now = 0;
-        pump_clock_unix_now(&unix_now);
-        s_last_auto_day = unix_now / 86400;
-        ESP_LOGI(TAG, "installing %u.%u.%u overnight", s_avail_ver[0], s_avail_ver[1],
-                 s_avail_ver[2]);
+    if (auto_install_ok(t)) {
+        s_next_auto_try_us = t + AUTO_RETRY_US;
+        ESP_LOGI(TAG, "installing %u.%u.%u automatically (pump idle, no fill planned)",
+                 s_avail_ver[0], s_avail_ver[1], s_avail_ver[2]);
         start_job(JOB_INSTALL_AUTO);
     }
 }

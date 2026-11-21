@@ -139,7 +139,7 @@ extern "C" {
  * status and OtaStatus. Install is refused while the pump runs. */
 #define TANKLINK_CMD_UPDATE_CHECK   0xAA
 #define TANKLINK_CMD_UPDATE_INSTALL 0xAB
-/* Forget the "updated overnight" notice once the app has shown it. */
+/* Forget the "updated automatically" notice once the app has shown it. */
 #define TANKLINK_CMD_UPDATE_DISMISS 0xAC
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
@@ -194,7 +194,7 @@ extern "C" {
  * available_version(3) overnight_version(3). update_state: 0 none, 1 update
  * available, 2 checking, 3 installing. check_result: 0 never, 1 ok, 2 no
  * internet, 3 error. overnight_version: the version the pump installed by
- * itself at night, until the app dismisses it (zeros = none). */
+ * itself (automatic install), until the app dismisses it (zeros = none). */
 #define TANKLINK_WIFI_UPDATE_LEN 8
 #define TANKLINK_UPDATE_NONE       0
 #define TANKLINK_UPDATE_AVAILABLE  1
@@ -216,7 +216,7 @@ extern "C" {
 #define TANKLINK_INFO_LEN 18
 
 /* Settings write: buzzer_flags tone led starter pulse_ms(u16) [auto_update(1)]
- * (the last byte is minor 5: install pump updates by itself at night). Float
+ * (the last byte is minor 5: install pump updates by itself when idle). Float
  * modes are per sensor (Cmd 0xA7). */
 #define TANKLINK_SETTINGS_WRITE_LEN 6
 

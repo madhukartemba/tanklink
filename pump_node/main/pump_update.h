@@ -19,10 +19,10 @@
 extern "C" {
 #endif
 
-/** Load the "updated overnight" notice. Call after NVS and the clock start. */
+/** Load the "updated automatically" notice. Call after NVS and the clock start. */
 void pump_update_init(void);
 
-/** Every ~500 ms: the daily check, and the optional overnight install. */
+/** Every ~500 ms: the daily check, and the optional automatic install. */
 void pump_update_poll(void);
 
 /** Look for a newer firmware now (needs Wi-Fi). Returns at once; the result
@@ -39,7 +39,7 @@ uint8_t pump_update_state(void);
 uint8_t pump_update_check_result(void);
 /** major, minor, patch of the update found (zeros = none). */
 void pump_update_available_version(uint8_t out[3]);
-/** Version installed by itself at night, until dismissed (zeros = none). */
+/** Version installed by itself (automatic install), until dismissed (zeros = none). */
 void pump_update_overnight_version(uint8_t out[3]);
 void pump_update_dismiss_overnight(void);
 

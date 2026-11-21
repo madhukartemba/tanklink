@@ -110,7 +110,7 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xA9` | Save the usage settings (see Settings) | `flow_dlpm(u16) watts(u16) price_centi(u16) currency(4)` |
 | `0xAA` | Check for a pump update now (Wi-Fi, see Wifi) | none |
 | `0xAB` | Install the update the check found | none |
-| `0xAC` | Forget the "updated overnight" notice | none |
+| `0xAC` | Forget the "updated automatically" notice | none |
 | `0xB1` | Test beep | — |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |
@@ -124,7 +124,7 @@ Maximum write length is 18 bytes.
 
 ### Settings (read no auth, write authed)
 
-Minor 5 appends `auto_update(1)` to both the read and the write: 1 = the pump installs updates by itself between 02:00 and 04:00 pump-local time, only with the pump off, a known clock and no fill schedule in the next 30 minutes, once a night. Off by default.
+Minor 5 appends `auto_update(1)` to both the read and the write: 1 = the pump installs an update it found by itself, but only when it is unlikely to get in the way: the pump has been off for 10 minutes, it has been up for 10 minutes, no fill schedule is due in the next 60 minutes (with schedules set, the clock must be known), and a tank that fills by itself is not low. A failed try waits 6 hours. Off by default.
 
 Read, 25 bytes:
 
@@ -257,7 +257,7 @@ Write, op in byte 0:
 | `0x04` SCAN_PAGE | `page(1)` | Later reads return that page of the scan results |
 | `0x05` STATUS | none | Later reads return the status again |
 
-**Pump updates itself** (minor 5). `update_state`: 0 none, 1 update available, 2 checking, 3 installing. `check_result`: 0 never, 1 ok, 2 no internet, 3 error. `available_version`: major, minor, patch of the update the last check found (zeros = none). `overnight_version`: the version the pump installed by itself at night, until the app sends Cmd `0xAC` (zeros = none). Cmd `0xAA` checks now (needs Wi-Fi), Cmd `0xAB` downloads and installs what the check found; both return at once. Progress is in OtaStatus as for any update. Install is refused while the pump runs. The pump also checks once a day at a random minute.
+**Pump updates itself** (minor 5). `update_state`: 0 none, 1 update available, 2 checking, 3 installing. `check_result`: 0 never, 1 ok, 2 no internet, 3 error. `available_version`: major, minor, patch of the update the last check found (zeros = none). `overnight_version`: the version the pump installed by itself (automatic install), until the app sends Cmd `0xAC` (zeros = none). Cmd `0xAA` checks now (needs Wi-Fi), Cmd `0xAB` downloads and installs what the check found; both return at once. Progress is in OtaStatus as for any update. Install is refused while the pump runs. The pump also checks once a day at a random minute.
 
 How: the pump asks the report service (`GET /v1/firmware/pump/latest?hw=&proto=`, `report_worker/README.md`) and downloads the image over HTTPS from GitHub. The image goes through the same `pump_ota` path as an update from the app, so the sha256 from the release, the signature check and the pump-off rule all apply: an image not signed with the TankLink key is refused whatever the server says.
 

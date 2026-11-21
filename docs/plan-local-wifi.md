@@ -210,6 +210,8 @@ It uses the same rules as the app (`AGENTS.md` → Versions): highest semver amo
 
 ### 3.3 Automatic install (off by default)
 
+**As built:** not a fixed night window. It installs when the pump is unlikely to be needed: off for 10 minutes, up for 10 minutes, no schedule within 60 minutes (clock must be known if schedules exist), and an auto-fill tank not low; a failed try waits 6 hours. The notes below are the original idea.
+
 - Setting "Install pump updates automatically" (append to Settings; minor bump).
 - When on: install only between 02:00 and 04:00 pump-local time, with the pump off, no fill schedule in the next 30 minutes, and a valid clock. Skip the night if any of these fails.
 - After an automatic install the pump records it, and the app shows "Pump updated to X.Y.Z overnight" once.

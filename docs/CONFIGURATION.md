@@ -107,7 +107,7 @@ Stored on the pump in NVS namespace `pump`, key `cfg`. Defaults apply after a fi
 | Setting | Default | Range / values | App location |
 | --- | --- | --- | --- |
 | Auto-off (per tank) | 30 min | 1 – 240 min (can't be turned off) | Pump settings. Stored with the tank slot in `tl_tanks` |
-| Install updates at night | off | on / off, needs Wi-Fi | Pump settings. `auto_update` in `pump` `cfg` |
+| Install updates automatically | off | on / off, needs Wi-Fi; only when the pump is idle and no fill is planned | Pump settings. `auto_update` in `pump` `cfg` |
 | Auto-fill (per tank) | off | on / off, only for a tank with both floats | Pump settings → Fill when low. `auto_fill` in `tl_tanks` |
 | Water and power | flow not set, 750 W, price not set, ₹ | flow (L/min), power (W), price per kWh, currency | Water and power → Pump details. `usage` in `pump`, its own key, so it never resets the other settings |
 | Buzzer | on for button, pump start/stop, auto-off | per-event switches | Pump settings |
@@ -129,7 +129,7 @@ Other data the pump saves (all cleared by factory reset or `erase-flash`):
 | `tl_tanks` | Paired sensors (up to 4: MAC, float mode), tank slots (up to 8: sensor, which float, name, auto-off), and the selected tank (`slots`). Auto-fill per slot as a bit mask (`auto_fill`). |
 | `tl_sched` | Fill schedules (up to 4) |
 | `tl_wifi` | Optional Wi-Fi: network name (`ssid`) and password (`pass`). Cleared by factory reset and Forget Wi-Fi. Without them Wi-Fi never starts |
-| `tl_upd` | Version the pump started installing by itself at night (`overnight`), until the app has shown the notice |
+| `tl_upd` | Version the pump started installing by itself (`overnight`), until the app has shown the notice |
 | `tl_clock` | The phone's UTC offset in minutes (`utc_off`, i16), sent with every time sync, so SNTP can set local time |
 | `tl_hist` | The last 200 fills: start, length, tank, start and stop cause |
 | `tl_bat` | Each sensor's daily battery low and high for 14 days (`b<N>`) |

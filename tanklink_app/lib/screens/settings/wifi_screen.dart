@@ -237,7 +237,9 @@ class _PumpUpdates extends StatelessWidget {
           Card(
             child: ListTile(
               leading: const Icon(Icons.system_update_alt_rounded),
-              title: Text('Pump updated to ${w!.overnightVersion} overnight'),
+              title: Text(
+                'Pump updated to ${w!.overnightVersion} automatically',
+              ),
               trailing: TextButton(
                 onPressed: session.dismissOvernightUpdate,
                 child: const Text('OK'),
@@ -271,7 +273,7 @@ class _PumpUpdates extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           title: const Text('Install pump updates automatically'),
           subtitle: Text(
-            'Between 2 and 4 at night, when the pump is off.',
+            'Only when the pump is idle and no fill is planned.',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           value: session.autoUpdate,
