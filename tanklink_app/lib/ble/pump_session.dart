@@ -1960,6 +1960,10 @@ class PumpSession extends ChangeNotifier {
   }) async {
     if (!authed || _otaStatus == null) throw StateError('Not connected');
     updating = true;
+    final versionBefore = firmware;
+    // Set once the pump is clearly past the download: from then on a dropped
+    // link means it is restarting into the new image, not that it failed.
+    var pastDownload = false;
     StreamSubscription<List<int>>? sub;
     Timer? watch;
     try {
@@ -1973,10 +1977,14 @@ class PumpSession extends ChangeNotifier {
             StateError('The pump refused the update: ${otaErrorText(v[1])}'),
           );
         } else if (v[0] == TankLinkUuids.otaStWriting && v.length >= 6) {
-          onProgress(v[2] | (v[3] << 8) | (v[4] << 16) | (v[5] << 24));
+          final offset = v[2] | (v[3] << 8) | (v[4] << 16) | (v[5] << 24);
+          if (offset > 0) pastDownload = true;
+          onProgress(offset);
         } else if (v[0] == TankLinkUuids.otaStVerifyOk) {
+          pastDownload = true;
           onVerifying?.call();
         } else if (v[0] == TankLinkUuids.otaStRebooting) {
+          pastDownload = true;
           done.complete();
         }
       });
@@ -1988,6 +1996,13 @@ class PumpSession extends ChangeNotifier {
       var sawInstalling = false;
       watch = Timer.periodic(const Duration(seconds: 1), (_) {
         if (done.isCompleted) return;
+        if (!connected) {
+          // The pump restarts as soon as it has installed, often before its
+          // last status notification gets through.
+          // If it didn't install, the version check after reconnecting says so.
+          if (pastDownload || sawInstalling) done.complete();
+          return;
+        }
         final u = wifiStatus?.update;
         if (u == PumpUpdateState.installing) sawInstalling = true;
         if (sawInstalling && u != PumpUpdateState.installing) {
@@ -2005,6 +2020,12 @@ class PumpSession extends ChangeNotifier {
       await done.future.timeout(const Duration(minutes: 8));
       onRebooting?.call();
       await _reconnectAfterRestart();
+      // Back, but still on the old version: the restart wasn't an update.
+      if (versionBefore.isNotEmpty && firmware == versionBefore) {
+        throw StateError(
+          'The pump restarted but is still on version $firmware. Try again.',
+        );
+      }
     } finally {
       watch?.cancel();
       await sub?.cancel();
