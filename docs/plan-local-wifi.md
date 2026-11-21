@@ -48,7 +48,7 @@ Later, in their own plans (Wi-Fi is the groundwork): Home Assistant / local MQTT
 
 Phases 1–3 are firmware and can be built in that order without the app. Each one compiles and keeps BLE working.
 
-If the BLE alerts plan (`docs/plan-ble-alerts.md`) is done first, its Kotlin bridge is the place to add the mDNS lookup in Phase 4.
+If the alerts plan (`docs/plan-alerts.md`) is done first, its Kotlin bridge is the place to add the mDNS lookup in Phase 4.
 
 ---
 
