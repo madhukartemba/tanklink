@@ -28,6 +28,8 @@ Flow: the tank wakes on a float change or a 5-minute heartbeat, sends a LoRa STA
 | Firmware releases (`pump-v*`, `tank-v*`) | [`docs/firmware-release.md`](docs/firmware-release.md) |
 | App releases (`app-v*`) | [`docs/app-release.md`](docs/app-release.md) |
 | Diagnostics and bug reports (plan and status) | [`docs/plan-diagnostics-and-bug-reports.md`](docs/plan-diagnostics-and-bug-reports.md), [`report_worker/README.md`](report_worker/README.md) |
+| BLE alerts with the app closed (plan) | [`docs/plan-ble-alerts.md`](docs/plan-ble-alerts.md) |
+| Local Wi-Fi: control and pump updates over Wi-Fi (plan) | [`docs/plan-local-wifi.md`](docs/plan-local-wifi.md) |
 
 ## Code map
 
