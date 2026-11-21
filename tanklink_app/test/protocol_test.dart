@@ -525,6 +525,17 @@ void main() {
       expect(st.ssid, 'Home');
       expect(WifiStatus.parse([0, 0, 0, 0, 0, 0, 0])!.ip, isNull);
       expect(WifiStatus.parse([1, 0]), isNull);
+      expect(st.update, PumpUpdateState.none);
+      expect(st.availableVersion, isNull);
+
+      final up = WifiStatus.parse([
+        2, 0xC4, 192, 168, 1, 50, 4, 72, 111, 109, 101, //
+        1, 1, 0, 21, 0, 0, 20, 1, // available 0.21.0, overnight 0.20.1
+      ])!;
+      expect(up.update, PumpUpdateState.available);
+      expect(up.check, PumpCheckResult.ok);
+      expect(up.availableVersion, '0.21.0');
+      expect(up.overnightVersion, '0.20.1');
 
       final page = WifiScanPage.parse([
         0,

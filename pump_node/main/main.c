@@ -36,6 +36,7 @@
 #include "pump_ota.h"
 #include "pump_pair.h"
 #include "pump_runlog.h"
+#include "pump_update.h"
 #include "pump_wifi.h"
 #include "relay_control.h"
 #include "status_led.h"
@@ -119,6 +120,7 @@ static void pair_poll_task(void *arg)
         pump_pair_poll();
         pump_clock_poll();
         pump_wifi_poll();
+        pump_update_poll();
         pump_control_poll();
         pump_ota_poll();
         pump_diag_poll();
@@ -379,6 +381,7 @@ void app_main(void)
     if (pump_ota_init() != ESP_OK) {
         ESP_LOGW(TAG, "OTA init failed — continuing");
     }
+    pump_update_init();
 
     if (buzzer_enabled()) {
         buzzer_play(BUZZER_TONE_CLICK, true);

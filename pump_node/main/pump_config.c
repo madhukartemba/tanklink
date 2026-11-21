@@ -282,6 +282,17 @@ esp_err_t pump_config_set_starter_type(uint8_t type)
     return err;
 }
 
+bool pump_config_auto_update(void)
+{
+    return s_cfg.auto_update != 0;
+}
+
+esp_err_t pump_config_set_auto_update(bool on)
+{
+    s_cfg.auto_update = on ? 1 : 0;
+    return pump_config_set(&s_cfg);
+}
+
 uint16_t pump_config_relay_pulse_ms(void)
 {
     return clamp_pulse_ms(s_cfg.relay_pulse_ms);

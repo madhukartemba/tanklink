@@ -44,6 +44,9 @@ extern "C" {
 /** Biggest OTA data write: offset(4) plus a 4 KB chunk (Wi-Fi). */
 #define PUMP_API_WRITE_MAX 4100
 
+/** The pump itself, as the owner of an update it downloaded (always signed in). */
+#define PUMP_API_LOCAL_ID 0x7FFE
+
 /** Session ids: BLE connection handles are below this, TCP ones above. */
 #define PUMP_API_TCP_ID_BASE 0x8000
 

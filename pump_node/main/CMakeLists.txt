@@ -17,6 +17,7 @@ idf_component_register(
         "pump_ota.c"
         "pump_wifi.c"
         "pump_api.c"
+        "pump_update.c"
         "pump_wifi_api.c"
         "gatt_svr.c"
         "gatt_payloads.c"
@@ -25,5 +26,5 @@ idf_component_register(
         "lora_link.c"
         "relay_control.c"
     INCLUDE_DIRS "."
-    REQUIRES nvs_flash bt led_strip driver esp_driver_i2c esp_timer app_update esp_wifi esp_netif esp_event PixelEngine tanklink_lora
+    REQUIRES nvs_flash bt led_strip driver esp_driver_i2c esp_timer app_update esp_wifi esp_netif esp_event esp_http_client esp-tls PixelEngine tanklink_lora
 )

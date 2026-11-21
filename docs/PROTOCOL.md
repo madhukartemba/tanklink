@@ -108,6 +108,9 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xA7` | Set a sensor's float mode (see Sensors). Leaving two-tank mode deletes that sensor's second tank and its schedules, refused while the pump fills it | `sensor_id(6) mode(1)` |
 | `0xA8` | Auto-fill on/off for a tank (see below). Turning it on is refused unless the tank has both floats: its sensor is in almost-empty mode and it is that sensor's pin-1 tank | `slot(1) on(1)` |
 | `0xA9` | Save the usage settings (see Settings) | `flow_dlpm(u16) watts(u16) price_centi(u16) currency(4)` |
+| `0xAA` | Check for a pump update now (Wi-Fi, see Wifi) | none |
+| `0xAB` | Install the update the check found | none |
+| `0xAC` | Forget the "updated overnight" notice | none |
 | `0xB1` | Test beep | — |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |
@@ -120,6 +123,8 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 Maximum write length is 18 bytes.
 
 ### Settings (read no auth, write authed)
+
+Minor 5 appends `auto_update(1)` to both the read and the write: 1 = the pump installs updates by itself between 02:00 and 04:00 pump-local time, only with the pump off, a known clock and no fill schedule in the next 30 minutes, once a night. Off by default.
 
 Read, 25 bytes:
 
@@ -240,7 +245,7 @@ Only logged while the pump knows the time; 0 % readings (no battery sense) are s
 
 Optional. The pump joins one 2.4 GHz network (no WPA-Enterprise, no captive portals) and then sets its clock over SNTP and advertises `tanklink-<serial>.local`, service `_tanklink._tcp` on port 7580, TXT `id=<device id hex>`, `proto=<major>.<minor>`. Without a saved network nothing Wi-Fi runs.
 
-Read (status): `state(1) rssi(i8, 0 = none) ip(4, a.b.c.d in byte order, 0 = none) ssid_len(1) ssid`. State: 0 off, 1 connecting, 2 connected, 3 wrong password, 4 network not found. Notified when the state, address or signal changes.
+Read (status): `state(1) rssi(i8, 0 = none) ip(4, a.b.c.d in byte order, 0 = none) ssid_len(1) ssid`, then (minor 5) `update_state(1) check_result(1) available_version(3) overnight_version(3)`. State: 0 off, 1 connecting, 2 connected, 3 wrong password, 4 network not found. Notified when the state, address or signal changes.
 
 Write, op in byte 0:
 
@@ -251,6 +256,10 @@ Write, op in byte 0:
 | `0x03` SCAN | none | Starts a scan (the pump scans so the app needs no location permission) |
 | `0x04` SCAN_PAGE | `page(1)` | Later reads return that page of the scan results |
 | `0x05` STATUS | none | Later reads return the status again |
+
+**Pump updates itself** (minor 5). `update_state`: 0 none, 1 update available, 2 checking, 3 installing. `check_result`: 0 never, 1 ok, 2 no internet, 3 error. `available_version`: major, minor, patch of the update the last check found (zeros = none). `overnight_version`: the version the pump installed by itself at night, until the app sends Cmd `0xAC` (zeros = none). Cmd `0xAA` checks now (needs Wi-Fi), Cmd `0xAB` downloads and installs what the check found; both return at once. Progress is in OtaStatus as for any update. Install is refused while the pump runs. The pump also checks once a day at a random minute.
+
+How: the pump asks the report service (`GET /v1/firmware/pump/latest?hw=&proto=`, `report_worker/README.md`) and downloads the image over HTTPS from GitHub. The image goes through the same `pump_ota` path as an update from the app, so the sha256 from the release, the signature check and the pump-off rule all apply: an image not signed with the TankLink key is refused whatever the server says.
 
 Scan page read: `scanning(1) total(1) count(1)`, then `count` × `ssid_len ssid rssi(i8) auth(1)`; up to 8 per page, strongest first, `auth` 0 open, 1 secured, 2 not supported (Enterprise).
 

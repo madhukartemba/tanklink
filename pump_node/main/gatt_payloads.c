@@ -9,6 +9,7 @@
 #include "pump_config.h"
 #include "pump_control.h"
 #include "pump_ota.h"
+#include "pump_update.h"
 #include "pump_pair.h"
 #include "pump_runlog.h"
 
@@ -75,6 +76,7 @@ size_t gatt_payload_settings(uint8_t out[GATT_SETTINGS_READ_LEN])
     put_u16(&out[17], u->watts);
     put_u16(&out[19], u->price_centi);
     memcpy(&out[21], u->currency, PUMP_USAGE_CURRENCY_LEN);
+    out[25] = pump_config_auto_update() ? 1 : 0;
     return GATT_SETTINGS_READ_LEN;
 }
 
@@ -286,7 +288,12 @@ size_t gatt_payload_wifi_status(uint8_t out[GATT_WIFI_STATUS_MAX_LEN])
     out[5] = (uint8_t)((ip >> 24) & 0xff);
     out[6] = (uint8_t)n;
     memcpy(&out[7], ssid, n);
-    return 7 + n;
+    uint8_t *u = &out[7 + n];
+    u[0] = pump_update_state();
+    u[1] = pump_update_check_result();
+    pump_update_available_version(&u[2]);
+    pump_update_overnight_version(&u[5]);
+    return 7 + n + TANKLINK_WIFI_UPDATE_LEN;
 }
 
 size_t gatt_payload_wifi_scan(uint8_t out[GATT_WIFI_SCAN_MAX_LEN], uint8_t page)

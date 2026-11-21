@@ -100,6 +100,12 @@ class TankLinkUuids {
   /// Dismiss the interrupted-fill notice.
   static const cmdDismissInterrupt = 0xE1;
   static const cmdTestBeep = 0xB1;
+
+  /// Pump firmware over Wi-Fi (minor 5): look for an update now, install the
+  /// one found, forget the "updated overnight" notice.
+  static const cmdUpdateCheck = 0xAA;
+  static const cmdUpdateInstall = 0xAB;
+  static const cmdUpdateDismiss = 0xAC;
   static const cmdTankPair = 0xA1;
 
   /// Close the tank-pair window early (proto minor 3).

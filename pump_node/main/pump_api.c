@@ -22,6 +22,7 @@
 #include "pump_sched.h"
 #include "pump_tanks.h"
 #include "pump_wifi.h"
+#include "pump_update.h"
 #include "pump_wifi_api.h"
 #include "status_led.h"
 #include "tanklink_uuid.h"
@@ -79,12 +80,18 @@ bool pump_api_chr_notify_needs_auth(uint8_t chr)
 
 bool pump_api_id_authed(uint16_t id)
 {
+    if (id == PUMP_API_LOCAL_ID) {
+        return true;
+    }
     return id >= PUMP_API_TCP_ID_BASE ? pump_wifi_api_is_authed(id)
                                       : gatt_svr_is_authed_conn(id);
 }
 
 void pump_api_drop_id(uint16_t id)
 {
+    if (id == PUMP_API_LOCAL_ID) {
+        return; /* nobody to hang up on */
+    }
     if (id >= PUMP_API_TCP_ID_BASE) {
         pump_wifi_api_drop(id);
     } else {
@@ -208,6 +215,17 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
     case TANKLINK_CMD_OFF:
     case TANKLINK_CMD_ON:
         pump_control_set(body[0] == TANKLINK_CMD_ON, PUMP_CAUSE_APP);
+        return PUMP_API_OK;
+
+    case TANKLINK_CMD_UPDATE_CHECK:
+        return refused_if(pump_update_request_check() != ESP_OK);
+
+    case TANKLINK_CMD_UPDATE_INSTALL:
+        return refused_if(pump_update_request_install() != ESP_OK);
+
+    case TANKLINK_CMD_UPDATE_DISMISS:
+        pump_update_dismiss_overnight();
+        gatt_svr_notify_wifi();
         return PUMP_API_OK;
 
     case TANKLINK_CMD_UNPAIR:
@@ -354,6 +372,10 @@ static pump_api_err_t write_settings(const uint8_t *buf, size_t len)
         pump_config_set_led_brightness(buf[2]) != ESP_OK ||
         pump_config_set_starter_type(buf[3]) != ESP_OK ||
         pump_config_set_relay_pulse_ms(pulse) != ESP_OK) {
+        return PUMP_API_ERR_REFUSED;
+    }
+    if (len > TANKLINK_SETTINGS_WRITE_LEN &&
+        pump_config_set_auto_update(buf[TANKLINK_SETTINGS_WRITE_LEN] != 0) != ESP_OK) {
         return PUMP_API_ERR_REFUSED;
     }
     ESP_LOGI(TAG, "settings buzz=0x%02x tone=%u led=%u starter=%u pulse=%ums", buf[0], buf[1],

@@ -75,7 +75,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 4
+#define TANKLINK_PROTO_MINOR 5
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -134,6 +134,13 @@ extern "C" {
 #define TANKLINK_CMD_USAGE 0xA9
 #define TANKLINK_USAGE_LEN 10
 #define TANKLINK_CMD_SENSOR_MODE 0xA7 /* sensor_id(6) mode(1) */
+/* Ask the pump to look for a newer firmware now / download and install the one
+ * it found (minor 5, Wi-Fi). Both return at once; progress is in the Wifi
+ * status and OtaStatus. Install is refused while the pump runs. */
+#define TANKLINK_CMD_UPDATE_CHECK   0xAA
+#define TANKLINK_CMD_UPDATE_INSTALL 0xAB
+/* Forget the "updated overnight" notice once the app has shown it. */
+#define TANKLINK_CMD_UPDATE_DISMISS 0xAC
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
 /* Open / close the phone pairing window from a signed-in phone (minor 2).
@@ -183,6 +190,21 @@ extern "C" {
  * keystream, see docs/PROTOCOL.md); FORGET; SCAN; SCAN_PAGE page(1): reads
  * return scan_page = scanning(1) total(1) count(1), then count x
  * ssid_len ssid rssi(i8) auth(1), up to 8 per page. */
+/* After the SSID, appended in minor 5: update_state(1) check_result(1)
+ * available_version(3) overnight_version(3). update_state: 0 none, 1 update
+ * available, 2 checking, 3 installing. check_result: 0 never, 1 ok, 2 no
+ * internet, 3 error. overnight_version: the version the pump installed by
+ * itself at night, until the app dismisses it (zeros = none). */
+#define TANKLINK_WIFI_UPDATE_LEN 8
+#define TANKLINK_UPDATE_NONE       0
+#define TANKLINK_UPDATE_AVAILABLE  1
+#define TANKLINK_UPDATE_CHECKING   2
+#define TANKLINK_UPDATE_INSTALLING 3
+#define TANKLINK_CHECK_NEVER       0
+#define TANKLINK_CHECK_OK          1
+#define TANKLINK_CHECK_NO_INTERNET 2
+#define TANKLINK_CHECK_ERROR       3
+
 #define TANKLINK_WIFI_OP_SET       0x01
 #define TANKLINK_WIFI_OP_FORGET    0x02
 #define TANKLINK_WIFI_OP_SCAN      0x03
@@ -193,8 +215,9 @@ extern "C" {
 /* Info read length for this protocol version. */
 #define TANKLINK_INFO_LEN 18
 
-/* Settings write: buzzer_flags tone led starter pulse_ms(u16). Float modes
- * are per sensor (Cmd 0xA7). */
+/* Settings write: buzzer_flags tone led starter pulse_ms(u16) [auto_update(1)]
+ * (the last byte is minor 5: install pump updates by itself at night). Float
+ * modes are per sensor (Cmd 0xA7). */
 #define TANKLINK_SETTINGS_WRITE_LEN 6
 
 /* Tanks: active_slot(1) count(1), then count x entry:

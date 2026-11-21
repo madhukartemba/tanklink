@@ -10,6 +10,15 @@ menu "Pump Board"
             way that needs different firmware (pins, parts), and list the
             revisions a release supports in its firmware manifest.
 
+    config PUMP_UPDATE_SERVER
+        string "Firmware update server"
+        default "https://tanklink.madhukartemba.in"
+        help
+            The report service the pump asks, over Wi-Fi, for the newest
+            firmware (GET /v1/firmware/pump/latest). Only used when Wi-Fi is
+            set up. Whatever it answers, the image must carry the TankLink
+            signature or the pump refuses it.
+
     config PUMP_ENABLE_NEOPIXEL
         bool "Enable NeoPixel status LED"
         default y

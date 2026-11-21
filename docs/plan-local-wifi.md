@@ -1,6 +1,6 @@
 # Plan: local Wi-Fi for the pump
 
-Status: **Phases 1 and 2 firmware are built (compile, not yet tried on a board); the app has the Wi-Fi byte layouts, tests and the UTC offset on the clock write. Phase 0 (hardware spike), Phase 3, the rest of Phase 4 and Phase 5 are not started.** Android app only. Local network first; internet is used only for time and pump firmware downloads. No cloud control.
+Status: **Phases 1, 2 and 3 are built (compile, not yet tried on a board); the app has the Wi-Fi byte layouts, tests and the UTC offset on the clock write. Phase 0 (hardware spike), the rest of Phase 4 and Phase 5 are not started.** Android app only. Local network first; internet is used only for time and pump firmware downloads. No cloud control.
 
 ## Goal
 

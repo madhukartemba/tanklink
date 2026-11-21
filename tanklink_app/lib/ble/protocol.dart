@@ -588,16 +588,35 @@ Map<int, List<BatteryDay>>? parseBatteryLog(List<int> b) {
 /// What the pump's Wi-Fi is doing (Wifi characteristic state byte).
 enum WifiState { off, connecting, connected, wrongPassword, notFound }
 
-/// Wifi read: state rssi ip(4) ssid_len ssid.
+/// What the pump's own update check is doing (after the SSID, minor 5).
+enum PumpUpdateState { none, available, checking, installing }
+
+/// How the pump's last update check went.
+enum PumpCheckResult { never, ok, noInternet, error }
+
+/// Wifi read: state rssi ip(4) ssid_len ssid, then (minor 5) update_state
+/// check_result available_version(3) overnight_version(3).
 class WifiStatus {
   const WifiStatus({
     required this.state,
     required this.rssi,
     required this.ip,
     required this.ssid,
+    this.update = PumpUpdateState.none,
+    this.check = PumpCheckResult.never,
+    this.availableVersion,
+    this.overnightVersion,
   });
 
   final WifiState state;
+
+  /// Update found by the pump, and how its checks go. Null versions = none.
+  final PumpUpdateState update;
+  final PumpCheckResult check;
+  final String? availableVersion;
+
+  /// Version the pump installed by itself at night, until dismissed.
+  final String? overnightVersion;
 
   /// dBm while connected, null otherwise.
   final int? rssi;
@@ -615,7 +634,20 @@ class WifiStatus {
         : WifiState.off;
     final rssi = b[1] == 0 ? null : (b[1] > 127 ? b[1] - 256 : b[1]);
     final hasIp = b[2] != 0 || b[3] != 0 || b[4] != 0 || b[5] != 0;
+    final u = 7 + b[6];
+    final hasUpdate = b.length >= u + 8;
+    String? version(int at) => b[at] == 0 && b[at + 1] == 0 && b[at + 2] == 0
+        ? null
+        : '${b[at]}.${b[at + 1]}.${b[at + 2]}';
     return WifiStatus(
+      update: hasUpdate && b[u] < PumpUpdateState.values.length
+          ? PumpUpdateState.values[b[u]]
+          : PumpUpdateState.none,
+      check: hasUpdate && b[u + 1] < PumpCheckResult.values.length
+          ? PumpCheckResult.values[b[u + 1]]
+          : PumpCheckResult.never,
+      availableVersion: hasUpdate ? version(u + 2) : null,
+      overnightVersion: hasUpdate ? version(u + 5) : null,
       state: st,
       rssi: rssi,
       ip: hasIp ? '${b[2]}.${b[3]}.${b[4]}.${b[5]}' : null,

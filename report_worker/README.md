@@ -15,6 +15,10 @@ Every app's pump, tank and app update check asks here instead of GitHub. The Wor
 
 Redirects (302) to `TankLink.apk` of the newest `app-v*` release, read from the same cached release list. The install QR code ([`docs/app-qr.svg`](../docs/app-qr.svg)) points here. If the list can't be read, it redirects to the GitHub releases page.
 
+## Latest pump firmware (`GET /v1/firmware/pump/latest?hw=<rev>&proto=<major>`)
+
+For pumps that update themselves over Wi-Fi: the release list is too big for a pump to parse, so this returns just `{"version", "url", "size", "sha256"}` for the newest `pump-v*` release whose manifest has the same `proto_major` and lists `hw` in `hw_revs` (the same rules as the app). Built from the cached release list and cached the same way; `404` if nothing fits, `502` if GitHub can't be reached and nothing is cached. The pump verifies the `sha256` and the image's signature itself, so a wrong answer here can't make it run foreign code.
+
 ## Problem reports (`POST /v1/report`)
 
 Receives "Report a problem" submissions from the app and files them in a private GitHub repo:

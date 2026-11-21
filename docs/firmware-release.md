@@ -78,3 +78,7 @@ idf.py -p /dev/cu.usbmodemXXXX erase-flash flash
 ```
 
 `erase-flash` clears NVS pairing — re-pair in the app afterward.
+
+## Pumps that update themselves (Wi-Fi)
+
+A pump with Wi-Fi asks the report service for the newest `pump-v*` release that fits it and downloads `pump_node.bin` itself. The service only passes on the release's `firmware-manifest.json` data (`version`, `sha256`, `proto_major`, `hw_revs`), so keep the manifest correct (`scripts/make_pump_manifest.sh`). Even if the service or the download were tampered with, the pump refuses an image whose sha256 differs from the release's or that isn't signed with the TankLink key (`docs/firmware-build-setup.md#signing-key`), exactly as for an update from the app.

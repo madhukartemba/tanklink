@@ -23,6 +23,14 @@
  * GitHub fails, the last copy is served for up to a day. Supports
  * If-None-Match with GitHub's ETag.
  *
+ * GET /v1/firmware/pump/latest?hw=<rev>&proto=<major> → the newest pump
+ * firmware this board can take, small enough for the pump to parse:
+ * {"version","url","size","sha256"}. Same rules as the app: highest semver
+ * among pump-v* releases, skipping any whose manifest proto_major differs or
+ * whose hw_revs lacks the board. Cached like the release list. The pump
+ * checks the sha256 itself and the image must be signed with the TankLink
+ * key, so a wrong answer here can't make a pump run foreign code.
+ *
  * GET /app → 302 to TankLink.apk of the newest app-v* release (from the
  * same cached list). The install QR code points here, so it never has to
  * change. Falls back to the GitHub releases page.
@@ -55,6 +63,12 @@ export default {
         return json({ error: "method not allowed" }, 405);
       }
       return releases(request, env);
+    }
+    if (url.pathname === "/v1/firmware/pump/latest") {
+      if (request.method !== "GET") {
+        return json({ error: "method not allowed" }, 405);
+      }
+      return pumpLatest(url, env);
     }
     if (url.pathname !== "/v1/report") {
       return json({ error: "not found" }, 404);
@@ -196,6 +210,98 @@ async function releases(request, env) {
     return new Response(null, { status: 304, headers });
   }
   return new Response(cached.body, { headers });
+}
+
+/** Newest pump firmware for a board (see the header comment). */
+async function pumpLatest(url, env) {
+  const hw = Number(url.searchParams.get("hw"));
+  const proto = Number(url.searchParams.get("proto"));
+  if (!Number.isInteger(hw) || hw < 1 || hw > 255) {
+    return json({ error: "bad hw" }, 400);
+  }
+  if (!Number.isInteger(proto) || proto < 0 || proto > 255) {
+    return json({ error: "bad proto" }, 400);
+  }
+  const cache = caches.default;
+  const key = new Request(
+    `https://cache.tanklink/pump-latest/${env.RELEASES_REPO}/${hw}/${proto}`,
+  );
+  const hit = await cache.match(key);
+  const fetchedAt = Number(hit?.headers.get("x-fetched-at") || 0);
+  if (hit && Date.now() - fetchedAt < RELEASES_FRESH_SEC * 1000) {
+    return new Response(hit.body, { headers: jsonHeaders() });
+  }
+  let latest;
+  try {
+    latest = await findPumpLatest(env, hw, proto);
+  } catch (e) {
+    console.error("pump latest failed", e && e.message);
+    if (hit) return new Response(hit.body, { headers: jsonHeaders() });
+    return json({ error: "releases unavailable" }, 502);
+  }
+  if (!latest) return json({ error: "no firmware" }, 404);
+  const body = JSON.stringify(latest);
+  await cache.put(
+    key,
+    new Response(body, {
+      headers: {
+        ...jsonHeaders(),
+        "x-fetched-at": String(Date.now()),
+        "cache-control": `max-age=${RELEASES_KEEP_SEC}`,
+      },
+    }),
+  );
+  return new Response(body, { headers: jsonHeaders() });
+}
+
+function jsonHeaders() {
+  return {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": `public, max-age=${RELEASES_FRESH_SEC}`,
+  };
+}
+
+async function findPumpLatest(env, hw, proto) {
+  const cached = await cachedReleases(env);
+  if (!cached) throw new Error("no release list");
+  const found = [];
+  for (const r of await cached.json()) {
+    if (r.draft || r.prerelease) continue;
+    const m = /^pump-v(\d+)\.(\d+)\.(\d+)$/.exec(r.tag_name || "");
+    const bin = (r.assets || []).find((a) => a.name === "pump_node.bin");
+    const man = (r.assets || []).find((a) => a.name === "firmware-manifest.json");
+    if (!m || !bin || !man) continue;
+    found.push({
+      v: [Number(m[1]), Number(m[2]), Number(m[3])],
+      bin,
+      man,
+    });
+  }
+  found.sort((a, b) => (newer(a.v, b.v) ? -1 : newer(b.v, a.v) ? 1 : 0));
+  // Newest first; the first whose manifest fits this board wins.
+  for (const c of found) {
+    const res = await fetch(c.man.browser_download_url, {
+      headers: { "user-agent": "tanklink-report-worker" },
+    });
+    if (!res.ok) continue;
+    let man;
+    try {
+      man = await res.json();
+    } catch {
+      continue;
+    }
+    const sha = typeof man.sha256 === "string" ? man.sha256.toLowerCase() : "";
+    if (!/^[0-9a-f]{64}$/.test(sha)) continue;
+    if (man.proto_major !== proto) continue;
+    if (!Array.isArray(man.hw_revs) || !man.hw_revs.includes(hw)) continue;
+    return {
+      version: c.v.join("."),
+      url: c.bin.browser_download_url,
+      size: c.bin.size,
+      sha256: sha,
+    };
+  }
+  return null;
 }
 
 /** 302 to the newest app release's APK (see the header comment). */
