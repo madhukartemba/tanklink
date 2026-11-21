@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../ble/pump_session.dart';
 import '../../link/pump_link.dart';
+import '../../update/firmware_update_flow.dart' show showFirmwareConfirmSheet;
 
 String _why(Object e) => e.toString().replaceFirst('Bad state: ', '');
 
@@ -223,27 +224,62 @@ class WifiScreen extends StatelessWidget {
   }
 }
 
-/// The pump's own update check, and the overnight option.
+/// "just now", "12 min ago", "3 h ago", "2 days ago".
+String _ago(int minutes) {
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return '$minutes min ago';
+  if (minutes < 60 * 24) return '${minutes ~/ 60} h ago';
+  return '${minutes ~/ (60 * 24)} days ago';
+}
+
+/// The pump's own update check, and the automatic-install option.
 class _PumpUpdates extends StatelessWidget {
   const _PumpUpdates({required this.session, required this.connected});
 
   final PumpSession session;
   final bool connected;
 
+  /// One line for the Pump updates row: what it found, and when it last looked.
+  String _status(WifiStatus w) {
+    final when = w.lastCheckAgeMin == null
+        ? ''
+        : ' · checked ${_ago(w.lastCheckAgeMin!)}';
+    return switch (w.check) {
+      PumpCheckResult.ok when w.update == PumpUpdateState.available =>
+        'Version ${w.availableVersion} is ready$when',
+      PumpCheckResult.ok => 'Up to date$when',
+      PumpCheckResult.noInternet => 'The pump can’t reach the internet',
+      PumpCheckResult.error => 'The last check failed. It will try again soon.',
+      PumpCheckResult.never => 'Not checked yet',
+    };
+  }
+
+  Future<void> _check(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    String text;
+    try {
+      final result = await session.pumpCheckUpdate();
+      final w = session.wifiStatus;
+      text = switch (result) {
+        PumpCheckResult.ok when w?.update == PumpUpdateState.available =>
+          'Version ${w!.availableVersion} is available.',
+        PumpCheckResult.ok => 'The pump is up to date.',
+        PumpCheckResult.noInternet => 'The pump can’t reach the internet.',
+        _ => 'The check failed. The pump will try again soon.',
+      };
+    } catch (e) {
+      text = _why(e);
+    }
+    messenger.showSnackBar(SnackBar(content: Text(text)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final w = session.wifiStatus;
     final scheme = Theme.of(context).colorScheme;
     final checking = w?.update == PumpUpdateState.checking;
-    final checkText = switch (w?.check) {
-      PumpCheckResult.ok =>
-        w?.update == PumpUpdateState.available
-            ? 'Version ${w!.availableVersion} is ready'
-            : 'The pump is up to date',
-      PumpCheckResult.noInternet => 'The pump can’t reach the internet',
-      PumpCheckResult.error => 'The last check failed',
-      _ => 'Not checked yet',
-    };
+    final available =
+        w?.update == PumpUpdateState.available && !session.pumpUpdating;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -264,24 +300,27 @@ class _PumpUpdates extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.cloud_download_outlined),
           title: const Text('Pump updates'),
-          subtitle: Text(connected ? checkText : 'Needs the pump on Wi-Fi'),
-          trailing: IconButton(
-            tooltip: 'Check now',
-            onPressed: connected && !checking
-                ? () async {
-                    try {
-                      await session.pumpCheckUpdate();
-                    } catch (_) {}
-                  }
-                : null,
-            icon: checking
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh_rounded),
+          subtitle: Text(
+            connected && w != null ? _status(w) : 'Needs the pump on Wi-Fi',
           ),
+          trailing: available
+              ? FilledButton.tonal(
+                  onPressed: () => showFirmwareConfirmSheet(context),
+                  child: const Text('Update'),
+                )
+              : IconButton(
+                  tooltip: 'Check now',
+                  onPressed: connected && !checking
+                      ? () => _check(context)
+                      : null,
+                  icon: checking
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                ),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -296,7 +335,12 @@ class _PumpUpdates extends StatelessWidget {
               ? (v) async {
                   try {
                     await session.setAutoUpdate(v);
-                  } catch (_) {}
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(SnackBar(content: Text(_why(e))));
+                    }
+                  }
                 }
               : null,
         ),

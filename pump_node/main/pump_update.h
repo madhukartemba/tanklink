@@ -44,6 +44,10 @@ uint8_t pump_update_state(void);
 uint8_t pump_update_check_result(void);
 /** major, minor, patch of the update found (zeros = none). */
 void pump_update_available_version(uint8_t out[3]);
+/** Size in bytes of that update (0 = none), so the app can show progress. */
+uint32_t pump_update_available_size(void);
+/** Minutes since the last check that got an answer, 0xFFFF = never. */
+uint16_t pump_update_last_check_age_min(void);
 /** Version installed by itself (automatic install), until dismissed (zeros = none). */
 void pump_update_overnight_version(uint8_t out[3]);
 void pump_update_dismiss_overnight(void);

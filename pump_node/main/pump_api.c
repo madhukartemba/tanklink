@@ -167,11 +167,8 @@ pump_api_err_t pump_api_read(pump_api_session_t *s, uint8_t chr, uint8_t *out, s
         *len = gatt_payload_battery(out);
         break;
     case PUMP_API_CHR_ALERT_KEY:
-        if (!pump_alert_key(out)) {
-            err = PUMP_API_ERR_REFUSED; /* no phone has paired yet */
-        } else {
-            *len = 16;
-        }
+        pump_alert_key(out);
+        *len = 16;
         break;
     case PUMP_API_CHR_ALERT_LOG:
         *len = pump_alert_log_payload(out);

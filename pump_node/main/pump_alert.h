@@ -12,7 +12,7 @@
  * connects, to catch up on what it missed.
  *
  * The alert key is one random key per pump, shared by its paired phones. It is
- * made when the first phone pairs and replaced when phones are removed.
+ * made when the first phone asks for it and replaced when phones are removed.
  */
 
 #include <stdbool.h>
@@ -52,7 +52,7 @@ void pump_alert_init(void);
 /** Call every few hundred ms: ends an alert's time in the advertisement. */
 void pump_alert_poll(void);
 
-/** Make an alert. Ignored until a phone has paired (no key yet). Safe from any task. */
+/** Make an alert. Ignored until a phone has asked for the key. Safe from any task. */
 void pump_alert_raise(tl_alert_type_t type, uint8_t arg);
 
 /** A sensor's battery reading: raises BATTERY_LOW when it drops to 20 % or
@@ -60,11 +60,9 @@ void pump_alert_raise(tl_alert_type_t type, uint8_t arg);
  * above 30 %). */
 void pump_alert_note_battery(uint8_t sensor, uint8_t pct);
 
-/** The alert key, false if there is none yet. */
-bool pump_alert_key(uint8_t out[16]);
-
-/** A phone paired: make the key if there is none. */
-void pump_alert_phone_added(void);
+/** The alert key. Made the first time a signed-in phone asks for it, so alerts
+ * start once a phone has it. */
+void pump_alert_key(uint8_t out[16]);
 
 /** Phones were removed: a new key if some remain, none if not. Drops the
  * current alert and the log, so a removed phone's key is useless. */

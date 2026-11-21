@@ -806,43 +806,28 @@ class PumpSession extends ChangeNotifier {
 
   /// Follow the pump's update status, so an update started elsewhere is seen.
   Future<void> _bindOtaStatus() async {
-    final chr = _otaStatus;
-    if (chr == null) return;
-    try {
-      _otaNotifySub = await _follow(chr, _otaNotifySub, (v) {
-        if (v.length < 2) return;
-        otaState = v[0];
-        otaOffset = v.length >= 6
-            ? v[2] | (v[3] << 8) | (v[4] << 16) | (v[5] << 24)
-            : 0;
-      });
-    } catch (e) {
-      AppLog.w('pump', 'Update status not available: $e');
-    }
+    _otaNotifySub = await _follow(_otaStatus!, _otaNotifySub, (v) {
+      // state(1) error(1) offset(u32)
+      otaState = v[0];
+      otaOffset = v[2] | (v[3] << 8) | (v[4] << 16) | (v[5] << 24);
+    });
   }
 
   /// Alerts: keep the pump's alert key (the background scan needs it to know
   /// an alert is really from this pump), tell Kotlin about the pump, and follow
   /// the pump's alert log, which also catches up on alerts missed while away.
   Future<void> _bindAlerts() async {
-    try {
-      final key = await _chr(TankLinkUuids.alertKey).read();
-      final cur = selected;
-      if (key.length == 16 && cur != null) {
-        final k = Uint8List.fromList(key);
-        if (cur.alertKey == null || !listEquals(cur.alertKey, k)) {
-          await _upsertPump(cur.copyWith(alertKey: k), select: false);
-        }
-      }
-      await syncAlertBridge();
-      _alertNotifySub = await _follow(
-        _chr(TankLinkUuids.alertLog),
-        _alertNotifySub,
-        (v) => unawaited(_showAlerts(parseAlertLog(v))),
-      );
-    } catch (e) {
-      AppLog.w('alerts', 'Alerts not available: $e');
+    final key = Uint8List.fromList(await _chr(TankLinkUuids.alertKey).read());
+    final cur = selected!;
+    if (cur.alertKey == null || !listEquals(cur.alertKey, key)) {
+      await _upsertPump(cur.copyWith(alertKey: key), select: false);
     }
+    await syncAlertBridge();
+    _alertNotifySub = await _follow(
+      _chr(TankLinkUuids.alertLog),
+      _alertNotifySub,
+      (v) => unawaited(_showAlerts(parseAlertLog(v))),
+    );
   }
 
   /// Give each alert to the Android notifier, oldest first. It shows an alert
@@ -898,14 +883,11 @@ class PumpSession extends ChangeNotifier {
 
   /// Follow the pump's own Wi-Fi status and remember its address.
   Future<void> _bindWifi() async {
-    try {
-      final chr = _chr(TankLinkUuids.wifi);
-      _wifiNotifySub = await _follow(chr, _wifiNotifySub, (v) {
-        _applyWifi(WifiStatus.parse(v));
-      });
-    } catch (e) {
-      AppLog.w('wifi', 'Wi-Fi status not available: $e');
-    }
+    _wifiNotifySub = await _follow(
+      _chr(TankLinkUuids.wifi),
+      _wifiNotifySub,
+      (v) => _applyWifi(WifiStatus.parse(v)),
+    );
   }
 
   void _applyWifi(WifiStatus? st) {
@@ -986,10 +968,28 @@ class PumpSession extends ChangeNotifier {
     }
   }
 
-  /// Ask the pump to look for a firmware update now (needs its Wi-Fi).
-  Future<void> pumpCheckUpdate() async {
+  /// Ask the pump to look for a firmware update now and wait for its answer.
+  /// Throws a plain-words [StateError] if the pump won't or can't.
+  Future<PumpCheckResult> pumpCheckUpdate() async {
     if (!authed) throw StateError('Not connected');
+    if (pumpOn) {
+      throw StateError('The pump is running. Check again when it has stopped.');
+    }
+    if (pumpUpdating) {
+      throw StateError('The pump is updating.');
+    }
     await _cmd!.write([TankLinkUuids.cmdUpdateCheck], withoutResponse: false);
+    // The pump answers through its Wi-Fi status: "checking", then a result.
+    var sawChecking = false;
+    for (var i = 0; i < 40; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      final w = WifiStatus.parse(await _chr(TankLinkUuids.wifi).read());
+      if (w == null) continue;
+      _applyWifi(w);
+      if (w.update == PumpUpdateState.checking) sawChecking = true;
+      if (sawChecking && w.update != PumpUpdateState.checking) return w.check;
+    }
+    throw StateError('The pump did not answer. Try again.');
   }
 
   /// Have the pump download and install the update it found.

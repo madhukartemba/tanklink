@@ -254,7 +254,6 @@ esp_err_t pump_pair_claim(uint8_t out_token[TANKLINK_TOKEN_LEN], int *out_phone)
         return err;
     }
     ESP_LOGI(TAG, "CLAIMED phone %d serial=%s", phone, s_serial);
-    pump_alert_phone_added();
     memcpy(out_token, s_pair.tokens[phone], TANKLINK_TOKEN_LEN);
     *out_phone = phone;
     /* One phone per window: the next one needs the window opened again. */

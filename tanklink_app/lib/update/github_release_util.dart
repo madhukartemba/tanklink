@@ -33,6 +33,7 @@ class TaggedReleaseAssets {
     required this.binUrl,
     required this.manifestUrl,
     required this.sizeBytes,
+    required this.notes,
   });
 
   final String tag;
@@ -40,6 +41,26 @@ class TaggedReleaseAssets {
   final String binUrl;
   final String manifestUrl;
   final int sizeBytes;
+
+  /// The release's "## Changes" list, one entry per line (see [releaseChanges]).
+  final List<String> notes;
+}
+
+/// The bullet points under "## Changes" in a release's notes: what is new,
+/// without the version-pairing text that follows. Empty if there are none.
+List<String> releaseChanges(String body) {
+  final out = <String>[];
+  var inChanges = false;
+  for (final raw in body.split('\n')) {
+    final line = raw.trim();
+    if (line.startsWith('## ')) {
+      if (inChanges) break;
+      inChanges = line.toLowerCase() == '## changes';
+    } else if (inChanges && line.startsWith('- ')) {
+      out.add(line.substring(2).trim());
+    }
+  }
+  return out;
 }
 
 /// How often the app looks for updates while it is open. A check younger
@@ -239,6 +260,7 @@ List<TaggedReleaseAssets> listTaggedReleasesBySemver({
         binUrl: binUrl,
         manifestUrl: manifestUrl,
         sizeBytes: size,
+        notes: releaseChanges(map['body'] as String? ?? ''),
       ),
     );
   }

@@ -222,10 +222,10 @@ class PumpSettings {
   /// The pump installs its own updates at night (minor 5, last byte).
   final bool autoUpdate;
 
-  static const _readLen = 25;
+  static const _readLen = 26;
 
   /// run(4) serial(5) buzzer_flags tone led starter pulse_ms(2), then
-  /// flow_dlpm(2) watts(2) price_centi(2) currency(4).
+  /// flow_dlpm(2) watts(2) price_centi(2) currency(4) auto_update(1).
   static PumpSettings? parse(List<int> b) {
     if (b.length < _readLen) return null;
     final flow = _u16(b, 15);
@@ -239,7 +239,7 @@ class PumpSettings {
         pricePerKwh: price == 0 ? null : price / 100,
         currency: utf8.decode(end < 0 ? cur : cur.sublist(0, end)),
       ),
-      autoUpdate: b.length > _readLen && b[_readLen] != 0,
+      autoUpdate: b[25] != 0,
       runSeconds: _u32(b, 0),
       buzzerFlags: b[9],
       buzzerTone: b[10].clamp(0, 3),
@@ -672,21 +672,15 @@ class WifiStatus {
     required this.rssi,
     required this.ip,
     required this.ssid,
-    this.update = PumpUpdateState.none,
-    this.check = PumpCheckResult.never,
-    this.availableVersion,
-    this.overnightVersion,
+    required this.update,
+    required this.check,
+    required this.availableVersion,
+    required this.overnightVersion,
+    required this.lastCheckAgeMin,
+    required this.availableSize,
   });
 
   final WifiState state;
-
-  /// Update found by the pump, and how its checks go. Null versions = none.
-  final PumpUpdateState update;
-  final PumpCheckResult check;
-  final String? availableVersion;
-
-  /// Version the pump installed by itself at night, until dismissed.
-  final String? overnightVersion;
 
   /// dBm while connected, null otherwise.
   final int? rssi;
@@ -695,33 +689,48 @@ class WifiStatus {
   final String? ip;
   final String ssid;
 
+  /// What the pump's own update check is doing, how it went, and the update it
+  /// found (null = none).
+  final PumpUpdateState update;
+  final PumpCheckResult check;
+  final String? availableVersion;
+
+  /// Bytes of the update it found, 0 when none: for a progress bar.
+  final int availableSize;
+
+  /// Minutes since the last check that got an answer, null = never.
+  final int? lastCheckAgeMin;
+
+  /// Version the pump installed by itself, until the app dismisses the notice.
+  final String? overnightVersion;
+
+  /// Fixed part (7 bytes plus the name), then the update block: update_state
+  /// check_result available_version(3) overnight_version(3) last_check_age_min(u16)
+  /// available_size(u32).
+  static const _updateBlockLen = 14;
+
   static WifiStatus? parse(List<int> b) {
-    if (b.length < 7 || b.length < 7 + b[6]) {
+    if (b.length < 7 || b.length < 7 + b[6] + _updateBlockLen) {
       return null;
     }
-    final st = b[0] < WifiState.values.length
-        ? WifiState.values[b[0]]
-        : WifiState.off;
-    final rssi = b[1] == 0 ? null : (b[1] > 127 ? b[1] - 256 : b[1]);
-    final hasIp = b[2] != 0 || b[3] != 0 || b[4] != 0 || b[5] != 0;
     final u = 7 + b[6];
-    final hasUpdate = b.length >= u + 8;
     String? version(int at) => b[at] == 0 && b[at + 1] == 0 && b[at + 2] == 0
         ? null
         : '${b[at]}.${b[at + 1]}.${b[at + 2]}';
+    final age = b[u + 8] | (b[u + 9] << 8);
+    final hasIp = b[2] != 0 || b[3] != 0 || b[4] != 0 || b[5] != 0;
     return WifiStatus(
-      update: hasUpdate && b[u] < PumpUpdateState.values.length
-          ? PumpUpdateState.values[b[u]]
-          : PumpUpdateState.none,
-      check: hasUpdate && b[u + 1] < PumpCheckResult.values.length
-          ? PumpCheckResult.values[b[u + 1]]
-          : PumpCheckResult.never,
-      availableVersion: hasUpdate ? version(u + 2) : null,
-      overnightVersion: hasUpdate ? version(u + 5) : null,
-      state: st,
-      rssi: rssi,
+      state: WifiState.values[b[0]],
+      rssi: b[1] == 0 ? null : (b[1] > 127 ? b[1] - 256 : b[1]),
       ip: hasIp ? '${b[2]}.${b[3]}.${b[4]}.${b[5]}' : null,
       ssid: utf8.decode(b.sublist(7, 7 + b[6]), allowMalformed: true),
+      update: PumpUpdateState.values[b[u]],
+      check: PumpCheckResult.values[b[u + 1]],
+      availableVersion: version(u + 2),
+      overnightVersion: version(u + 5),
+      lastCheckAgeMin: age == 0xFFFF ? null : age,
+      availableSize:
+          b[u + 10] | (b[u + 11] << 8) | (b[u + 12] << 16) | (b[u + 13] << 24),
     );
   }
 }

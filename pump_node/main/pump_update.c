@@ -1,70 +1,79 @@
+/*
+ * The pump looks for and installs its own firmware over Wi-Fi: when to check,
+ * when it is safe to install, and the state the app shows. The network half is
+ * pump_update_http.c, the flash half pump_ota.c.
+ */
 #include "pump_update.h"
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-#include "esp_crt_bundle.h"
-#include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs.h"
-#include "sdkconfig.h"
 
 #include "gatt_svr.h"
+#include "lora_link.h"
 #include "pump_api.h"
 #include "pump_clock.h"
 #include "pump_config.h"
 #include "pump_control.h"
 #include "pump_ota.h"
+#include "pump_pair.h"
 #include "pump_sched.h"
 #include "pump_tanks.h"
-#include "lora_link.h"
+#include "pump_update_http.h"
 #include "pump_wifi.h"
 #include "status_led.h"
 #include "tanklink_uuid.h"
 
 #define TAG "UPDATE"
 #define NVS_NS "tl_upd"
-#define NVS_KEY_OVERNIGHT "overnight"
+#define NVS_KEY_AUTO_VER "overnight"
 
-#define CHECK_EVERY_US (24LL * 3600 * 1000000)
+/* ---- When to check ---- */
+#define CHECK_EVERY_US (6LL * 3600 * 1000000)
+/* The first check after a start: a random minute, so pumps don't all ask at once. */
 #define FIRST_CHECK_MIN_S 60
 #define FIRST_CHECK_SPAN_S 3600
-/* Automatic install: stay clear of fills (see auto_install_ok). */
+/* A check that failed is retried after this, doubling up to CHECK_EVERY_US. */
+#define CHECK_RETRY_FIRST_US (15LL * 60 * 1000000)
+/* A check that fell due while the pump was busy waits this long. */
+#define CHECK_DEFER_US (2LL * 60 * 1000000)
+
+/* ---- When it is safe to install by itself (see auto_install_ok) ---- */
 #define SCHED_GUARD_MIN 60
 #define AUTO_IDLE_US (10LL * 60 * 1000000)
 #define AUTO_MIN_UPTIME_US (10LL * 60 * 1000000)
 #define AUTO_RETRY_US (6LL * 3600 * 1000000)
 
-/* The TLS handshake and certificate checks run on this task: measured use is
+/* ---- The download ---- */
+/* The TLS handshake and certificate checks run on the job task: measured use is
  * about 3.3 KB, so this leaves plenty of margin. */
 #define JOB_STACK 6144
 /* A download that can't connect or stalls is tried again this many times. */
 #define DOWNLOAD_TRIES 3
-#define DOWNLOAD_TIMEOUT_MS 10000
-#define URL_MAX 320
-#define REPLY_MAX 768
+
+#define NEVER_MIN 0xFFFF
 
 typedef enum { JOB_NONE, JOB_CHECK, JOB_INSTALL, JOB_INSTALL_AUTO } job_t;
 
 static volatile job_t s_busy; /* the job the task is running */
 static volatile uint8_t s_check_result = TANKLINK_CHECK_NEVER;
 
-/* What the last check found. Written by the job task only while s_busy. */
+/* The newest release the last check found, if it is newer than this firmware. */
 static bool s_avail;
-static uint8_t s_avail_ver[3];
-static uint32_t s_size;
-static uint8_t s_sha[32];
-static char s_url[URL_MAX];
+static pump_update_offer_t s_offer;
 
-static uint8_t s_overnight[3];
+static uint8_t s_auto_version[3]; /* installed by itself, until the app has shown it */
+
 static int64_t s_next_check_us; /* 0 = not scheduled yet */
-static int64_t s_next_auto_try_us; /* no automatic install before this */
-static int64_t s_last_on_us;       /* last time the pump was seen running */
+static int64_t s_retry_us = CHECK_RETRY_FIRST_US;
+static int64_t s_last_ok_us; /* the last check that got an answer, 0 = none */
+static int64_t s_next_auto_try_us;
+static int64_t s_last_on_us; /* last time the pump was seen running */
 
 /* ---------------------------------------------------------------------------
  * Helpers
@@ -86,74 +95,35 @@ static bool newer_than_running(const uint8_t v[3])
     return false;
 }
 
-/** Value of "key": "..." in [json] copied to [out] (cap bytes). */
-static bool json_str(const char *json, const char *key, char *out, size_t cap)
+static void save_auto_version(const uint8_t v[3])
 {
-    char pat[24];
-    snprintf(pat, sizeof(pat), "\"%s\"", key);
-    const char *p = strstr(json, pat);
-    if (!p) {
-        return false;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return;
     }
-    p = strchr(p + strlen(pat), ':');
-    while (p && *++p == ' ') {
+    if (v) {
+        nvs_set_blob(h, NVS_KEY_AUTO_VER, v, 3);
+    } else {
+        nvs_erase_key(h, NVS_KEY_AUTO_VER);
     }
-    if (!p || *p != '"') {
-        return false;
-    }
-    const char *e = strchr(++p, '"');
-    if (!e || (size_t)(e - p) >= cap) {
-        return false;
-    }
-    memcpy(out, p, (size_t)(e - p));
-    out[e - p] = '\0';
-    return true;
+    nvs_commit(h);
+    nvs_close(h);
 }
 
-static bool json_uint(const char *json, const char *key, uint32_t *out)
+/** Why a check shouldn't run now, or NULL. A check is a TLS connection: not
+ * while the pump runs, an update is being written, or a pairing window is open. */
+static const char *check_busy_reason(void)
 {
-    char pat[24];
-    snprintf(pat, sizeof(pat), "\"%s\"", key);
-    const char *p = strstr(json, pat);
-    if (!p) {
-        return false;
+    if (pump_control_is_on()) {
+        return "the pump is running";
     }
-    p = strchr(p + strlen(pat), ':');
-    while (p && *++p == ' ') {
+    if (pump_update_in_progress()) {
+        return "an update is running";
     }
-    if (!p || *p < '0' || *p > '9') {
-        return false;
+    if (pump_pair_pairing_active() || lora_link_tank_pairing_active()) {
+        return "pairing is open";
     }
-    *out = (uint32_t)strtoul(p, NULL, 10);
-    return true;
-}
-
-static bool parse_hex(const char *s, uint8_t *out, size_t n)
-{
-    if (strlen(s) != n * 2) {
-        return false;
-    }
-    for (size_t i = 0; i < n; i++) {
-        unsigned v;
-        if (sscanf(&s[i * 2], "%2x", &v) != 1) {
-            return false;
-        }
-        out[i] = (uint8_t)v;
-    }
-    return true;
-}
-
-static bool parse_version(const char *s, uint8_t out[3])
-{
-    unsigned a, b, c;
-    char tail;
-    if (sscanf(s, "%u.%u.%u%c", &a, &b, &c, &tail) != 3 || a > 255 || b > 255 || c > 255) {
-        return false;
-    }
-    out[0] = (uint8_t)a;
-    out[1] = (uint8_t)b;
-    out[2] = (uint8_t)c;
-    return true;
+    return NULL;
 }
 
 /* ---------------------------------------------------------------------------
@@ -162,81 +132,39 @@ static bool parse_version(const char *s, uint8_t out[3])
 
 static void do_check(void)
 {
-    char url[160];
-    snprintf(url, sizeof(url), "%s/v1/firmware/pump/latest?hw=%d&proto=%d",
-             CONFIG_PUMP_UPDATE_SERVER, TANKLINK_HW_REV, TANKLINK_PROTO_MAJOR);
-    const esp_http_client_config_t cfg = {
-        .url = url,
-        .crt_bundle_attach = esp_crt_bundle_attach,
-        .timeout_ms = 10000,
-        .buffer_size = 1024,
-        .buffer_size_tx = 512,
-    };
-    esp_http_client_handle_t c = esp_http_client_init(&cfg);
-    if (!c) {
-        s_check_result = TANKLINK_CHECK_ERROR;
-        return;
-    }
-    char *body = malloc(REPLY_MAX);
-    if (!body) {
-        esp_http_client_cleanup(c);
-        s_check_result = TANKLINK_CHECK_ERROR;
-        return;
-    }
-    int n = -1;
-    int status = 0;
-    const esp_err_t open_err = esp_http_client_open(c, 0);
-    if (open_err != ESP_OK) {
-        ESP_LOGW(TAG, "check: can't connect: %s", esp_err_to_name(open_err));
-        s_check_result = TANKLINK_CHECK_NO_INTERNET;
-        goto out;
-    }
-    esp_http_client_fetch_headers(c);
-    status = esp_http_client_get_status_code(c);
-    n = esp_http_client_read_response(c, body, REPLY_MAX - 1);
-    esp_http_client_close(c);
-
-    if (status == 404) {
+    pump_update_offer_t offer;
+    switch (pump_update_http_latest(&offer)) {
+    case PUMP_UPDATE_FETCH_OFFER:
+        s_avail = newer_than_running(offer.version);
+        if (s_avail) {
+            s_offer = offer;
+            ESP_LOGI(TAG, "update available: %u.%u.%u (%u bytes)", offer.version[0],
+                     offer.version[1], offer.version[2], (unsigned)offer.size);
+        }
+        s_check_result = TANKLINK_CHECK_OK;
+        break;
+    case PUMP_UPDATE_FETCH_NONE:
         s_avail = false; /* nothing fits this board */
         s_check_result = TANKLINK_CHECK_OK;
-        goto out;
-    }
-    if (status != 200 || n <= 0) {
-        ESP_LOGW(TAG, "check: status %d", status);
+        break;
+    case PUMP_UPDATE_FETCH_NO_INTERNET:
+        s_check_result = TANKLINK_CHECK_NO_INTERNET;
+        break;
+    default:
         s_check_result = TANKLINK_CHECK_ERROR;
-        goto out;
+        break;
     }
-    body[n] = '\0';
 
-    char ver[16], sha[80];
-    uint32_t size = 0;
-    uint8_t v[3];
-    uint8_t digest[32];
-    static char url_buf[URL_MAX];
-    if (!json_str(body, "version", ver, sizeof(ver)) || !parse_version(ver, v) ||
-        !json_str(body, "url", url_buf, sizeof(url_buf)) ||
-        !json_str(body, "sha256", sha, sizeof(sha)) || !parse_hex(sha, digest, 32) ||
-        !json_uint(body, "size", &size) || size < 1024 || size > 0x1C0000u - 0x20u ||
-        strncmp(url_buf, "https://", 8) != 0) {
-        ESP_LOGW(TAG, "check: bad reply");
-        s_check_result = TANKLINK_CHECK_ERROR;
-        goto out;
-    }
-    if (newer_than_running(v)) {
-        memcpy(s_avail_ver, v, 3);
-        memcpy(s_sha, digest, 32);
-        memcpy(s_url, url_buf, URL_MAX);
-        s_size = size;
-        s_avail = true;
-        ESP_LOGI(TAG, "update available: %u.%u.%u (%u bytes)", v[0], v[1], v[2],
-                 (unsigned)size);
+    /* The next check: a normal gap after an answer, a growing retry after a failure. */
+    const int64_t now = esp_timer_get_time();
+    if (s_check_result == TANKLINK_CHECK_OK) {
+        s_last_ok_us = now;
+        s_retry_us = CHECK_RETRY_FIRST_US;
+        s_next_check_us = now + CHECK_EVERY_US;
     } else {
-        s_avail = false;
+        s_next_check_us = now + s_retry_us;
+        s_retry_us = s_retry_us * 2 > CHECK_EVERY_US ? CHECK_EVERY_US : s_retry_us * 2;
     }
-    s_check_result = TANKLINK_CHECK_OK;
-out:
-    free(body);
-    esp_http_client_cleanup(c);
 }
 
 /* ---------------------------------------------------------------------------
@@ -245,75 +173,32 @@ out:
 
 typedef struct {
     uint32_t offset;
-    bool failed;
-} download_t;
+} ota_feed_t;
 
-static esp_err_t on_http(esp_http_client_event_t *evt)
+/** The download's sink: each chunk goes to the OTA session, in order. */
+static bool feed_ota(const uint8_t *data, size_t len, void *arg)
 {
-    download_t *d = evt->user_data;
-    if (evt->event_id != HTTP_EVENT_ON_DATA || d->failed || evt->data_len <= 0) {
-        return ESP_OK;
+    ota_feed_t *f = arg;
+    if (pump_ota_write(PUMP_API_LOCAL_ID, f->offset, data, (uint16_t)len) != TANKLINK_OTA_ERR_OK) {
+        return false; /* pump_ota has already cleaned up */
     }
-    /* A redirect's own body is not the image. */
-    if (esp_http_client_get_status_code(evt->client) != 200) {
-        return ESP_OK;
-    }
-    if (pump_ota_write(PUMP_API_LOCAL_ID, d->offset, evt->data, (uint16_t)evt->data_len) !=
-        TANKLINK_OTA_ERR_OK) {
-        d->failed = true; /* pump_ota already cleaned up */
-        return ESP_OK;
-    }
-    d->offset += (uint32_t)evt->data_len;
-    return ESP_OK;
-}
-
-static void save_overnight(const uint8_t v[3])
-{
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
-        return;
-    }
-    if (v) {
-        nvs_set_blob(h, NVS_KEY_OVERNIGHT, v, 3);
-    } else {
-        nvs_erase_key(h, NVS_KEY_OVERNIGHT);
-    }
-    nvs_commit(h);
-    nvs_close(h);
+    f->offset += (uint32_t)len;
+    return true;
 }
 
 /** One try: start the OTA session and download into it. True when all bytes arrived. */
 static bool download_once(void)
 {
-    if (pump_ota_start(PUMP_API_LOCAL_ID, s_size, s_sha) != TANKLINK_OTA_ERR_OK) {
+    if (pump_ota_start(PUMP_API_LOCAL_ID, s_offer.size, s_offer.sha256) != TANKLINK_OTA_ERR_OK) {
         ESP_LOGW(TAG, "install: OTA refused to start");
         return false;
     }
     gatt_svr_notify_ota_status();
 
-    download_t d = {0};
-    /* GitHub redirects to its download host with a long signed address. A short
-     * timeout, because the pump_ota session times out after 60 s of silence. */
-    const esp_http_client_config_t cfg = {
-        .url = s_url,
-        .crt_bundle_attach = esp_crt_bundle_attach,
-        .timeout_ms = DOWNLOAD_TIMEOUT_MS,
-        .buffer_size = 4096,
-        .buffer_size_tx = 1024,
-        .max_redirection_count = 5,
-        .event_handler = on_http,
-        .user_data = &d,
-    };
-    esp_http_client_handle_t c = esp_http_client_init(&cfg);
-    const esp_err_t err = c ? esp_http_client_perform(c) : ESP_FAIL;
-    const int status = c ? esp_http_client_get_status_code(c) : 0;
-    if (c) {
-        esp_http_client_cleanup(c);
-    }
-    const bool ok = err == ESP_OK && status == 200 && !d.failed && d.offset == s_size;
+    ota_feed_t feed = {0};
+    uint32_t got = 0;
+    const bool ok = pump_update_http_download(&s_offer, feed_ota, &feed, &got);
     if (!ok) {
-        ESP_LOGW(TAG, "download failed: err=%s status=%d got=%u of %u", esp_err_to_name(err),
-                 status, (unsigned)d.offset, (unsigned)s_size);
         if (pump_ota_is_active()) {
             pump_ota_abort_from(PUMP_API_LOCAL_ID);
         }
@@ -334,15 +219,16 @@ static void do_install(bool automatic)
         status_led_set_mode(STATUS_LED_UPDATING);
     }
     pump_ota_set_led_hold(true);
-    /* The download host sometimes doesn't answer (a busy CDN address, or one
-     * this network drops): try again, a new connection may use another one. */
+
+    /* The download host sometimes doesn't answer: try again, a new connection
+     * may reach another address. */
     bool ok = false;
     for (int attempt = 1; attempt <= DOWNLOAD_TRIES && !ok; attempt++) {
         if (attempt > 1) {
             ESP_LOGI(TAG, "download try %d of %d", attempt, DOWNLOAD_TRIES);
             vTaskDelay(pdMS_TO_TICKS(3000));
             if (pump_control_is_on()) {
-                return; /* someone started the pump meanwhile */
+                break; /* someone started the pump meanwhile */
             }
         }
         ok = download_once();
@@ -355,19 +241,20 @@ static void do_install(bool automatic)
         }
         return;
     }
+
     if (automatic) {
-        save_overnight(s_avail_ver); /* shown once after the restart */
+        save_auto_version(s_offer.version); /* shown once after the restart */
     }
     const uint8_t r = pump_ota_finish(PUMP_API_LOCAL_ID);
     gatt_svr_notify_ota_status();
     if (r != TANKLINK_OTA_ERR_OK) {
         ESP_LOGW(TAG, "image refused (hash or signature), err=%u", r);
-        save_overnight(NULL);
+        save_auto_version(NULL);
     }
 }
 
 /* ---------------------------------------------------------------------------
- * Job task
+ * Jobs: one at a time, on a short-lived task
  * ------------------------------------------------------------------------- */
 
 static void job_task(void *arg)
@@ -376,7 +263,6 @@ static void job_task(void *arg)
     changed();
     if (job == JOB_CHECK) {
         do_check();
-        s_next_check_us = esp_timer_get_time() + CHECK_EVERY_US;
     } else {
         do_install(job == JOB_INSTALL_AUTO);
     }
@@ -403,6 +289,11 @@ esp_err_t pump_update_request_check(void)
     if (pump_wifi_state() != PUMP_WIFI_CONNECTED) {
         s_check_result = TANKLINK_CHECK_NO_INTERNET;
         changed();
+        return ESP_ERR_INVALID_STATE;
+    }
+    const char *why = check_busy_reason();
+    if (why) {
+        ESP_LOGI(TAG, "check refused: %s", why);
         return ESP_ERR_INVALID_STATE;
     }
     return start_job(JOB_CHECK);
@@ -446,21 +337,35 @@ uint8_t pump_update_check_result(void)
 void pump_update_available_version(uint8_t out[3])
 {
     if (s_avail) {
-        memcpy(out, s_avail_ver, 3);
+        memcpy(out, s_offer.version, 3);
     } else {
         memset(out, 0, 3);
     }
 }
 
+uint32_t pump_update_available_size(void)
+{
+    return s_avail ? s_offer.size : 0;
+}
+
+uint16_t pump_update_last_check_age_min(void)
+{
+    if (s_last_ok_us == 0) {
+        return NEVER_MIN;
+    }
+    const int64_t min = (esp_timer_get_time() - s_last_ok_us) / 60000000LL;
+    return (uint16_t)(min > NEVER_MIN - 1 ? NEVER_MIN - 1 : min);
+}
+
 void pump_update_overnight_version(uint8_t out[3])
 {
-    memcpy(out, s_overnight, 3);
+    memcpy(out, s_auto_version, 3);
 }
 
 void pump_update_dismiss_overnight(void)
 {
-    memset(s_overnight, 0, sizeof(s_overnight));
-    save_overnight(NULL);
+    memset(s_auto_version, 0, sizeof(s_auto_version));
+    save_auto_version(NULL);
 }
 
 void pump_update_init(void)
@@ -471,15 +376,15 @@ void pump_update_init(void)
     }
     uint8_t v[3];
     size_t n = sizeof(v);
-    const bool have = nvs_get_blob(h, NVS_KEY_OVERNIGHT, v, &n) == ESP_OK && n == 3;
+    const bool have = nvs_get_blob(h, NVS_KEY_AUTO_VER, v, &n) == ESP_OK && n == 3;
     nvs_close(h);
     if (!have) {
         return;
     }
     if (v[0] == TANKLINK_FW_MAJOR && v[1] == TANKLINK_FW_MINOR && v[2] == TANKLINK_FW_PATCH) {
-        memcpy(s_overnight, v, 3); /* it really did update: tell the app once */
+        memcpy(s_auto_version, v, 3); /* it really did update: tell the app once */
     } else {
-        save_overnight(NULL); /* the install never completed */
+        save_auto_version(NULL); /* the install never completed */
     }
 }
 
@@ -531,8 +436,7 @@ static bool auto_install_ok(int64_t t)
             return false;
         }
     }
-    const uint8_t slot = pump_tanks_active();
-    if (pump_tanks_auto_fill_on(slot) && lora_link_active_tank_low()) {
+    if (pump_tanks_auto_fill_on(pump_tanks_active()) && lora_link_active_tank_low()) {
         return false;
     }
     return true;
@@ -548,20 +452,21 @@ void pump_update_poll(void)
         return;
     }
     if (s_next_check_us == 0) {
-        /* A random minute, so pumps don't all ask at once. */
-        s_next_check_us = t + (int64_t)(FIRST_CHECK_MIN_S + esp_random() % FIRST_CHECK_SPAN_S) *
-                                  1000000;
+        s_next_check_us =
+            t + (int64_t)(FIRST_CHECK_MIN_S + esp_random() % FIRST_CHECK_SPAN_S) * 1000000;
     }
     if (t >= s_next_check_us) {
-        if (start_job(JOB_CHECK) != ESP_OK) {
-            s_next_check_us = t + 60LL * 1000000; /* try again soon */
+        if (check_busy_reason()) {
+            s_next_check_us = t + CHECK_DEFER_US; /* not now: not a failure */
+        } else if (start_job(JOB_CHECK) != ESP_OK) {
+            s_next_check_us = t + CHECK_DEFER_US;
         }
         return;
     }
     if (auto_install_ok(t)) {
         s_next_auto_try_us = t + AUTO_RETRY_US;
         ESP_LOGI(TAG, "installing %u.%u.%u automatically (pump idle, no fill planned)",
-                 s_avail_ver[0], s_avail_ver[1], s_avail_ver[2]);
+                 s_offer.version[0], s_offer.version[1], s_offer.version[2]);
         start_job(JOB_INSTALL_AUTO);
     }
 }

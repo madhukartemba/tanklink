@@ -293,6 +293,8 @@ size_t gatt_payload_wifi_status(uint8_t out[GATT_WIFI_STATUS_MAX_LEN])
     u[1] = pump_update_check_result();
     pump_update_available_version(&u[2]);
     pump_update_overnight_version(&u[5]);
+    put_u16(&u[8], pump_update_last_check_age_min());
+    put_u32(&u[10], pump_update_available_size());
     return 7 + n + TANKLINK_WIFI_UPDATE_LEN;
 }
 

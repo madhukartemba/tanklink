@@ -54,7 +54,11 @@ class FirmwareRelease {
     required this.sha256,
     required this.sizeBytes,
     required this.hwRevs,
+    required this.notes,
   });
+
+  /// What is new in it, one entry per line.
+  final List<String> notes;
 
   final String version;
   final String tag;
@@ -93,6 +97,9 @@ class FirmwareUpdate extends ChangeNotifier {
   String? latestSha256;
   String? latestBinUrl;
   String? latestTag;
+
+  /// What is new in the latest release (for the update sheet).
+  List<String> latestNotes = const [];
   List<int> latestHwRevs = const [];
 
   /// Revision of the connected board, 0 while unknown.
@@ -147,6 +154,7 @@ class FirmwareUpdate extends ChangeNotifier {
     latestSha256 = prefs.getString(_key('latest_sha256'));
     latestBinUrl = prefs.getString(_key('latest_bin_url'));
     latestTag = prefs.getString(_key('latest_tag'));
+    latestNotes = prefs.getStringList(_key('latest_notes')) ?? const [];
     latestHwRevs = (prefs.getStringList(_key('latest_hw_revs')) ?? const [])
         .map(int.tryParse)
         .whereType<int>()
@@ -219,6 +227,7 @@ class FirmwareUpdate extends ChangeNotifier {
     latestSha256 = release.sha256;
     latestBinUrl = release.binUrl;
     latestTag = release.tag;
+    latestNotes = release.notes;
     latestHwRevs = release.hwRevs;
     bytesTotal = release.sizeBytes;
 
@@ -227,6 +236,7 @@ class FirmwareUpdate extends ChangeNotifier {
     await prefs.setString(_key('latest_sha256'), release.sha256);
     await prefs.setString(_key('latest_bin_url'), release.binUrl);
     await prefs.setString(_key('latest_tag'), release.tag);
+    await prefs.setStringList(_key('latest_notes'), release.notes);
     await prefs.setStringList(_key('latest_hw_revs'), [
       for (final r in release.hwRevs) '$r',
     ]);
@@ -412,6 +422,7 @@ class FirmwareUpdate extends ChangeNotifier {
         sha256: sha,
         sizeBytes: c.sizeBytes,
         hwRevs: hwRevs,
+        notes: c.notes,
       );
     }
     return null;

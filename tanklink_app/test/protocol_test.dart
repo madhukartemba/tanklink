@@ -5,6 +5,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tanklink/ble/models.dart';
 import 'package:tanklink/ble/protocol.dart';
+import 'package:tanklink/update/github_release_util.dart';
 import 'package:tanklink/ble/tanklink_uuids.dart';
 import 'package:tanklink/util/water_use.dart';
 
@@ -17,6 +18,7 @@ List<int> u32(int v) => [
 
 void main() {
   alertTests();
+  releaseNotesTests();
   group('PumpInfo', () {
     final bytes = [
       1, 0, 2, // proto 1.0, board rev 2
@@ -130,7 +132,7 @@ void main() {
 
     test('returns null when too short', () {
       expect(PumpSettings.parse(List.filled(10, 0)), isNull);
-      expect(PumpSettings.parse(List.filled(24, 0)), isNull);
+      expect(PumpSettings.parse(List.filled(25, 0)), isNull);
     });
 
     test('unset flow and price read as null', () {
@@ -138,6 +140,7 @@ void main() {
         ...List.filled(15, 0),
         0, 0, 0xee, 0x02, 0, 0, // flow unset, 750 W, price unset
         0, 0, 0, 0,
+        0, // auto_update
       ])!;
       expect(s.usage.flowLpm, isNull);
       expect(s.usage.pricePerKwh, isNull);
@@ -509,36 +512,65 @@ void main() {
     });
 
     test('parses status and a scan page', () {
-      final st = WifiStatus.parse([
-        2,
-        0xC4,
-        192,
-        168,
-        1,
-        50,
-        4,
-        72,
-        111,
-        109,
-        101,
-      ])!;
+      // state rssi ip(4) ssid_len ssid, then update_state check_result
+      // available(3) overnight(3) last_check_age_min(u16) available_size(u32).
+      List<int> status({
+        int state = 2,
+        List<int> update = const [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0xFF,
+          0xFF,
+          0,
+          0,
+          0,
+          0,
+        ],
+      }) => [state, 0xC4, 192, 168, 1, 50, 4, 72, 111, 109, 101, ...update];
+
+      final st = WifiStatus.parse(status())!;
       expect(st.state, WifiState.connected);
       expect(st.rssi, -60);
       expect(st.ip, '192.168.1.50');
       expect(st.ssid, 'Home');
-      expect(WifiStatus.parse([0, 0, 0, 0, 0, 0, 0])!.ip, isNull);
-      expect(WifiStatus.parse([1, 0]), isNull);
       expect(st.update, PumpUpdateState.none);
       expect(st.availableVersion, isNull);
+      expect(st.lastCheckAgeMin, isNull); // 0xFFFF = never
+      expect(st.availableSize, 0);
+      expect(
+        WifiStatus.parse([0, 0, 0, 0, 0, 0, 0, ...List.filled(14, 0)])!.ip,
+        isNull,
+      );
+      // Without the update block it isn't a status this app understands.
+      expect(
+        WifiStatus.parse([2, 0xC4, 192, 168, 1, 50, 4, 72, 111, 109, 101]),
+        isNull,
+      );
+      expect(WifiStatus.parse([1, 0]), isNull);
 
-      final up = WifiStatus.parse([
-        2, 0xC4, 192, 168, 1, 50, 4, 72, 111, 109, 101, //
-        1, 1, 0, 21, 0, 0, 20, 1, // available 0.21.0, overnight 0.20.1
-      ])!;
+      final up = WifiStatus.parse(
+        status(
+          update: [
+            1, 1, // available, last check ok
+            0, 21, 0, // available 0.21.0
+            0, 20, 1, // installed by itself: 0.20.1
+            0x2c, 0x01, // last checked 300 min ago
+            0x00, 0x00, 0x17, 0x00, // 1,507,328 bytes
+          ],
+        ),
+      )!;
       expect(up.update, PumpUpdateState.available);
       expect(up.check, PumpCheckResult.ok);
       expect(up.availableVersion, '0.21.0');
       expect(up.overnightVersion, '0.20.1');
+      expect(up.lastCheckAgeMin, 300);
+      expect(up.availableSize, 1507328);
 
       final page = WifiScanPage.parse([
         0,
@@ -615,5 +647,19 @@ void alertTests() {
       );
       expect(parseAlertLog([]), isEmpty);
     });
+  });
+}
+
+void releaseNotesTests() {
+  test('the "What\'s new" list is the Changes bullets only', () {
+    expect(
+      releaseChanges(
+        '## Changes\n\n- First thing.\n- Second thing.\n\n'
+        'Goes with app 1.12.0. Update both.\n\n## Other\n- not this\n',
+      ),
+      ['First thing.', 'Second thing.'],
+    );
+    expect(releaseChanges('no headings here'), isEmpty);
+    expect(releaseChanges('## Notes\n- x'), isEmpty);
   });
 }

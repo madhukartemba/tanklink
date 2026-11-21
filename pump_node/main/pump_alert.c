@@ -97,6 +97,15 @@ static void make_tag(uint8_t seq, uint8_t type, uint8_t arg, uint8_t out[TANKLIN
     memcpy(out, mac, TANKLINK_ALERT_TAG_LEN);
 }
 
+/** A fresh random key (caller holds the lock). */
+static void new_key(void)
+{
+    do {
+        esp_fill_random(s_key, sizeof(s_key));
+    } while (!tl_nonzero(s_key, sizeof(s_key)));
+    s_have_key = true;
+}
+
 void pump_alert_init(void)
 {
     s_lock = xSemaphoreCreateMutex();
@@ -108,35 +117,19 @@ void pump_alert_init(void)
         nvs_get_u8(h, NVS_KEY_SEQ, &s_seq);
         nvs_close(h);
     }
-    /* A pump that already has phones but no key yet (just updated) makes one now. */
-    if (!s_have_key && pump_pair_is_paired()) {
-        pump_alert_phone_added();
-    }
-    ESP_LOGI(TAG, "alerts %s, seq %u", s_have_key ? "on" : "waiting for a phone", s_seq);
+    ESP_LOGI(TAG, "alerts %s, seq %u", s_have_key ? "on" : "waiting for a phone to ask for the key", s_seq);
 }
 
-bool pump_alert_key(uint8_t out[16])
-{
-    xSemaphoreTake(s_lock, portMAX_DELAY);
-    const bool ok = s_have_key;
-    if (ok) {
-        memcpy(out, s_key, sizeof(s_key));
-    }
-    xSemaphoreGive(s_lock);
-    return ok;
-}
-
-void pump_alert_phone_added(void)
+void pump_alert_key(uint8_t out[16])
 {
     xSemaphoreTake(s_lock, portMAX_DELAY);
     if (!s_have_key) {
-        do {
-            esp_fill_random(s_key, sizeof(s_key));
-        } while (!tl_nonzero(s_key, sizeof(s_key)));
-        s_have_key = true;
+        /* Made the first time a signed-in phone asks for it. */
+        new_key();
         save_key();
         ESP_LOGI(TAG, "alert key made");
     }
+    memcpy(out, s_key, sizeof(s_key));
     xSemaphoreGive(s_lock);
 }
 
@@ -147,10 +140,7 @@ void pump_alert_phones_removed(bool some_remain)
     s_log_n = 0;
     memset(s_bat, 0, sizeof(s_bat));
     if (some_remain) {
-        do {
-            esp_fill_random(s_key, sizeof(s_key));
-        } while (!tl_nonzero(s_key, sizeof(s_key)));
-        s_have_key = true;
+        new_key();
     } else {
         memset(s_key, 0, sizeof(s_key));
         s_have_key = false;

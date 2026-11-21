@@ -248,7 +248,7 @@ Only logged while the pump knows the time; 0 % readings (no battery sense) are s
 
 Optional. The pump joins one 2.4 GHz network (no WPA-Enterprise, no captive portals) and then sets its clock over SNTP and advertises `tanklink-<serial>.local`, service `_tanklink._tcp` on port 7580, TXT `id=<device id hex>`, `proto=<major>.<minor>`. Without a saved network nothing Wi-Fi runs.
 
-Read (status): `state(1) rssi(i8, 0 = none) ip(4, a.b.c.d in byte order, 0 = none) ssid_len(1) ssid`, then (minor 5) `update_state(1) check_result(1) available_version(3) overnight_version(3)`. State: 0 off, 1 connecting, 2 connected, 3 wrong password, 4 network not found. Notified when the state, address or signal changes.
+Read (status): `state(1) rssi(i8, 0 = none) ip(4, a.b.c.d in byte order, 0 = none) ssid_len(1) ssid`, then (minor 5) `update_state(1) check_result(1) available_version(3) overnight_version(3)`, then (minor 7) `last_check_age_min(u16, 0xFFFF = never) available_size(u32, bytes, 0 = none)`. The app needs the whole block: a status without it is not read. State: 0 off, 1 connecting, 2 connected, 3 wrong password, 4 network not found. Notified when the state, address or signal changes.
 
 Write, op in byte 0:
 
@@ -262,7 +262,7 @@ Write, op in byte 0:
 
 **Pump updates itself** (minor 5). `update_state`: 0 none, 1 update available, 2 checking, 3 installing. `check_result`: 0 never, 1 ok, 2 no internet, 3 error. `available_version`: major, minor, patch of the update the last check found (zeros = none). `overnight_version`: the version the pump installed by itself (automatic install), until the app sends Cmd `0xAC` (zeros = none). Cmd `0xAA` checks now (needs Wi-Fi), Cmd `0xAB` downloads and installs what the check found; both return at once. Progress is in OtaStatus as for any update. Install is refused while the pump runs.
 
-**While an update runs** (from the moment an install is asked for, including the pauses between download tries, or while any update from a phone is being written) the pump does not start (by button, app, schedule or auto-fill), does not open its pairing window, and refuses Unpair and Factory reset (the button holds for pairing and reset do nothing). A start press is not an error: no red light code, and the update light stays on. The app knows from `update_state` = 3 (installing) in the Wifi status, or from OtaStatus (`ready`, `writing`, `verify ok`, `rebooting`), whoever started the update, and then greys out Start, Add phone, Sign out other phones, Factory reset, Wi-Fi setup and the update buttons, and shows a banner with progress. Stop always works. The pump also checks once a day at a random minute.
+**While an update runs** (from the moment an install is asked for, including the pauses between download tries, or while any update from a phone is being written) the pump does not start (by button, app, schedule or auto-fill), does not open its pairing window, and refuses Unpair and Factory reset (the button holds for pairing and reset do nothing). A start press is not an error: no red light code, and the update light stays on. The app knows from `update_state` = 3 (installing) in the Wifi status, or from OtaStatus (`ready`, `writing`, `verify ok`, `rebooting`), whoever started the update, and then greys out Start, Add phone, Sign out other phones, Factory reset, Wi-Fi setup and the update buttons, and shows a banner with progress. Stop always works. The pump checks every 6 hours, the first time a random 1–61 minutes after it gets Wi-Fi after a start. A check that fails (no internet, a bad answer) is retried after 15 minutes, doubling up to 6 hours. A check that falls due while the pump is running, an update is being written or a pairing window is open waits 2 minutes and isn't counted as a failure. Cmd `0xAA` is refused in those same states (the app says why).
 
 How: the pump asks the report service (`GET /v1/firmware/pump/latest?hw=&proto=`, `report_worker/README.md`) and downloads the image over HTTPS from GitHub. The image goes through the same `pump_ota` path as an update from the app, so the sha256 from the release, the signature check and the pump-off rule all apply: an image not signed with the TankLink key is refused whatever the server says.
 
@@ -306,7 +306,7 @@ An alert is `seq(1) type(1) arg(1)` plus a 4-byte **tag** that proves this pump 
 
 Only a stop by "tank full" or by auto-off is an alert; stops from the app, the button or the system are the user's own action.
 
-**Alert key (`0x12`, read, signed in):** 16 bytes, one random key per pump shared by its paired phones. It is made when the first phone pairs. It is replaced when phones are removed (unpair, *Sign out other phones*, factory reset), so a removed phone's key stops working. Refused until a phone has paired.
+**Alert key (`0x12`, read, signed in):** 16 bytes, one random key per pump shared by its paired phones. It is made the first time a signed-in phone reads it. It is replaced when phones are removed (unpair, *Sign out other phones*, factory reset), so a removed phone's key stops working.
 
 **Alert log (`0x13`, read + notify, signed in):** `count(1)` then `count` × `seq(1) type(1) arg(1) age_min(u16)`, newest first, up to 8. Kept in RAM, so it starts empty after a restart. The app reads it after signing in to catch up on alerts it missed.
 

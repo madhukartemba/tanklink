@@ -129,7 +129,7 @@ Other data the pump saves (all cleared by factory reset or `erase-flash`):
 | `tl_tanks` | Paired sensors (up to 4: MAC, float mode), tank slots (up to 8: sensor, which float, name, auto-off), and the selected tank (`slots`). Auto-fill per slot as a bit mask (`auto_fill`). |
 | `tl_sched` | Fill schedules (up to 4) |
 | `tl_wifi` | Optional Wi-Fi: network name (`ssid`) and password (`pass`). Cleared by factory reset and Forget Wi-Fi. Without them Wi-Fi never starts |
-| `tl_alert` | The alert key (`key`, 16 bytes; made when the first phone pairs, replaced when phones are removed) and the last alert number (`seq`) |
+| `tl_alert` | The alert key (`key`, 16 bytes; made when a signed-in phone first reads it, replaced when phones are removed) and the last alert number (`seq`) |
 | `tl_upd` | Version the pump started installing by itself (`overnight`), until the app has shown the notice |
 | `tl_clock` | The phone's UTC offset in minutes (`utc_off`, i16), sent with every time sync, so SNTP can set local time |
 | `tl_hist` | The last 200 fills: start, length, tank, start and stop cause |

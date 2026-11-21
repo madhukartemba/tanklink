@@ -182,9 +182,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         if (linked && session.pumpUpdatingElsewhere) ...[
                           PumpUpdatingBanner(
                             session: session,
-                            total: context
-                                .watch<PumpFirmwareUpdate>()
-                                .bytesTotal,
+                            total: session.wifiStatus?.availableSize ?? 0,
                           ),
                           const SizedBox(height: 8),
                         ],

@@ -79,7 +79,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 6
+#define TANKLINK_PROTO_MINOR 7
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -207,8 +207,10 @@ extern "C" {
  * available_version(3) overnight_version(3). update_state: 0 none, 1 update
  * available, 2 checking, 3 installing. check_result: 0 never, 1 ok, 2 no
  * internet, 3 error. overnight_version: the version the pump installed by
- * itself (automatic install), until the app dismisses it (zeros = none). */
-#define TANKLINK_WIFI_UPDATE_LEN 8
+ * itself (automatic install), until the app dismisses it (zeros = none).
+ * Minor 7 appends last_check_age_min(u16, 0xFFFF = never) and
+ * available_size(u32, bytes, 0 = none). */
+#define TANKLINK_WIFI_UPDATE_LEN 14
 #define TANKLINK_UPDATE_NONE       0
 #define TANKLINK_UPDATE_AVAILABLE  1
 #define TANKLINK_UPDATE_CHECKING   2

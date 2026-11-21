@@ -250,7 +250,6 @@ async function pumpLatest(url, env) {
     latest = await findPumpLatest(env, hw, proto);
   } catch (e) {
     console.error("pump latest failed", e && e.message);
-    if (hit) return answerLatest(await hit.json(), url);
     return json({ error: "releases unavailable" }, 502);
   }
   if (!latest) return json({ error: "no firmware" }, 404);

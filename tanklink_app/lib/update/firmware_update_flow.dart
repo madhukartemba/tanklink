@@ -155,6 +155,26 @@ Future<void> showFirmwareConfirmSheet(BuildContext context) async {
                 ],
               ),
             ),
+            if (fw.latestNotes.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(
+                'What’s new',
+                style: Theme.of(ctx).textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              for (final line in fw.latestNotes.take(6))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('•  '),
+                      Expanded(child: Text(line)),
+                    ],
+                  ),
+                ),
+            ],
             const SizedBox(height: 16),
             Text(
               'Size · $size',
