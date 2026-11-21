@@ -7,6 +7,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "esp_system.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -63,6 +64,16 @@ static int64_t s_last_on_us;       /* last time the pump was seen running */
 /* ---------------------------------------------------------------------------
  * Helpers
  * ------------------------------------------------------------------------- */
+
+/** Memory now and the lowest it has been since boot: the number that says how
+ * close the pump came to running out during a check or download. */
+static void log_heap(const char *when)
+{
+    ESP_LOGI(TAG, "heap %s: free %u, lowest ever %u, largest block %u", when,
+             (unsigned)esp_get_free_heap_size(),
+             (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+}
 
 static void changed(void)
 {
@@ -261,7 +272,13 @@ static esp_err_t on_http(esp_http_client_event_t *evt)
         d->failed = true; /* pump_ota already cleaned up */
         return ESP_OK;
     }
+    const uint32_t before = d->offset;
     d->offset += (uint32_t)evt->data_len;
+    if (d->offset / (256 * 1024) != before / (256 * 1024)) {
+        char at[24];
+        snprintf(at, sizeof(at), "at %u KB", (unsigned)(d->offset / 1024));
+        log_heap(at);
+    }
     return ESP_OK;
 }
 
@@ -338,6 +355,7 @@ static void do_install(bool automatic)
 static void job_task(void *arg)
 {
     const job_t job = (job_t)(uintptr_t)arg;
+    log_heap("before job");
     changed();
     if (job == JOB_CHECK) {
         do_check();
@@ -345,6 +363,7 @@ static void job_task(void *arg)
     } else {
         do_install(job == JOB_INSTALL_AUTO);
     }
+    log_heap("after job");
     s_busy = JOB_NONE;
     changed();
     vTaskDelete(NULL);
