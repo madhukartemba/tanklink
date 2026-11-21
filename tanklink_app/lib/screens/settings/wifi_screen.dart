@@ -281,7 +281,8 @@ class _PumpUpdates extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           title: const Text('Install pump updates automatically'),
           subtitle: Text(
-            'Only when the pump is idle and no fill is planned.',
+            'The pump updates itself at a quiet moment: when it isn’t '
+            'running and no scheduled fill is coming up.',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           value: session.autoUpdate,
