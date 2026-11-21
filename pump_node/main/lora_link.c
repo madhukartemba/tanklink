@@ -659,6 +659,7 @@ static void on_unpair_packet(const uint8_t *buf, size_t n)
     } else {
         ESP_LOGI(TAG, "sensor %d left: its tank went into pairing mode", node);
         send_ack(pkt, key);
+        pump_alert_raise(TL_ALERT_SENSOR_REMOVED, (uint8_t)node);
     }
     memset(key, 0, sizeof(key));
 }

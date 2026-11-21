@@ -34,6 +34,7 @@ typedef enum {
     TL_ALERT_TANK_OFFLINE = 4, /* the selected tank's sensor went out of range; arg = slot */
     TL_ALERT_BATTERY_LOW = 5,  /* a sensor's battery is low; arg = sensor index */
     TL_ALERT_TEST = 6,         /* from the app's "Send test alert" */
+    TL_ALERT_SENSOR_REMOVED = 7, /* a tank went into pairing mode and the pump dropped its sensor; arg = sensor index */
 } tl_alert_type_t;
 
 #define PUMP_ALERT_LOG_MAX 8
@@ -42,7 +43,7 @@ typedef enum {
  *  TANK_FULL, AUTO_OFF, POWER_CUT: bits 0-2 the tank slot (0-7), bits 3-7 how
  *    long the fill ran in 5-minute steps (0 = under 5 min, 31 = 155 min or more).
  *  BATTERY_LOW: bits 0-1 the sensor index (0-3), bits 2-7 the battery % / 2.
- *  TANK_OFFLINE: the tank slot. TEST: 0xFF. */
+ *  TANK_OFFLINE: the tank slot. SENSOR_REMOVED: the sensor index (0-3). TEST: 0xFF. */
 #define PUMP_ALERT_FILL_ARG(slot, ran_sec) \
     ((uint8_t)(((slot) & 7) | ((((ran_sec) / 300) > 31 ? 31 : ((ran_sec) / 300)) << 3)))
 #define PUMP_ALERT_BATTERY_ARG(sensor, pct) ((uint8_t)(((sensor) & 3) | (((pct) / 2) << 2)))

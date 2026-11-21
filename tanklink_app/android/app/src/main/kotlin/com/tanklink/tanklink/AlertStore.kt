@@ -24,8 +24,8 @@ object AlertStore {
     }
 
     private const val PREFS = "tanklink_alerts"
-    // Alert types 1..5 notify by default (6, the test, always does).
-    private val DEFAULT_TYPES = setOf(1, 2, 3, 4, 5)
+    // Alert types 1..5 and 7 notify by default (6, the test, always does).
+    private val DEFAULT_TYPES = setOf(1, 2, 3, 4, 5, 7)
 
     private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 

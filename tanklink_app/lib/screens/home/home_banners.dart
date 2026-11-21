@@ -263,6 +263,40 @@ class ClockBatteryBanner extends StatelessWidget {
   }
 }
 
+/// Something the pump just told the app (for example a tank sensor it
+/// dropped), until the user dismisses it.
+class PumpNoticeBanner extends StatelessWidget {
+  const PumpNoticeBanner({
+    super.key,
+    required this.text,
+    required this.onDismiss,
+  });
+
+  final String text;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+      decoration: BoxDecoration(
+        color: scheme.tertiary.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded, color: scheme.tertiary),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: const TextStyle(height: 1.3))),
+          TextButton(onPressed: onDismiss, child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+}
+
 /// The pump is installing an update that this phone didn't start (the pump
 /// downloading one itself, or another phone sending it).
 class PumpUpdatingBanner extends StatelessWidget {

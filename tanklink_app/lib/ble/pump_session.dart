@@ -835,10 +835,48 @@ class PumpSession extends ChangeNotifier {
   Future<void> _showAlerts(List<PumpAlert> alerts) async {
     final id = selected?.deviceIdHex;
     if (id == null) return;
+    _noticeFromAlerts(alerts);
     for (final a in alerts.reversed) {
       if ((a.ageMin ?? 0) > 24 * 60) continue;
       await AlertBridge.showAlert(id.toLowerCase(), a.seq, a.type, a.arg);
     }
+  }
+
+  /// A message about something that just happened at the pump, shown on the
+  /// home screen until dismissed (null = none).
+  String? pumpNotice;
+
+  /// The newest alert number already looked at in this session. The first log
+  /// read after connecting only sets it: those alerts are old news.
+  int? _noticeSeq;
+
+  /// Short ids of every sensor seen this session, by index. A removed sensor is
+  /// gone from the list by the time its alert arrives.
+  final Map<int, String> _sensorShortIds = {};
+
+  void _noticeFromAlerts(List<PumpAlert> alerts) {
+    if (alerts.isEmpty) return;
+    final seen = _noticeSeq;
+    _noticeSeq = alerts.first.seq; // newest first
+    if (seen == null) return;
+    for (final a in alerts.reversed) {
+      final ahead = (a.seq - seen) & 0xFF;
+      if (ahead < 1 || ahead > 127) continue;
+      if (a.type == TankLinkUuids.alertSensorRemoved) {
+        final short = _sensorShortIds[a.arg & 3];
+        pumpNotice =
+            '${short == null ? 'A tank sensor' : 'Tank sensor $short'} was '
+            'removed. Its tank went into pairing mode, so the pump dropped it. '
+            'Pair it again if this wasn’t you.';
+        notifyListeners();
+      }
+    }
+  }
+
+  void dismissNotice() {
+    if (pumpNotice == null) return;
+    pumpNotice = null;
+    notifyListeners();
   }
 
   /// Tell the Android alert code which pumps to recognise, and their names.
@@ -1411,6 +1449,9 @@ class PumpSession extends ChangeNotifier {
   void _applySensors(List<TankSensor>? list) {
     if (list == null) return;
     sensors = list;
+    for (final s in list) {
+      _sensorShortIds[s.index] = s.shortId;
+    }
     final now = DateTime.now();
     _sensorHeardAt.clear();
     for (final s in list) {
@@ -2104,6 +2145,9 @@ class PumpSession extends ChangeNotifier {
     _otaNotifySub = null;
     otaState = TankLinkUuids.otaStIdle;
     otaOffset = 0;
+    pumpNotice = null;
+    _noticeSeq = null;
+    _sensorShortIds.clear();
     _wifiProbeTimer?.cancel();
     _wifiProbeTimer = null;
     final wifi = _wifi;

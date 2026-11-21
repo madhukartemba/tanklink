@@ -179,6 +179,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (ready && session.pumpNotice != null) ...[
+                          PumpNoticeBanner(
+                            text: session.pumpNotice!,
+                            onDismiss: session.dismissNotice,
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                         if (linked && session.pumpUpdatingElsewhere) ...[
                           PumpUpdatingBanner(
                             session: session,

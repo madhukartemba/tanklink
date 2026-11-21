@@ -55,6 +55,7 @@ class TankLinkUuids {
   static const alertTankOffline = 4;
   static const alertBatteryLow = 5;
   static const alertTest = 6;
+  static const alertSensorRemoved = 7;
 
   /// Raise a test alert on the pump (minor 6).
   static const cmdTestAlert = 0xAD;

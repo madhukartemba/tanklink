@@ -40,10 +40,10 @@ class AlertBridge {
   static Future<void> setEnabled(bool on) =>
       _call<bool>('setEnabled', {'on': on});
 
-  /// Alert types that notify (pump_alert.h types 1 to 5).
+  /// Alert types that notify (pump_alert.h types 1 to 5, and 7).
   static Future<List<int>> types() async =>
       (await _call<List<Object?>>('types'))?.cast<int>() ??
-      const [1, 2, 3, 4, 5];
+      const [1, 2, 3, 4, 5, 7];
 
   static Future<void> setTypes(List<int> types) =>
       _call<bool>('setTypes', {'types': types});

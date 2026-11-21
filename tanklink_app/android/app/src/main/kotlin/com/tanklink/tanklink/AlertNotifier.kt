@@ -29,6 +29,7 @@ object AlertNotifier {
     const val TANK_OFFLINE = 4
     const val BATTERY_LOW = 5
     const val TEST = 6
+    const val SENSOR_REMOVED = 7
 
     /** First 4 bytes of HMAC-SHA256(key, deviceId || seq || type || arg). Same as
      * make_tag in pump_node/main/pump_alert.c and alertTag in protocol.dart. */
@@ -121,6 +122,8 @@ object AlertNotifier {
                 "The pump can't see the water level, but it still stops at auto-off. Check the sensor's battery and range."
             BATTERY_LOW -> "${sensorName(p, arg and 3)} battery at ${(arg shr 2) * 2}%" to
                 "Charge it or check the solar panel soon."
+            SENSOR_REMOVED -> "${sensorName(p, arg and 3)} removed" to
+                "It went into pairing mode, so the pump dropped it. Pair it again if this wasn't you."
             TEST -> "Test alert" to "This is how a TankLink alert looks."
             else -> return false
         }
@@ -129,7 +132,8 @@ object AlertNotifier {
             if (missed > 0) append(" And $missed more: open TankLink.")
         }
         // Things that need action get the louder channel.
-        val urgent = type == POWER_CUT || type == AUTO_OFF || type == TANK_OFFLINE
+        val urgent = type == POWER_CUT || type == AUTO_OFF || type == TANK_OFFLINE ||
+            type == SENSOR_REMOVED
         val channel = if (urgent) CHANNEL_URGENT else CHANNEL
 
         val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

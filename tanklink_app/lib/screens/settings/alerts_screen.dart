@@ -24,7 +24,7 @@ class _AlertsScreenState extends State<AlertsScreen>
   bool _notifications = false;
   bool _scan = false;
   bool _batteryOk = false;
-  List<int> _types = const [1, 2, 3, 4, 5];
+  List<int> _types = const [1, 2, 3, 4, 5, 7];
   bool _sending = false;
 
   static const _typeNames = {
@@ -33,6 +33,7 @@ class _AlertsScreenState extends State<AlertsScreen>
     TankLinkUuids.alertPowerCut: 'Fill cut short by a power cut',
     TankLinkUuids.alertTankOffline: 'Tank sensor out of range',
     TankLinkUuids.alertBatteryLow: 'Tank sensor battery low',
+    TankLinkUuids.alertSensorRemoved: 'Tank sensor removed',
   };
 
   @override
