@@ -34,6 +34,8 @@ static bool s_nimble_ready;
 static bool s_stack_up;
 /* Once a phone connects, the window stays open at least this long. */
 #define CONNECTED_WINDOW_MS 60000
+/* After a failed update, time for the phone to read why. */
+#define OTA_FAIL_LINGER_MS 5000
 
 static bool s_window_active;
 static bool s_connected;
@@ -303,15 +305,27 @@ tank_ble_window_result_t tank_ble_wait_ota_window(tank_button_hold_t *carry)
     } else {
         tank_button_hold_reset(&hold);
     }
+    bool ota_was_active = false;
     while (s_window_active) {
         if (tank_ota_state() == TANKLINK_OTA_ST_REBOOTING) {
             vTaskDelay(pdMS_TO_TICKS(200));
             continue;
         }
         if (tank_ota_is_active()) {
+            ota_was_active = true;
             tank_button_hold_reset(&hold);
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
+        }
+        if (ota_was_active) {
+            /* A failed update: stay up a moment so the phone gets the
+             * write reply and reads the error, not a dropped link. */
+            ota_was_active = false;
+            const int64_t need =
+                esp_timer_get_time() + (int64_t)OTA_FAIL_LINGER_MS * 1000;
+            if (s_window_deadline_us < need) {
+                s_window_deadline_us = need;
+            }
         }
         if (esp_timer_get_time() >= s_window_deadline_us) {
             ESP_LOGI(TAG, "OTA window timed out");

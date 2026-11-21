@@ -13,6 +13,10 @@ CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_GAP_SERVICE=y
 CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
 CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512
+# GATT handlers run here, including the OTA finish, which checks the
+# RSA-3072 signature. The default 4096 overflowed there and restarted the
+# tank on its old firmware.
+CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=6144
 
 CONFIG_TANK_FLOAT_FULL_GPIO=4
 CONFIG_TANK_ENABLE_EMPTY_FLOAT=y
