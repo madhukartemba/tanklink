@@ -17,7 +17,7 @@ Redirects (302) to `TankLink.apk` of the newest `app-v*` release, read from the 
 
 ## Latest pump firmware (`GET /v1/firmware/pump/latest?hw=<rev>&proto=<major>`)
 
-For pumps that update themselves over Wi-Fi: the release list is too big for a pump to parse, so this returns just `{"version", "url", "size", "sha256"}` for the newest `pump-v*` release whose manifest has the same `proto_major` and lists `hw` in `hw_revs` (the same rules as the app). Built from the cached release list and cached the same way; `404` if nothing fits, `502` if GitHub can't be reached and nothing is cached. The pump verifies the `sha256` and the image's signature itself, so a wrong answer here can't make it run foreign code.
+For pumps that update themselves over Wi-Fi: the release list is too big for a pump to parse, so this returns just `{"version", "url", "size", "sha256"}` for the newest `pump-v*` release whose manifest has the same `proto_major` and lists `hw` in `hw_revs` (the same rules as the app). Built from the cached release list and cached the same way; `404` if nothing fits, `502` if GitHub can't be reached and nothing is cached. The `url` in the answer points back at this Worker (`GET /v1/firmware/pump/download/<version>.bin`), which streams `pump_node.bin` of that `pump-v*` release from GitHub. The pump then only ever talks to this one host: GitHub's download host (`release-assets.githubusercontent.com`) turned out not to be reachable from every network, and its redirect carries a very long signed address. Only `pump_node.bin` of a release of `RELEASES_REPO` can be fetched this way. The pump verifies the `sha256` and the image's signature itself, so a wrong answer here can't make it run foreign code.
 
 ## Problem reports (`POST /v1/report`)
 

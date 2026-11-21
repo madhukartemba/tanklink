@@ -31,6 +31,13 @@
  * checks the sha256 itself and the image must be signed with the TankLink
  * key, so a wrong answer here can't make a pump run foreign code.
  *
+ * GET /v1/firmware/pump/download/<version>.bin → that release's pump_node.bin,
+ * streamed through this Worker. The "latest" answer points here, not at
+ * GitHub, so the pump only ever talks to this host: GitHub's download host
+ * (release-assets.githubusercontent.com) is not reachable from every network,
+ * and its redirect carries a very long signed address. Only pump_node.bin of a
+ * pump-v* release of RELEASES_REPO can be fetched this way.
+ *
  * GET /app → 302 to TankLink.apk of the newest app-v* release (from the
  * same cached list). The install QR code points here, so it never has to
  * change. Falls back to the GitHub releases page.
@@ -69,6 +76,13 @@ export default {
         return json({ error: "method not allowed" }, 405);
       }
       return pumpLatest(url, env);
+    }
+    const dl = /^\/v1\/firmware\/pump\/download\/(\d+\.\d+\.\d+)\.bin$/.exec(url.pathname);
+    if (dl) {
+      if (request.method !== "GET") {
+        return json({ error: "method not allowed" }, 405);
+      }
+      return pumpDownload(dl[1], env);
     }
     if (url.pathname !== "/v1/report") {
       return json({ error: "not found" }, 404);
@@ -229,14 +243,14 @@ async function pumpLatest(url, env) {
   const hit = await cache.match(key);
   const fetchedAt = Number(hit?.headers.get("x-fetched-at") || 0);
   if (hit && Date.now() - fetchedAt < RELEASES_FRESH_SEC * 1000) {
-    return new Response(hit.body, { headers: jsonHeaders() });
+    return answerLatest(await hit.json(), url);
   }
   let latest;
   try {
     latest = await findPumpLatest(env, hw, proto);
   } catch (e) {
     console.error("pump latest failed", e && e.message);
-    if (hit) return new Response(hit.body, { headers: jsonHeaders() });
+    if (hit) return answerLatest(await hit.json(), url);
     return json({ error: "releases unavailable" }, 502);
   }
   if (!latest) return json({ error: "no firmware" }, 404);
@@ -251,7 +265,41 @@ async function pumpLatest(url, env) {
       },
     }),
   );
-  return new Response(body, { headers: jsonHeaders() });
+  return answerLatest(latest, url);
+}
+
+/** The cached answer, with the download address on this host. */
+function answerLatest(latest, url) {
+  const out = {
+    version: latest.version,
+    url: `${url.origin}/v1/firmware/pump/download/${latest.version}.bin`,
+    size: latest.size,
+    sha256: latest.sha256,
+  };
+  return new Response(JSON.stringify(out), { headers: jsonHeaders() });
+}
+
+/** Stream a pump release's binary from GitHub (see the header comment). */
+async function pumpDownload(version, env) {
+  const cached = await cachedReleases(env);
+  if (!cached) return json({ error: "releases unavailable" }, 502);
+  const rel = (await cached.json()).find(
+    (r) => !r.draft && !r.prerelease && r.tag_name === `pump-v${version}`,
+  );
+  const bin = rel && (rel.assets || []).find((a) => a.name === "pump_node.bin");
+  if (!bin) return json({ error: "no such release" }, 404);
+  const res = await fetch(bin.browser_download_url, {
+    headers: { "user-agent": "tanklink-report-worker" },
+  });
+  if (!res.ok || !res.body) return json({ error: "download failed" }, 502);
+  const headers = {
+    "content-type": "application/octet-stream",
+    // A release never changes, so this can be cached hard.
+    "cache-control": "public, max-age=86400, immutable",
+  };
+  const len = res.headers.get("content-length");
+  if (len) headers["content-length"] = len;
+  return new Response(res.body, { headers });
 }
 
 function jsonHeaders() {
