@@ -19,7 +19,7 @@
 #define CONFIG_PUMP_FACTORY_RESET_EXTRA_MS 10000
 #endif
 #ifndef CONFIG_PUMP_ACTION_HOLD_MS
-#define CONFIG_PUMP_ACTION_HOLD_MS 1000
+#define CONFIG_PUMP_ACTION_HOLD_MS 500
 #endif
 
 static board_button_cb_t s_start_cb;

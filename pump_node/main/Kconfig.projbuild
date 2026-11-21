@@ -68,7 +68,7 @@ menu "Pump Board"
         int "Hold button then release to start pump (ms)"
         depends on PUMP_ENABLE_BUTTON
         range 200 5000
-        default 1000
+        default 500
         help
             While the pump is off: hold at least this long, then release, to turn ON.
             Center LED fills while held.

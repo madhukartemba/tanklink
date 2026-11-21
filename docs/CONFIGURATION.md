@@ -43,7 +43,7 @@ Menu: **Pump Board**. The values below are the ones in `sdkconfig.defaults`.
 | `PUMP_ENABLE_BUTTON` | `y` | Single button |
 | `PUMP_BUTTON_GPIO` | `9` | Parallel with the onboard BOOT button |
 | `PUMP_BUTTON_ACTIVE_LOW` | `y` | Button to GND, internal pull-up |
-| `PUMP_ACTION_HOLD_MS` | `1000` | Hold then release while off = pump ON |
+| `PUMP_ACTION_HOLD_MS` | `500` | Hold then release while off = pump ON |
 | `PUMP_PAIRING_HOLD_MS` | `5000` | Hold = BLE pairing window |
 | `PUMP_FACTORY_RESET_EXTRA_MS` | `10000` | Keep holding this much longer = factory reset (~15 s total) |
 | `PUMP_PAIRING_TIMEOUT_MS` | `60000` | How long the BLE pairing window stays open |
