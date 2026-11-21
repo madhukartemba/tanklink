@@ -16,6 +16,7 @@ List<int> u32(int v) => [
 ];
 
 void main() {
+  alertTests();
   group('PumpInfo', () {
     final bytes = [
       1, 0, 2, // proto 1.0, board rev 2
@@ -562,6 +563,57 @@ void main() {
       expect(page.networks.first.ssid, 'Home');
       expect(page.networks.first.rssi, -60);
       expect(page.networks.last.supported, isFalse);
+    });
+  });
+}
+
+void alertTests() {
+  group('Alerts', () {
+    test('the tag matches the firmware', () {
+      // Same vectors as make_tag in pump_node/main/pump_alert.c, from
+      // HMAC-SHA256(key 00..0f, device 84c7bbfbe5fe || seq type arg).
+      final key = List<int>.generate(16, (i) => i);
+      final id = [0x84, 0xc7, 0xbb, 0xfb, 0xe5, 0xfe];
+      String hexOf(List<int> b) =>
+          b.map((v) => v.toRadixString(16).padLeft(2, '0')).join();
+      expect(hexOf(alertTag(key, id, 7, 1, 0)), '3e12569f');
+      expect(hexOf(alertTag(key, id, 255, 5, 3)), '9768362b');
+    });
+
+    test(
+      'an alert in the advertisement is read, without the bit it is not',
+      () {
+        final a = pumpAdvAlert({
+          0xFFFF: [0x06, 9, 2, 1, 1, 2, 3, 4],
+        })!;
+        expect([a.seq, a.type, a.arg], [9, 2, 1]);
+        expect(
+          pumpAdvAlert({
+            0xFFFF: [0x02, 0, 0, 0, 0, 0, 0, 0],
+          }),
+          isNull,
+        );
+        expect(
+          pumpAdvAlert({
+            0xFFFF: [0x01],
+          }),
+          isNull,
+        );
+      },
+    );
+
+    test('the alert log is read newest first', () {
+      final log = parseAlertLog([2, 12, 1, 0, 5, 0, 11, 5, 2, 0x2c, 0x01]);
+      expect(log.length, 2);
+      expect(
+        [log[0].seq, log[0].type, log[0].arg, log[0].ageMin],
+        [12, 1, 0, 5],
+      );
+      expect(
+        [log[1].seq, log[1].type, log[1].arg, log[1].ageMin],
+        [11, 5, 2, 300],
+      );
+      expect(parseAlertLog([]), isEmpty);
     });
   });
 }

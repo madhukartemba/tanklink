@@ -53,6 +53,7 @@ Pump (`pump_node/main/`):
 | `pump_api.c` | The app API, shared by both transports: one `pump_api_read` / `pump_api_write` per characteristic, sessions, sign-in. Pair stays in `gatt_svr.c` (BLE only) |
 | `pump_wifi.c` | Optional Wi-Fi: saved network (`tl_wifi`), reconnect, scan, mDNS, SNTP time |
 | `pump_wifi_api.c` | TCP server on port 7580: the same API over Wi-Fi (framing, tags) |
+| `pump_alert.c` | Alerts: events (tank full, auto-off, power cut, tank offline, battery low), the alert key, tag, log and the advertisement bytes |
 | `pump_update.c` | The pump checks the report service daily and installs its own update (optionally at night) |
 
 App (`tanklink_app/lib/`):
@@ -62,6 +63,7 @@ App (`tanklink_app/lib/`):
 | `ble/protocol.dart` | Byte layouts (pure, unit tested) |
 | `ble/models.dart` | Saved pumps, tank slots, schedules |
 | `ble/pump_session.dart` | Connection (Wi-Fi first when the pump has it, else Bluetooth), state the screens read, commands |
+| `alerts/alert_bridge.dart` | Dart side of the Android alert code (`android/.../Alert*.kt`: background Bluetooth scan, one notifier, boot receiver) |
 | `link/` | `PumpChr` (one characteristic over either link), `wifi_link.dart` (TCP framing and tags), `ble_link.dart`, `pump_finder.dart` (mDNS lookup through MainActivity) |
 | `ble/ota_upload.dart` | The shared OTA transfer for pump and tank |
 | `update/` | GitHub release checks, downloads, update flows |
@@ -82,6 +84,7 @@ These values are duplicated by hand. There is no codegen. If you change one, cha
 | Sign-in answer, LoRa tag, tank OTA token | `components/tanklink_lora/tanklink_crypto.c` (shared) | same | `authResponse` in `tanklink_app/lib/ble/protocol.dart` (covered by `test/auth_test.dart`) |
 | Report body (`POST /v1/report`) | — | — | `tanklink_app/lib/diag/report_builder.dart` (`toJson`) ↔ `report_worker/src/index.js` |
 | BLE payload layouts | `pump_node/main/gatt_payloads.c` (reads) and the handlers in `gatt_svr.c` (writes) | `tank_node/main/tank_gatt.c` | `tanklink_app/lib/ble/protocol.dart` (covered by `test/protocol_test.dart`) |
+| Alert tag and advertisement layout | `pump_node/main/pump_alert.c`, `main.c` (`advertise`) | — | `lib/ble/protocol.dart` (`alertTag`, `pumpAdvAlert`; `test/protocol_test.dart`) and `AlertNotifier.kt` / `AlertScanReceiver.kt` |
 | Wi-Fi transport framing, tags, status codes | `pump_node/main/pump_wifi_api.c` | — | `tanklink_app/lib/link/wifi_link.dart` (covered by `test/wifi_link_test.dart`, same vectors as `scripts/wifi_api_check.py`) |
 | Update request (`GET /v1/firmware/pump/latest`) | `pump_node/main/pump_update.c` | — | `report_worker/src/index.js` |
 | Protocol versions | `TANKLINK_PROTO_MAJOR/MINOR` in `tanklink_uuid.h` | same names in `tanklink_ble_uuid.h` | `TankLinkUuids.protoMajor` |

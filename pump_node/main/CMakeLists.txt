@@ -18,6 +18,7 @@ idf_component_register(
         "pump_wifi.c"
         "pump_api.c"
         "pump_update.c"
+        "pump_alert.c"
         "pump_wifi_api.c"
         "gatt_svr.c"
         "gatt_payloads.c"

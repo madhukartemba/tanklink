@@ -54,6 +54,8 @@ All UUIDs are `7f1a00XX-ac01-4c8c-9b2e-74616e6b6c6e`.
 | 0f | History (last fills) | ✓ | |
 | 10 | Battery (daily battery per sensor) | ✓ | |
 | 11 | Wifi (network setup and status, minor 4) | ✓ | |
+| 12 | Alert key (minor 6) | ✓ | |
+| 13 | Alert log (minor 6) | ✓ | |
 
 Advertised names: pump `TankLink-XXXX` (last 4 hex of MAC), tank `TL-Tank-XXXX`. The tank also puts its `tank_id` in manufacturer data under company ID `0xFFFF`.
 
@@ -111,6 +113,7 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xAA` | Check for a pump update now (Wi-Fi, see Wifi) | none |
 | `0xAB` | Install the update the check found | none |
 | `0xAC` | Forget the "updated automatically" notice | none |
+| `0xAD` | Raise a test alert (see Alerts) | none |
 | `0xB1` | Test beep | — |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |
@@ -283,6 +286,27 @@ The pump must be off and the connection authed.
 | 5 | error | 5 | hash mismatch |
 | | | 6 | wrong state |
 | | | 7 | busy |
+
+### Alerts (minor 6)
+
+An alert is `seq(1) type(1) arg(1)` plus a 4-byte **tag** that proves this pump made it: the first 4 bytes of `HMAC-SHA256(alert_key, device_id[6] || seq || type || arg)`. `seq` runs 1–255 and wraps to 1 (0 = none); it is saved in NVS so a restart doesn't reuse numbers. A phone shows an alert only if `(seq - last_seen) mod 256` is 1–127, so a copy that arrives late, or by a second route, is ignored.
+
+| Type | Meaning | `arg` |
+| --- | --- | --- |
+| 1 | Tank full: a fill stopped because the tank is full | tank slot |
+| 2 | A fill stopped by auto-off | tank slot |
+| 3 | A fill was cut short by a power cut | tank slot |
+| 4 | The selected tank's sensor went out of range | tank slot |
+| 5 | A sensor's battery is at or below 20 % (again after 24 hours while it stays low, and after it has been back above 30 %) | sensor index |
+| 6 | Test alert (Cmd `0xAD`) | `0xFF` |
+
+Only a stop by "tank full" or by auto-off is an alert; stops from the app, the button or the system are the user's own action.
+
+**Alert key (`0x12`, read, signed in):** 16 bytes, one random key per pump shared by its paired phones. It is made when the first phone pairs. It is replaced when phones are removed (unpair, *Sign out other phones*, factory reset), so a removed phone's key stops working. Refused until a phone has paired.
+
+**Alert log (`0x13`, read + notify, signed in):** `count(1)` then `count` × `seq(1) type(1) arg(1) age_min(u16)`, newest first, up to 8. Kept in RAM, so it starts empty after a restart. The app reads it after signing in to catch up on alerts it missed.
+
+**In the advertisement:** the manufacturer data is always the company ID `0xFFFF`, the state byte and **7 more bytes** (`seq type arg tag[4]`, zeros without an alert), so the advertisement is always 30 of 31 bytes. State bit `0x04` means an alert is in those bytes. The pump keeps an alert there for **60 minutes** (2 minutes for a test), and a new alert replaces it. A background scan filtered on that bit lets Android wake the app with it closed (`AlertScanner.kt`); a pump with no alert, and a tank sensor (6 bytes of manufacturer data), never match.
 
 ## Wi-Fi transport
 

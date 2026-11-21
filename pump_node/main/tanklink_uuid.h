@@ -26,6 +26,8 @@ extern "C" {
  *   History  7f1a000f-ac01-4c8c-9b2e-74616e6b6c6e
  *   Battery  7f1a0010-ac01-4c8c-9b2e-74616e6b6c6e
  *   Wifi     7f1a0011-ac01-4c8c-9b2e-74616e6b6c6e
+ *   AlertKey 7f1a0012-ac01-4c8c-9b2e-74616e6b6c6e
+ *   AlertLog 7f1a0013-ac01-4c8c-9b2e-74616e6b6c6e
  */
 #define TANKLINK_UUID_BASE_TAIL 0x6e, 0x6c, 0x6b, 0x6e, 0x61, 0x74, 0x2e, 0x9b, \
                                 0x8c, 0x4c, 0x01, 0xac
@@ -47,6 +49,8 @@ extern "C" {
 #define TANKLINK_CHR_HISTORY_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0f, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_BATTERY_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x10, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_WIFI_INIT  BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x11, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_ALERT_KEY_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x12, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_ALERT_LOG_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x13, 0x00, 0x1a, 0x7f)
 
 #define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
 /* GAP name before the serial suffix is known. Adverts use PREFIX + serial. */
@@ -75,7 +79,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 5
+#define TANKLINK_PROTO_MINOR 6
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -114,6 +118,13 @@ extern "C" {
 #define TANKLINK_ADV_COMPANY_ID     0xFFFF
 #define TANKLINK_ADV_STATE_CLAIMABLE 0x01 /* a phone can add it now */
 #define TANKLINK_ADV_STATE_PAIRED    0x02 /* at least one phone has it */
+/* An alert is in the seven bytes after the state byte (minor 6): seq(1) type(1)
+ * arg(1) tag(4). The manufacturer data is always state + 7 bytes after the
+ * company id, so the advertisement doesn't change length. */
+#define TANKLINK_ADV_STATE_ALERT     0x04
+#define TANKLINK_ADV_MFG_LEN         8
+#define TANKLINK_ALERT_TAG_LEN       4
+#define TANKLINK_ALERT_HOLD_S        3600
 
 /* Cmd opcodes (byte 0). Unknown opcodes are rejected. */
 #define TANKLINK_CMD_OFF       0x00
@@ -141,6 +152,8 @@ extern "C" {
 #define TANKLINK_CMD_UPDATE_INSTALL 0xAB
 /* Forget the "updated automatically" notice once the app has shown it. */
 #define TANKLINK_CMD_UPDATE_DISMISS 0xAC
+/* Raise a test alert (minor 6): shows up like a real one for two minutes. */
+#define TANKLINK_CMD_TEST_ALERT 0xAD
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
 /* Open / close the phone pairing window from a signed-in phone (minor 2).

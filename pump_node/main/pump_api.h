@@ -38,6 +38,8 @@ extern "C" {
 #define PUMP_API_CHR_HISTORY 0x0f
 #define PUMP_API_CHR_BATTERY 0x10
 #define PUMP_API_CHR_WIFI 0x11
+#define PUMP_API_CHR_ALERT_KEY 0x12
+#define PUMP_API_CHR_ALERT_LOG 0x13
 
 /** Biggest value pump_api_read() can return. */
 #define PUMP_API_READ_MAX 512

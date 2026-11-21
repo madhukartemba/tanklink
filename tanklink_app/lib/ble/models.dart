@@ -22,6 +22,7 @@ class SavedPump {
     String? serial,
     this.lastIp,
     this.bleOnly = false,
+    this.alertKey,
   }) : serial = (serial != null && serial.isNotEmpty)
            ? serial.toUpperCase()
            : serialFromDeviceId(deviceIdHex),
@@ -36,6 +37,11 @@ class SavedPump {
   /// The pump's address on the home Wi-Fi when last seen (from its Wi-Fi
   /// status), tried first on connect. Null until the pump has Wi-Fi.
   final String? lastIp;
+
+  /// The pump-wide key that signs its alerts (16 bytes). Read once signed in;
+  /// null until then. It lets the background alert scan check an alert is
+  /// really from this pump.
+  final Uint8List? alertKey;
 
   /// "Connect over: Bluetooth only". Off = automatic (Wi-Fi when reachable).
   final bool bleOnly;
@@ -59,6 +65,7 @@ class SavedPump {
     String? lastIp,
     bool clearLastIp = false,
     bool? bleOnly,
+    Uint8List? alertKey,
   }) {
     final id = deviceIdHex ?? this.deviceIdHex;
     return SavedPump(
@@ -69,11 +76,13 @@ class SavedPump {
       serial: serial ?? this.serial,
       lastIp: clearLastIp ? null : (lastIp ?? this.lastIp),
       bleOnly: bleOnly ?? this.bleOnly,
+      alertKey: alertKey ?? this.alertKey,
     );
   }
 
   Map<String, dynamic> toJson() => {
     if (lastIp != null) 'lastIp': lastIp,
+    if (alertKey != null) 'alertKey': base64Encode(alertKey!),
     'bleOnly': bleOnly,
     'remoteId': remoteId,
     'deviceIdHex': deviceIdHex,
@@ -98,6 +107,9 @@ class SavedPump {
       serial: json['serial'] as String?,
       lastIp: json['lastIp'] as String?,
       bleOnly: json['bleOnly'] as bool? ?? false,
+      alertKey: json['alertKey'] is String
+          ? Uint8List.fromList(base64Decode(json['alertKey'] as String))
+          : null,
     );
   }
 }

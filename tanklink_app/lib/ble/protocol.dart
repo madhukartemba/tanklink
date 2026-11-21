@@ -128,6 +128,70 @@ PumpAdvState pumpAdvState(Map<int, List<int>> manufacturerData) {
       : PumpAdvState.notReady;
 }
 
+/// One alert from the pump: its number, what happened and to which tank or
+/// sensor. [arg] is a tank slot, or a sensor index for a low battery.
+class PumpAlert {
+  const PumpAlert({
+    required this.seq,
+    required this.type,
+    required this.arg,
+    this.ageMin,
+  });
+
+  final int seq;
+  final int type;
+  final int arg;
+
+  /// Minutes since the pump raised it (log entries only).
+  final int? ageMin;
+}
+
+/// The first 4 bytes of HMAC-SHA256(alertKey, deviceId[6] || seq || type ||
+/// arg): what proves an alert came from this pump. Same as make_tag in
+/// pump_node/main/pump_alert.c and AlertNotifier.kt.
+List<int> alertTag(
+  List<int> key,
+  List<int> deviceId,
+  int seq,
+  int type,
+  int arg,
+) {
+  final mac = Hmac(sha256, key).convert([...deviceId, seq, type, arg]).bytes;
+  return mac.sublist(0, TankLinkUuids.alertTagLen);
+}
+
+/// An alert in the pump's advertisement, if it carries one: manufacturer
+/// data state(1) seq type arg tag(4). Null without the alert bit.
+PumpAlert? pumpAdvAlert(Map<int, List<int>> manufacturerData) {
+  final d = manufacturerData[TankLinkUuids.tankMfgCompanyId];
+  if (d == null ||
+      d.length < 8 ||
+      (d[0] & TankLinkUuids.advStateAlert) == 0 ||
+      d[1] == 0) {
+    return null;
+  }
+  return PumpAlert(seq: d[1], type: d[2], arg: d[3]);
+}
+
+/// The Alert log read: count(1), then count x seq type arg age_min(u16),
+/// newest first.
+List<PumpAlert> parseAlertLog(List<int> b) {
+  if (b.isEmpty) return const [];
+  final out = <PumpAlert>[];
+  var o = 1;
+  for (var i = 0; i < b[0] && o + 5 <= b.length; i++, o += 5) {
+    out.add(
+      PumpAlert(
+        seq: b[o],
+        type: b[o + 1],
+        arg: b[o + 2],
+        ageMin: b[o + 3] | (b[o + 4] << 8),
+      ),
+    );
+  }
+  return out;
+}
+
 /// Pump Settings characteristic (pump-wide; auto-off and float modes are
 /// per tank and per sensor).
 class PumpSettings {

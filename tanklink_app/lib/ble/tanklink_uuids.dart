@@ -38,6 +38,27 @@ class TankLinkUuids {
   /// Each sensor's daily battery low and high.
   static final battery = Guid('7f1a0010-ac01-4c8c-9b2e-74616e6b6c6e');
 
+  /// Alerts (minor 6): the pump-wide alert key (read, signed in), and the
+  /// last alerts the pump raised (read + notify, signed in).
+  static final alertKey = Guid('7f1a0012-ac01-4c8c-9b2e-74616e6b6c6e');
+  static final alertLog = Guid('7f1a0013-ac01-4c8c-9b2e-74616e6b6c6e');
+
+  /// Pump advertising state bit: an alert is in the 7 bytes after the state
+  /// byte (seq type arg tag[4]).
+  static const advStateAlert = 0x04;
+  static const alertTagLen = 4;
+
+  /// Alert types (tl_alert_type_t in pump_alert.h).
+  static const alertTankFull = 1;
+  static const alertAutoOff = 2;
+  static const alertPowerCut = 3;
+  static const alertTankOffline = 4;
+  static const alertBatteryLow = 5;
+  static const alertTest = 6;
+
+  /// Raise a test alert on the pump (minor 6).
+  static const cmdTestAlert = 0xAD;
+
   /// Wi-Fi setup and status (minor 4).
   static final wifi = Guid('7f1a0011-ac01-4c8c-9b2e-74616e6b6c6e');
 

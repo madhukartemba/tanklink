@@ -22,6 +22,7 @@
 #include "pump_sched.h"
 #include "pump_tanks.h"
 #include "pump_wifi.h"
+#include "pump_alert.h"
 #include "pump_update.h"
 #include "pump_wifi_api.h"
 #include "status_led.h"
@@ -165,6 +166,16 @@ pump_api_err_t pump_api_read(pump_api_session_t *s, uint8_t chr, uint8_t *out, s
     case PUMP_API_CHR_BATTERY:
         *len = gatt_payload_battery(out);
         break;
+    case PUMP_API_CHR_ALERT_KEY:
+        if (!pump_alert_key(out)) {
+            err = PUMP_API_ERR_REFUSED; /* no phone has paired yet */
+        } else {
+            *len = 16;
+        }
+        break;
+    case PUMP_API_CHR_ALERT_LOG:
+        *len = pump_alert_log_payload(out);
+        break;
     case PUMP_API_CHR_WIFI:
         *len = s->wifi_page == WIFI_READ_STATUS ? gatt_payload_wifi_status(out)
                                                 : gatt_payload_wifi_scan(out, s->wifi_page);
@@ -218,6 +229,10 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
     case TANKLINK_CMD_OFF:
     case TANKLINK_CMD_ON:
         pump_control_set(body[0] == TANKLINK_CMD_ON, PUMP_CAUSE_APP);
+        return PUMP_API_OK;
+
+    case TANKLINK_CMD_TEST_ALERT:
+        pump_alert_raise(TL_ALERT_TEST, 0xFF);
         return PUMP_API_OK;
 
     case TANKLINK_CMD_UPDATE_CHECK:

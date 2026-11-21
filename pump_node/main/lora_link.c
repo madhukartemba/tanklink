@@ -1,4 +1,5 @@
 #include "lora_link.h"
+#include "pump_alert.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -505,6 +506,7 @@ static void apply_tank_packet(uint8_t node, const tanklink_lora_status_t *pkt,
     rt->rssi_dbm = rssi_dbm;
     rt->snr_db = snr_db;
     pump_battery_log_note(node, rt->bat);
+    pump_alert_note_battery(node, rt->bat);
     const bool active = node == pump_tanks_active_node();
     bool full = false;
     if (active) {
@@ -673,6 +675,7 @@ static void poll_online(void)
                      CONFIG_PUMP_TANK_STALE_SEC);
             if (n == active) {
                 pump_control_set_error(PUMP_ERR_TANK_OFFLINE);
+                pump_alert_raise(TL_ALERT_TANK_OFFLINE, pump_tanks_active());
             }
             gatt_svr_notify_nodes();
         } else if (online && !rt->was_online) {

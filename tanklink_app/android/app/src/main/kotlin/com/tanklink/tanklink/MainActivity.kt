@@ -2,6 +2,7 @@ package com.tanklink.tanklink
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Handler
@@ -17,6 +18,8 @@ import java.util.ArrayDeque
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALERTS_CHANNEL)
+            .setMethodCallHandler { call, result -> handleAlerts(call, result) }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler {
                 call,
                 result ->
@@ -153,7 +156,90 @@ class MainActivity : FlutterActivity() {
         main.postDelayed({ finish(null) }, timeoutMs)
     }
 
+    /** lib/alerts/alert_bridge.dart: what the background alert code needs. */
+    private fun handleAlerts(call: io.flutter.plugin.common.MethodCall, result: MethodChannel.Result) {
+        when (call.method) {
+            "isSupported" -> result.success(AlertScanner.supported())
+            "syncPumps" -> {
+                val list = call.argument<List<Map<String, Any?>>>("pumps") ?: emptyList()
+                val pumps = list.mapNotNull { m ->
+                    val key = AlertStore.hex(m["key"] as? String ?: "")
+                    if (key.size != 16) return@mapNotNull null
+                    @Suppress("UNCHECKED_CAST")
+                    AlertStore.Pump(
+                        m["id"] as String,
+                        m["mac"] as String,
+                        m["name"] as String,
+                        key,
+                        (m["tanks"] as? List<String>) ?: emptyList(),
+                        (m["sensors"] as? List<String>) ?: emptyList(),
+                    )
+                }
+                AlertStore.setPumps(this, pumps)
+                AlertScanner.register(this)
+                result.success(true)
+            }
+            "setEnabled" -> {
+                AlertStore.setEnabled(this, call.argument<Boolean>("on") ?: false)
+                AlertScanner.register(this)
+                result.success(true)
+            }
+            "isEnabled" -> result.success(AlertStore.enabled(this))
+            "setTypes" -> {
+                AlertStore.setTypes(this, call.argument<List<Int>>("types") ?: emptyList())
+                result.success(true)
+            }
+            "types" -> result.success(AlertStore.types(this).toList())
+            "showAlert" -> {
+                // The app saw an alert over its own connection (trusted: no tag).
+                val id = call.argument<String>("id") ?: ""
+                val pump = AlertStore.pumps(this).firstOrNull { it.id.equals(id, ignoreCase = true) }
+                if (pump == null) {
+                    result.success(false)
+                    return
+                }
+                result.success(
+                    AlertNotifier.handle(
+                        this,
+                        pump,
+                        call.argument<Int>("seq") ?: 0,
+                        call.argument<Int>("type") ?: 0,
+                        call.argument<Int>("arg") ?: 0,
+                        null,
+                    ),
+                )
+            }
+            "permissions" -> {
+                val notif = Build.VERSION.SDK_INT < 33 ||
+                    checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                result.success(mapOf("notifications" to notif, "scan" to AlertScanner.hasScanPermission(this)))
+            }
+            "requestPermissions" -> {
+                val need = mutableListOf<String>()
+                if (Build.VERSION.SDK_INT >= 33) need.add(android.Manifest.permission.POST_NOTIFICATIONS)
+                if (Build.VERSION.SDK_INT >= 31) need.add(android.Manifest.permission.BLUETOOTH_SCAN)
+                if (need.isNotEmpty()) requestPermissions(need.toTypedArray(), 7)
+                result.success(true)
+            }
+            "batteryUnrestricted" -> {
+                val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                result.success(pm.isIgnoringBatteryOptimizations(packageName))
+            }
+            "openBatterySettings" -> {
+                startActivity(
+                    Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                        .setData(android.net.Uri.parse("package:$packageName"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+                result.success(true)
+            }
+            else -> result.notImplemented()
+        }
+    }
+
     companion object {
         private const val CHANNEL = "com.tanklink/install"
+        private const val ALERTS_CHANNEL = "tanklink/alerts"
     }
 }

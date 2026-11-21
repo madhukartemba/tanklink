@@ -25,6 +25,7 @@
 #include "pump_control.h"
 #include "pump_diag.h"
 #include "lora_link.h"
+#include "pump_alert.h"
 #include "pump_clock.h"
 #include "pump_config.h"
 #include "pump_sched.h"
@@ -119,6 +120,7 @@ static void pair_poll_task(void *arg)
     while (1) {
         pump_pair_poll();
         pump_clock_poll();
+        pump_alert_poll();
         pump_wifi_poll();
         pump_update_poll();
         pump_control_poll();
@@ -162,9 +164,16 @@ static void advertise(void)
     if (pump_pair_is_paired()) {
         state |= TANKLINK_ADV_STATE_PAIRED;
     }
-    const uint8_t mfg[3] = {
+    /* Always state + 7 alert bytes (zeros without an alert): the length never
+     * changes, so the advertisement always fits (3 + 15 + 12 = 30 of 31). */
+    uint8_t mfg[2 + TANKLINK_ADV_MFG_LEN] = {
         TANKLINK_ADV_COMPANY_ID & 0xFF, TANKLINK_ADV_COMPANY_ID >> 8, state,
     };
+    if (pump_alert_adv_bytes(&mfg[3])) {
+        mfg[2] |= TANKLINK_ADV_STATE_ALERT;
+    }
+    _Static_assert(3 + (2 + 13) + (2 + 2 + TANKLINK_ADV_MFG_LEN) <= 31,
+                   "advertisement must fit 31 bytes");
 
     struct ble_hs_adv_fields fields;
     memset(&fields, 0, sizeof(fields));
@@ -367,6 +376,11 @@ void app_main(void)
     pump_config_apply_led();
     soft(pump_pair_init(), "pairing");
     pump_pair_set_change_callback(on_pair_state_changed);
+    pump_alert_init();
+    pump_alert_set_change_callback(on_pair_state_changed); /* restarts advertising */
+    if (pump_runlog_interrupted_this_boot()) {
+        pump_alert_raise(TL_ALERT_POWER_CUT, pump_tanks_active());
+    }
     board_set_long_press_callback(on_ble_pair_hold);
     board_set_factory_reset_callback(on_factory_reset_hold);
     board_set_start_callback(on_start);

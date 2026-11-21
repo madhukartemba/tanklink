@@ -12,6 +12,7 @@
 #include "nvs_flash.h"
 #include "relay_control.h"
 #include "sdkconfig.h"
+#include "pump_alert.h"
 #include "status_led.h"
 #include "tanklink_crypto.h"
 
@@ -253,6 +254,7 @@ esp_err_t pump_pair_claim(uint8_t out_token[TANKLINK_TOKEN_LEN], int *out_phone)
         return err;
     }
     ESP_LOGI(TAG, "CLAIMED phone %d serial=%s", phone, s_serial);
+    pump_alert_phone_added();
     memcpy(out_token, s_pair.tokens[phone], TANKLINK_TOKEN_LEN);
     *out_phone = phone;
     /* One phone per window: the next one needs the window opened again. */
@@ -304,6 +306,7 @@ esp_err_t pump_pair_forget_others(int keep_phone)
     }
     s_pair.phones = (uint8_t)(1u << keep_phone);
     ESP_LOGI(TAG, "signed out every phone but %d", keep_phone);
+    pump_alert_phones_removed(true); /* the removed phones' key is now useless */
     return save_blob();
 }
 
@@ -320,6 +323,7 @@ esp_err_t pump_pair_unpair(void)
     }
     s_pairing_active = true;
     s_pairing_deadline_us = esp_timer_get_time() + (int64_t)CONFIG_PUMP_PAIRING_TIMEOUT_MS * 1000;
+    pump_alert_phones_removed(false);
     ESP_LOGI(TAG, "UNPAIRED via command serial=%s", s_serial);
     refresh_led_for_pair_state();
     notify_change();

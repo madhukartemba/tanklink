@@ -17,6 +17,7 @@
 #include "services/gatt/ble_svc_gatt.h"
 
 #include "gatt_payloads.h"
+#include "pump_alert.h"
 #include "pump_api.h"
 #include "pump_control.h"
 #include "pump_diag.h"
@@ -43,6 +44,7 @@ typedef enum {
     SUB_HISTORY,
     SUB_BATTERY,
     SUB_WIFI,
+    SUB_ALERTS,
     SUB_COUNT,
 } sub_t;
 
@@ -53,6 +55,7 @@ static const uint8_t s_sub_chr[SUB_COUNT] = {
     [SUB_TANKS] = PUMP_API_CHR_TANKS,     [SUB_NODES] = PUMP_API_CHR_NODES,
     [SUB_HISTORY] = PUMP_API_CHR_HISTORY, [SUB_BATTERY] = PUMP_API_CHR_BATTERY,
     [SUB_WIFI] = PUMP_API_CHR_WIFI,
+    [SUB_ALERTS] = PUMP_API_CHR_ALERT_LOG,
 };
 
 typedef struct {
@@ -184,6 +187,12 @@ void gatt_svr_notify_sched(void)
     notify_all(SUB_SCHED, buf, gatt_payload_sched(buf));
 }
 
+void gatt_svr_notify_alerts(void)
+{
+    uint8_t buf[PUMP_ALERT_LOG_MAX_LEN];
+    notify_all(SUB_ALERTS, buf, pump_alert_log_payload(buf));
+}
+
 void gatt_svr_notify_wifi(void)
 {
     uint8_t buf[GATT_WIFI_STATUS_MAX_LEN];
@@ -310,6 +319,8 @@ static const ble_uuid128_t uuid_nodes = TANKLINK_CHR_NODES_INIT;
 static const ble_uuid128_t uuid_history = TANKLINK_CHR_HISTORY_INIT;
 static const ble_uuid128_t uuid_battery = TANKLINK_CHR_BATTERY_INIT;
 static const ble_uuid128_t uuid_wifi = TANKLINK_CHR_WIFI_INIT;
+static const ble_uuid128_t uuid_alert_key = TANKLINK_CHR_ALERT_KEY_INIT;
+static const ble_uuid128_t uuid_alert_log = TANKLINK_CHR_ALERT_LOG_INIT;
 
 #define F_R BLE_GATT_CHR_F_READ
 #define F_W BLE_GATT_CHR_F_WRITE
@@ -347,6 +358,11 @@ static const struct ble_gatt_svc_def s_services[] = {
              .val_handle = &s_val_handle[SUB_BATTERY]},
             {.uuid = &uuid_wifi.u, .access_cb = on_chr, .arg = (void *)(uintptr_t)PUMP_API_CHR_WIFI, .flags = F_R | F_W | F_N,
              .val_handle = &s_val_handle[SUB_WIFI]},
+            {.uuid = &uuid_alert_key.u, .access_cb = on_chr,
+             .arg = (void *)(uintptr_t)PUMP_API_CHR_ALERT_KEY, .flags = F_R},
+            {.uuid = &uuid_alert_log.u, .access_cb = on_chr,
+             .arg = (void *)(uintptr_t)PUMP_API_CHR_ALERT_LOG, .flags = F_R | F_N,
+             .val_handle = &s_val_handle[SUB_ALERTS]},
             {0},
         },
     },

@@ -9,6 +9,7 @@
 #include "buzzer.h"
 #include "gatt_svr.h"
 #include "lora_link.h"
+#include "pump_alert.h"
 #include "pump_clock.h"
 #include "pump_config.h"
 #include "pump_errors.h"
@@ -173,6 +174,12 @@ static void set_state(bool on, bool beep, pump_cause_t cause)
             .stopped_by = (uint8_t)cause,
         };
         pump_history_add(&fill);
+        /* Only these two stops are news: the others are the user's own doing. */
+        if (cause == PUMP_CAUSE_TANK_FULL) {
+            pump_alert_raise(TL_ALERT_TANK_FULL, fill.slot);
+        } else if (cause == PUMP_CAUSE_AUTO_OFF) {
+            pump_alert_raise(TL_ALERT_AUTO_OFF, fill.slot);
+        }
         s_stopped_us = esp_timer_get_time();
         if (s_fill_started_by == PUMP_CAUSE_AUTO_FILL && cause != PUMP_CAUSE_TANK_FULL) {
             s_af_paused = true;

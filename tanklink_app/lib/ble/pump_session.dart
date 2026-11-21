@@ -6,6 +6,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../alerts/alert_bridge.dart';
 import '../diag/app_log.dart';
 import '../link/ble_link.dart';
 import '../link/pump_link.dart';
@@ -165,6 +166,7 @@ class PumpSession extends ChangeNotifier {
   /// The pump's own Wi-Fi status (null until read, or before Wi-Fi exists).
   WifiStatus? wifiStatus;
   StreamSubscription<List<int>>? _wifiNotifySub;
+  StreamSubscription<List<int>>? _alertNotifySub;
   Timer? _wifiProbeTimer;
   DateTime _skipWifiUntil = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -454,6 +456,9 @@ class PumpSession extends ChangeNotifier {
 
     selectedRemoteId =
         prefs.getString('selected_pump_id') ?? pumps.firstOrNull?.remoteId;
+    // The background alert code knows the saved pumps from the start, so an
+    // alert can be shown before (or without) any connection.
+    unawaited(syncAlertBridge());
 
     if (selected == null) {
       status = 'Add a pump to get started';
@@ -518,6 +523,7 @@ class PumpSession extends ChangeNotifier {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
     await _upsertPump(pump.copyWith(name: trimmed), select: false);
+    unawaited(syncAlertBridge());
     if (selectedRemoteId == pump.remoteId) {
       notifyListeners();
     }
@@ -533,6 +539,7 @@ class PumpSession extends ChangeNotifier {
       selectedRemoteId = pumps.firstOrNull?.remoteId;
     }
     await _persistAll();
+    unawaited(syncAlertBridge());
     if (selected != null) {
       status = 'Select a pump';
       notifyListeners();
@@ -772,6 +779,77 @@ class PumpSession extends ChangeNotifier {
     } finally {
       _probing = false;
     }
+  }
+
+  /// Alerts: keep the pump's alert key (the background scan needs it to know
+  /// an alert is really from this pump), tell Kotlin about the pump, and follow
+  /// the pump's alert log, which also catches up on alerts missed while away.
+  Future<void> _bindAlerts() async {
+    try {
+      final key = await _chr(TankLinkUuids.alertKey).read();
+      final cur = selected;
+      if (key.length == 16 && cur != null) {
+        final k = Uint8List.fromList(key);
+        if (cur.alertKey == null || !listEquals(cur.alertKey, k)) {
+          await _upsertPump(cur.copyWith(alertKey: k), select: false);
+        }
+      }
+      await syncAlertBridge();
+      _alertNotifySub = await _follow(
+        _chr(TankLinkUuids.alertLog),
+        _alertNotifySub,
+        (v) => unawaited(_showAlerts(parseAlertLog(v))),
+      );
+    } catch (e) {
+      AppLog.w('alerts', 'Alerts not available: $e');
+    }
+  }
+
+  /// Give each alert to the Android notifier, oldest first. It shows an alert
+  /// once, whichever way it arrived, and skips ones it has shown.
+  Future<void> _showAlerts(List<PumpAlert> alerts) async {
+    final id = selected?.deviceIdHex;
+    if (id == null) return;
+    for (final a in alerts.reversed) {
+      if ((a.ageMin ?? 0) > 24 * 60) continue;
+      await AlertBridge.showAlert(id.toLowerCase(), a.seq, a.type, a.arg);
+    }
+  }
+
+  /// Tell the Android alert code which pumps to recognise, and their names.
+  Future<void> syncAlertBridge() async {
+    String hex(List<int> b) =>
+        b.map((v) => v.toRadixString(16).padLeft(2, '0')).join();
+    final list = <Map<String, Object?>>[];
+    for (final p in pumps) {
+      final key = p.alertKey;
+      if (key == null || key.length != 16) continue;
+      final isCurrent = p.remoteId == selected?.remoteId;
+      list.add({
+        'id': p.deviceIdHex.toLowerCase(),
+        'mac': p.remoteId,
+        'name': p.name,
+        'key': hex(key),
+        // Names are known for the pump we are connected to.
+        'tanks': [
+          for (var i = 0; i < TankLinkUuids.tankSlotMax; i++)
+            isCurrent ? tankNameFor(i) : 'Tank ${i + 1}',
+        ],
+        'sensors': [
+          for (var i = 0; i < TankLinkUuids.sensorMax; i++)
+            isCurrent && sensorAt(i) != null
+                ? 'Tank sensor ${sensorAt(i)!.shortId}'
+                : 'Tank sensor ${i + 1}',
+        ],
+      });
+    }
+    await AlertBridge.syncPumps(list);
+  }
+
+  /// Raise a test alert on the pump: it shows up like a real one.
+  Future<void> sendTestAlert() async {
+    if (!authed) throw StateError('Not connected');
+    await _cmd!.write([TankLinkUuids.cmdTestAlert], withoutResponse: false);
   }
 
   /// Follow the pump's own Wi-Fi status and remember its address.
@@ -1612,6 +1690,7 @@ class PumpSession extends ChangeNotifier {
       debugPrint('settings read failed: $e');
     }
     await _bindWifi();
+    await _bindAlerts();
     if (link == LinkKind.bluetooth) _startWifiProbe();
     status = 'Connected';
   }
@@ -1946,6 +2025,8 @@ class PumpSession extends ChangeNotifier {
     await _batteryNotifySub?.cancel();
     await _wifiNotifySub?.cancel();
     _wifiNotifySub = null;
+    await _alertNotifySub?.cancel();
+    _alertNotifySub = null;
     _wifiProbeTimer?.cancel();
     _wifiProbeTimer = null;
     final wifi = _wifi;
@@ -2399,6 +2480,7 @@ class PumpSession extends ChangeNotifier {
     }
     activeSlot = list.activeSlot;
     tanks = list.slots;
+    unawaited(syncAlertBridge()); // tank names are in the notification text
   }
 
   @override

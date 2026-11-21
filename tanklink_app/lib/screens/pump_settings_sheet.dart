@@ -18,6 +18,7 @@ import 'starter_settings_screen.dart';
 import 'settings/tank_sensor_screen.dart';
 import 'settings/add_phone_dialog.dart';
 import 'settings/update_tiles.dart';
+import 'settings/alerts_screen.dart';
 import 'settings/wifi_screen.dart';
 import 'settings/buzzer_settings_sheet.dart';
 import 'settings/led_brightness_tile.dart';
@@ -179,6 +180,21 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                         ),
                       );
                     },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.notifications_outlined),
+              title: const Text('Alerts'),
+              subtitle: const Text(
+                'Tank full, power cut and more, even with the app closed',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const AlertsScreen()),
+                );
+              },
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
