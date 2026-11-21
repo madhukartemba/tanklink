@@ -92,3 +92,10 @@ CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=16
 # bundle holds the self-signed root, so without this every handshake ended in
 # "No matching trusted root certificate found".
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
+
+# Wi-Fi code in flash, not IRAM. The IRAM copies take internal RAM that the
+# heap needs: the pump's own HTTPS download dipped to 9 KB free with them on.
+# Costs some Wi-Fi throughput, which a 4.2 KB-per-frame control link and a
+# 700 KB update don't need.
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
