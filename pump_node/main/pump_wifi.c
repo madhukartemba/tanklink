@@ -29,7 +29,8 @@
 #define PUMP_WIFI_TX_POWER 34
 
 #define BACKOFF_MIN_MS 2000
-#define BACKOFF_MAX_MS (5 * 60 * 1000)
+/* A mains-powered pump with a router that is back should rejoin within a minute. */
+#define BACKOFF_MAX_MS (60 * 1000)
 /* Apply an SNTP time only when it differs this much, to spare the RTC. */
 #define SNTP_MIN_STEP_SEC 2
 

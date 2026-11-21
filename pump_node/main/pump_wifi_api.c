@@ -21,6 +21,10 @@
 
 /* length(2) hdr(6) payload tag(8); the longest payload is an OTA chunk write. */
 #define MAX_FRAME_LEN (PUMP_WIFI_API_HDR_LEN + PUMP_API_WRITE_MAX + PUMP_WIFI_API_TAG_LEN)
+/* A client's receive buffer starts small (every command, read and setting fits)
+ * and grows to MAX_FRAME_LEN only for the frame that needs it (an OTA chunk),
+ * then shrinks again: three clients would otherwise hold 3 x 2 KB for nothing. */
+#define RX_SMALL 512
 /* The longest frame the pump sends: a read result, status byte plus value. */
 #define TX_BUF_LEN (2 + PUMP_WIFI_API_HDR_LEN + 1 + PUMP_API_READ_MAX + PUMP_WIFI_API_TAG_LEN)
 
@@ -30,7 +34,8 @@ typedef struct {
     uint8_t key[32]; /* session key, once signed in */
     uint32_t rx_counter;
     uint32_t tx_counter;
-    uint8_t *rx; /* MAX_FRAME_LEN + 2 */
+    uint8_t *rx; /* length field + frame; RX_SMALL + 2 or bigger, see above */
+    size_t rx_cap;
     size_t rx_len;
     int64_t connected_ms;
     int64_t last_rx_ms;
@@ -124,6 +129,7 @@ static void close_client(client_t *c)
     c->fd = -1;
     free(c->rx);
     c->rx = NULL;
+    c->rx_cap = 0;
     memset(c->key, 0, sizeof(c->key));
     memset(&c->api, 0, sizeof(c->api));
     xSemaphoreGive(s_tx_lock);
@@ -212,11 +218,26 @@ static bool handle_frame(client_t *c, const uint8_t *f, size_t n)
 }
 
 /** Process every whole frame in the buffer. False = close the client. */
+static bool resize_rx(client_t *c, size_t cap)
+{
+    uint8_t *p = realloc(c->rx, cap);
+    if (!p) {
+        return false;
+    }
+    c->rx = p;
+    c->rx_cap = cap;
+    return true;
+}
+
 static bool process_rx(client_t *c)
 {
     while (c->rx_len >= 2) {
         const size_t n = (size_t)c->rx[0] | ((size_t)c->rx[1] << 8);
         if (n < PUMP_WIFI_API_HDR_LEN || n > MAX_FRAME_LEN) {
+            return false;
+        }
+        if (c->rx_cap < 2 + n && !resize_rx(c, 2 + n)) {
+            ESP_LOGW(TAG, "no memory for a %u byte frame", (unsigned)n);
             return false;
         }
         if (c->rx_len < 2 + n) {
@@ -227,6 +248,9 @@ static bool process_rx(client_t *c)
         }
         c->rx_len -= 2 + n;
         memmove(c->rx, &c->rx[2 + n], c->rx_len);
+    }
+    if (c->rx_cap > RX_SMALL + 2 && c->rx_len <= RX_SMALL + 2) {
+        resize_rx(c, RX_SMALL + 2); /* shrinking can't fail meaningfully; keep the old one if it does */
     }
     return true;
 }
@@ -245,7 +269,7 @@ static void accept_client(int listener)
             break;
         }
     }
-    uint8_t *rx = c ? malloc(MAX_FRAME_LEN + 2) : NULL;
+    uint8_t *rx = c ? malloc(RX_SMALL + 2) : NULL;
     if (!c || !rx) {
         close(fd);
         ESP_LOGW(TAG, "refused a client (%s)", c ? "memory" : "full");
@@ -256,6 +280,7 @@ static void accept_client(int listener)
     const uint16_t id = c->api.id;
     xSemaphoreTake(s_tx_lock, portMAX_DELAY);
     c->rx = rx;
+    c->rx_cap = RX_SMALL + 2;
     c->rx_len = 0;
     c->rx_counter = 0;
     c->tx_counter = 0;
@@ -320,7 +345,7 @@ static void server_task(void *arg)
             }
             bool keep = true;
             if (FD_ISSET(c->fd, &rd)) {
-                const ssize_t r = recv(c->fd, c->rx + c->rx_len, MAX_FRAME_LEN + 2 - c->rx_len, 0);
+                const ssize_t r = recv(c->fd, c->rx + c->rx_len, c->rx_cap - c->rx_len, 0);
                 if (r <= 0) {
                     keep = false;
                 } else {

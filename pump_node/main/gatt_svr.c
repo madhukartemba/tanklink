@@ -372,6 +372,7 @@ void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg)
 int gatt_svr_init(void)
 {
     memset(s_conns, 0, sizeof(s_conns));
+    pump_api_init();
     ble_svc_gap_init();
     ble_svc_gatt_init();
     pump_ota_set_status_cb(gatt_svr_notify_ota_status);

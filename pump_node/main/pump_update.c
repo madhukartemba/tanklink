@@ -41,6 +41,9 @@
 #define AUTO_MIN_UPTIME_US (10LL * 60 * 1000000)
 #define AUTO_RETRY_US (6LL * 3600 * 1000000)
 
+/* The TLS handshake and certificate checks run on this task: measured use is
+ * about 3.3 KB, so this leaves plenty of margin. */
+#define JOB_STACK 6144
 #define URL_MAX 320
 #define REPLY_MAX 768
 
@@ -364,6 +367,8 @@ static void job_task(void *arg)
         do_install(job == JOB_INSTALL_AUTO);
     }
     log_heap("after job");
+    ESP_LOGI(TAG, "job task stack: %u of %u bytes never used",
+             (unsigned)uxTaskGetStackHighWaterMark(NULL), (unsigned)JOB_STACK);
     s_busy = JOB_NONE;
     changed();
     vTaskDelete(NULL);
@@ -375,7 +380,7 @@ static esp_err_t start_job(job_t job)
         return ESP_ERR_INVALID_STATE;
     }
     s_busy = job;
-    if (xTaskCreate(job_task, "pump_update", 8192, (void *)(uintptr_t)job, 3, NULL) != pdPASS) {
+    if (xTaskCreate(job_task, "pump_update", JOB_STACK, (void *)(uintptr_t)job, 3, NULL) != pdPASS) {
         s_busy = JOB_NONE;
         return ESP_ERR_NO_MEM;
     }

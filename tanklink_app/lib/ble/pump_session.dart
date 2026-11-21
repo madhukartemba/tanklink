@@ -723,7 +723,7 @@ class PumpSession extends ChangeNotifier {
     _clockSyncTimer?.cancel();
     _clockSyncTimer = null;
     _applyPumpOn(false);
-    status = 'Disconnected';
+    status = 'Wi-Fi lost, switching to Bluetooth…';
     connectFailed = true;
     _skipWifiUntil = DateTime.now().add(const Duration(seconds: 20));
     notifyListeners();
@@ -1845,7 +1845,7 @@ class PumpSession extends ChangeNotifier {
       image,
       mtu: _device?.mtuNow ?? 23,
       // Over Wi-Fi the chunks are big: much faster than Bluetooth.
-      chunkSize: _wifi != null ? 4096 : null,
+      chunkSize: _wifi != null ? 2048 : null,
       onProgress: onProgress,
       onVerifying: onVerifying,
     );

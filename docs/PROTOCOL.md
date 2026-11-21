@@ -303,7 +303,7 @@ Frame, all little-endian:
 - **AUTH** (app → pump, untagged): the 16-byte answer `HMAC-SHA256(token, "TLauth" || nonce)[0..16)`, the same as the BLE Auth write, with HELLO's nonce. On success the pump replies RESULT (tagged); on failure it replies RESULT with status 1 (untagged) and closes.
 - `session_key = HMAC-SHA256(token, nonce || "tcp")`, from the same token and nonce. Every later frame carries a tag; the receiver closes the connection on a bad tag or a counter that doesn't go up.
 - Before AUTH only AUTH and a READ of Info (untagged) are accepted. Anything else closes the connection.
-- **READ**: empty payload. **WRITE**: the bytes BLE would write (an OTA data write may carry up to 4096 bytes after the 4-byte offset). Requests are answered in order.
+- **READ**: empty payload. **WRITE**: the bytes BLE would write (an OTA data write may carry up to 2048 bytes after the 4-byte offset). Requests are answered in order.
 - **RESULT**: the request's characteristic id, then `status(1)` (0 ok, 1 not signed in, 2 bad length, 3 refused, 4 out of memory) and, for a successful READ, the value.
 - **NOTIFY**: a characteristic's value, sent to every signed-in client (the pump gives each one everything BLE would, whether or not it "subscribed").
 - A client that sends nothing for 90 s is dropped (send a READ of State as a keep-alive), and one that hasn't signed in after 10 s. A client too slow to take a notification is cut off.

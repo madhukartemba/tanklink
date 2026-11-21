@@ -26,7 +26,7 @@ class WifiFrame {
   static const tagLen = 8;
 
   /// The biggest frame body the pump takes (an OTA chunk write).
-  static const maxBody = headerLen + 4100 + tagLen;
+  static const maxBody = headerLen + 2052 + tagLen;
 }
 
 /// `session_key = HMAC-SHA256(token, nonce || "tcp")`.

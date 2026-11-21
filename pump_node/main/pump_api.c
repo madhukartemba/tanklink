@@ -43,12 +43,15 @@ _Static_assert(GATT_WIFI_SCAN_MAX_LEN <= PUMP_API_READ_MAX, "read buffer");
 /* BLE and TCP handlers run in different tasks; one call at a time. */
 static SemaphoreHandle_t s_lock;
 
-static void lock(void)
+void pump_api_init(void)
 {
     if (!s_lock) {
-        /* First call is at boot, from one task, before any second transport. */
         s_lock = xSemaphoreCreateMutex();
     }
+}
+
+static void lock(void)
+{
     xSemaphoreTake(s_lock, portMAX_DELAY);
 }
 

@@ -91,4 +91,26 @@ void main() {
     expect('${WifiRequestError(1)}', contains('WRITE_NOT_PERMITTED'));
     expect('${WifiRequestError(4)}', contains('INSUFFICIENT_RESOURCES'));
   });
+
+  test('the biggest frame (an OTA chunk) fits, one byte more does not', () {
+    final key = wifiSessionKey(token, nonce);
+    // offset(4) + 2048 bytes of image: what the app sends over Wi-Fi.
+    final chunk = List<int>.filled(4 + 2048, 7);
+    final ok = buildWifiFrame(WifiFrame.write, 0x09, 1, chunk, key: key);
+    expect(
+      (WifiFrameReader()..key = key).add(ok).single.payload.length,
+      chunk.length,
+    );
+    final tooBig = buildWifiFrame(
+      WifiFrame.write,
+      0x09,
+      1,
+      List<int>.filled(2053, 7),
+      key: key,
+    );
+    expect(
+      () => (WifiFrameReader()..key = key).add(tooBig),
+      throwsA(isA<WifiFrameError>()),
+    );
+  });
 }

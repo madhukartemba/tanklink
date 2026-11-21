@@ -41,8 +41,8 @@ extern "C" {
 
 /** Biggest value pump_api_read() can return. */
 #define PUMP_API_READ_MAX 512
-/** Biggest OTA data write: offset(4) plus a 4 KB chunk (Wi-Fi). */
-#define PUMP_API_WRITE_MAX 4100
+/** Biggest OTA data write: offset(4) plus a 2 KB chunk (Wi-Fi). */
+#define PUMP_API_WRITE_MAX 2052
 
 /** The pump itself, as the owner of an update it downloaded (always signed in). */
 #define PUMP_API_LOCAL_ID 0x7FFE
@@ -68,6 +68,9 @@ typedef struct {
     uint8_t nonce[TL_NONCE_LEN];      /* Auth challenge, new after every attempt */
     uint8_t auth_nonce[TL_NONCE_LEN]; /* nonce the phone signed in with */
 } pump_api_session_t;
+
+/** Create the lock the two transports share. Call before either starts. */
+void pump_api_init(void);
 
 /** Reset [s] for a new connection with id [id] and a fresh nonce. */
 void pump_api_session_init(pump_api_session_t *s, uint16_t id);

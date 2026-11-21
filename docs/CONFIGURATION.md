@@ -163,3 +163,11 @@ The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, 
 | Water and power | Nothing on the phone: flow, power, price and currency are pump settings (`usage` in NVS namespace `pump`, Cmd `0xA9`), and the fills come from the pump's history |
 | Update source | GitHub Releases on this repo (`app-v*`, `pump-v*`, `tank-v*`). Highest semver wins, among firmware whose manifest matches the app's protocol major and the board's revision |
 | BLE UUIDs / opcodes | `lib/ble/tanklink_uuids.dart` |
+
+## Memory (pump)
+
+The ESP32-C3 has about 320 KB of RAM. With Bluetooth and Wi-Fi up and no phone busy, about **80 KB** of heap is free. The tightest moment is the pump downloading its own update over HTTPS (TLS buffers, the certificate check and the Wi-Fi packets at once): measured with a dry run of the real 725 KB GitHub download, the lowest free heap was **about 39 KB**, with the largest free block about 32 KB. The pump logs this (`UPDATE: heap ...`, and `DIAG: heap ...` every 30 s) so it can be checked after any change.
+
+What keeps it that way (`pump_node/sdkconfig.defaults`, each with a comment): Wi-Fi code in flash, not IRAM; station mode only; fewer Wi-Fi and lwIP buffers and sockets; no receive aggregation; TLS buffers allocated when needed; and the certificate bundle with cross-signed roots (without it every HTTPS connection fails). In code: the Wi-Fi API receive buffer starts at 0.5 KB per client and grows only for an OTA chunk (2 KB); the update runs on a short-lived 6 KB task.
+
+Free flash in the OTA slot: about 18% (the image is about 1.5 MB of 1.75 MB). A change that adds more than ~200 KB needs a smaller feature set or a bigger partition table (which needs an `erase-flash` over USB).
