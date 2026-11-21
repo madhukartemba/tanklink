@@ -14,6 +14,8 @@ A local (no cloud) water-tank pump controller with three parts:
 | Shared LoRa driver | [`components/tanklink_lora/`](components/tanklink_lora/) | SX1278 (RA-02, 433 MHz) driver + packet format | Used by both firmware nodes |
 | Report service | [`report_worker/`](report_worker/) | Cloudflare Worker | Receives "Report a problem" from the app (issues in a private GitHub repo) and serves the cached release list for update checks |
 
+The pump can also join the home Wi-Fi (optional, set up from the app over BLE). Then the app controls it over TCP with the same bytes as BLE, and the pump can download its own updates. BLE stays required for setup, phone pairing and the tank.
+
 Flow: the tank wakes on a float change or a 5-minute heartbeat, sends a LoRa STATUS packet with raw float pin levels, and sleeps. A pump pairs up to 4 tank sensors; each sensor's float mode says what its pins mean (full / almost-empty / second tank), giving up to 8 tanks. The pump fills one **selected** tank at a time (the user sets a valve or lever to match); only that tank's float can block a start or stop a fill. It drives the starter relays and serves state to the app over BLE. The app is the only UI besides the single pump button.
 
 ## Docs map
@@ -29,7 +31,7 @@ Flow: the tank wakes on a float change or a 5-minute heartbeat, sends a LoRa STA
 | App releases (`app-v*`) | [`docs/app-release.md`](docs/app-release.md) |
 | Diagnostics and bug reports (plan and status) | [`docs/plan-diagnostics-and-bug-reports.md`](docs/plan-diagnostics-and-bug-reports.md), [`report_worker/README.md`](report_worker/README.md) |
 | BLE alerts with the app closed (plan) | [`docs/plan-ble-alerts.md`](docs/plan-ble-alerts.md) |
-| Local Wi-Fi: control and pump updates over Wi-Fi (plan) | [`docs/plan-local-wifi.md`](docs/plan-local-wifi.md) |
+| Local Wi-Fi: control and pump updates over Wi-Fi (plan and status) | [`docs/plan-local-wifi.md`](docs/plan-local-wifi.md); wire format in [`docs/PROTOCOL.md`](docs/PROTOCOL.md#wi-fi-transport) |
 
 ## Code map
 
@@ -40,14 +42,18 @@ Pump (`pump_node/main/`):
 | `main.c` | Boot order, NimBLE host and GAP events, advertising |
 | `pump_control.c` | Pump on/off (each call says why: `pump_cause_t`), start checks, run time, last error, schedules, per-tank auto-off |
 | `pump_history.c`, `pump_battery_log.c` | Last 200 fills with stop reason (read in pages); each sensor's daily battery low/high |
-| `gatt_svr.c` | BLE service table, one handler per characteristic, connections, notifications |
+| `gatt_svr.c` | BLE service table, connections, Pair, notifications (also forwarded to Wi-Fi clients) |
 | `gatt_payloads.c` | Byte layout of every characteristic read |
 | `relay_control.c`, `board.c` | Starter relays; button and LED wiring |
 | `lora_link.c` | Tank link: pairing, STATUS/ACK, per-sensor token and last-seen record |
 | `pump_tanks.c` | Paired sensors (up to 4, each with its float mode), tank slots (up to 8), the selected tank. Keeps the invariants in `pump_tanks.h` |
 | `pump_sched.c`, `pump_config.c`, `pump_pair.c` | Saved state in NVS: schedules, settings, phone pairing |
 | `pump_clock.c`, `pump_rtc.c`, `pump_runlog.c` | Local time, DS3231, interrupted-fill detection |
-| `pump_ota.c` | Firmware update over BLE |
+| `pump_ota.c` | Firmware update, from either transport or from the pump itself (owner = a session id) |
+| `pump_api.c` | The app API, shared by both transports: one `pump_api_read` / `pump_api_write` per characteristic, sessions, sign-in. Pair stays in `gatt_svr.c` (BLE only) |
+| `pump_wifi.c` | Optional Wi-Fi: saved network (`tl_wifi`), reconnect, scan, mDNS, SNTP time |
+| `pump_wifi_api.c` | TCP server on port 7580: the same API over Wi-Fi (framing, tags) |
+| `pump_update.c` | The pump checks the report service daily and installs its own update (optionally at night) |
 
 App (`tanklink_app/lib/`):
 
@@ -55,10 +61,11 @@ App (`tanklink_app/lib/`):
 | --- | --- |
 | `ble/protocol.dart` | Byte layouts (pure, unit tested) |
 | `ble/models.dart` | Saved pumps, tank slots, schedules |
-| `ble/pump_session.dart` | Connection, state the screens read, commands |
+| `ble/pump_session.dart` | Connection (Wi-Fi first when the pump has it, else Bluetooth), state the screens read, commands |
+| `link/` | `PumpChr` (one characteristic over either link), `wifi_link.dart` (TCP framing and tags), `ble_link.dart`, `pump_finder.dart` (mDNS lookup through MainActivity) |
 | `ble/ota_upload.dart` | The shared OTA transfer for pump and tank |
 | `update/` | GitHub release checks, downloads, update flows |
-| `screens/`, `screens/home/`, `screens/settings/` | UI. One widget family per file |
+| `screens/`, `screens/home/`, `screens/settings/` | UI. One widget family per file. `settings/wifi_screen.dart` sets up the pump's Wi-Fi |
 | `util/format.dart` | Shared labels |
 | `util/water_use.dart`, `screens/usage_screen.dart` | Water and power: litres, energy and cost from run time (unit tested) and the charts. Flow, power, price and the 200-fill history all live on the pump |
 | `diag/` | App log (`app_log.dart`), report text and redaction (`report_builder.dart`, unit tested), sending and offline queue (`report_sender.dart`) |
@@ -75,6 +82,8 @@ These values are duplicated by hand. There is no codegen. If you change one, cha
 | Sign-in answer, LoRa tag, tank OTA token | `components/tanklink_lora/tanklink_crypto.c` (shared) | same | `authResponse` in `tanklink_app/lib/ble/protocol.dart` (covered by `test/auth_test.dart`) |
 | Report body (`POST /v1/report`) | — | — | `tanklink_app/lib/diag/report_builder.dart` (`toJson`) ↔ `report_worker/src/index.js` |
 | BLE payload layouts | `pump_node/main/gatt_payloads.c` (reads) and the handlers in `gatt_svr.c` (writes) | `tank_node/main/tank_gatt.c` | `tanklink_app/lib/ble/protocol.dart` (covered by `test/protocol_test.dart`) |
+| Wi-Fi transport framing, tags, status codes | `pump_node/main/pump_wifi_api.c` | — | `tanklink_app/lib/link/wifi_link.dart` (covered by `test/wifi_link_test.dart`, same vectors as `scripts/wifi_api_check.py`) |
+| Update request (`GET /v1/firmware/pump/latest`) | `pump_node/main/pump_update.c` | — | `report_worker/src/index.js` |
 | Protocol versions | `TANKLINK_PROTO_MAJOR/MINOR` in `tanklink_uuid.h` | same names in `tanklink_ble_uuid.h` | `TankLinkUuids.protoMajor` |
 
 Versioning rule (details in [`docs/PROTOCOL.md`](docs/PROTOCOL.md#versioning)):

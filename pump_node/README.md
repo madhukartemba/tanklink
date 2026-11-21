@@ -29,3 +29,7 @@ Release assets: see [`docs/firmware-release.md`](../docs/firmware-release.md).
 See `tanklink_uuid.h`. Service `7f1a0001-ac01-4c8c-9b2e-74616e6b6c6e`.
 
 OTA: `0008` CTRL, `0009` DATA, `000a` STATUS (auth required; pump must be OFF).
+
+## Wi-Fi (optional)
+
+No wiring change. The pump can join a 2.4 GHz home network, set up from the app over Bluetooth (Settings → Wi-Fi). Without a saved network, Wi-Fi never starts and the pump behaves as before. With it, the app controls the pump over Wi-Fi when it can, the pump sets its clock over SNTP, and it can download its own firmware updates. See `docs/plan-local-wifi.md` and `docs/PROTOCOL.md` ("Wifi" and "Wi-Fi transport").
