@@ -80,6 +80,13 @@ esp_err_t tank_link_init(void)
         .freq_hz = (uint32_t)CONFIG_TANK_LORA_FREQ_HZ,
     };
     esp_err_t err = sx1278_init(&cfg);
+    if (err != ESP_OK) {
+        /* One more try with a fresh reset: a marginal supply right after
+         * wake can make the first version read fail. */
+        ESP_LOGW(TAG, "LoRa init failed (%s), retrying", esp_err_to_name(err));
+        vTaskDelay(pdMS_TO_TICKS(50));
+        err = sx1278_init(&cfg);
+    }
     s_radio_ok = (err == ESP_OK);
     if (!s_radio_ok) {
         ESP_LOGW(TAG, "LoRa init failed — will skip TX (%s)", esp_err_to_name(err));

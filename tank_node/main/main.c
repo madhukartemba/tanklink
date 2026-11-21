@@ -2,6 +2,7 @@
 
 #include "esp_log.h"
 #include "esp_sleep.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -34,6 +35,31 @@
 #ifndef CONFIG_TANK_PAIR_WINDOW_MS
 #define CONFIG_TANK_PAIR_WINDOW_MS 30000
 #endif
+
+/* Hard cap on one wake. The longest legitimate wake is an update (~3 min)
+ * plus its window; anything past this is a hang that would drain the cell,
+ * so restart (and from there sleep) instead. */
+#define AWAKE_LIMIT_MS (10 * 60 * 1000)
+
+static void awake_limit_hit(void *arg)
+{
+    (void)arg;
+    ESP_LOGE(TAG, "awake for %d min — restarting", AWAKE_LIMIT_MS / 60000);
+    esp_restart();
+}
+
+static void arm_awake_limit(void)
+{
+    const esp_timer_create_args_t args = {
+        .callback = awake_limit_hit,
+        .name = "awake_limit",
+    };
+    esp_timer_handle_t t = NULL;
+    if (esp_timer_create(&args, &t) != ESP_OK ||
+        esp_timer_start_once(t, (uint64_t)AWAKE_LIMIT_MS * 1000) != ESP_OK) {
+        ESP_LOGW(TAG, "awake limit timer not started");
+    }
+}
 
 static uint8_t load_last_flags(void)
 {
@@ -301,15 +327,36 @@ void app_main(void)
     /* Kill LED glow before NVS / radio init (GPIO6 can sit weakly high after reset). */
     tank_led_force_off_pin(CONFIG_TANK_LED_GPIO);
 
-    ESP_LOGI(TAG, "TankLink tank node fw=%s", TANK_FW_VERSION_STR);
+#if !CONFIG_TANK_DEMO_NO_SLEEP
+    arm_awake_limit();
+#endif
+    const esp_reset_reason_t reset = esp_reset_reason();
+    ESP_LOGI(TAG, "TankLink tank node fw=%s reset=%d", TANK_FW_VERSION_STR, (int)reset);
     tank_boot_pins_log(TAG);
 
+    /* Never abort here: an abort restarts at once, and a restart loop at
+     * full power empties the battery. Without NVS the tank reads as
+     * unpaired and sleeps until the button is pressed. */
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
+        if (nvs_flash_erase() == ESP_OK) {
+            err = nvs_flash_init();
+        }
     }
-    ESP_ERROR_CHECK(err);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "NVS unavailable: %s", esp_err_to_name(err));
+    }
+
+    if (reset == ESP_RST_BROWNOUT) {
+        /* The cell sagged under load. Sending now (radio at full power)
+         * would brown out again and loop; wait for the next heartbeat. */
+        ESP_LOGW(TAG, "brownout reset — sleeping without radio");
+        (void)tank_board_init();
+        /* The radio may still be in TX or standby: init resets it and
+         * leaves it asleep without sending anything. */
+        (void)tank_link_init();
+        enter_deep_sleep();
+    }
 
     if (tank_board_init() != ESP_OK) {
         ESP_LOGW(TAG, "board init failed — continuing");
@@ -365,16 +412,14 @@ void app_main(void)
             if (load_paired() && tank_link_radio_ok()) {
                 err = tank_link_send_status(&in, bat, false, NULL, NULL);
                 ESP_LOGI(TAG, "float status: %s", esp_err_to_name(err));
-                save_last_flags(now_flags);
-            } else {
-                save_last_flags(now_flags);
             }
+            save_last_flags(now_flags);
         }
     } else {
         if (load_paired() && tank_link_radio_ok()) {
             err = tank_link_send_status(&in, bat, false, NULL, NULL);
+            ESP_LOGI(TAG, "status: %s", esp_err_to_name(err));
             save_last_flags(now_flags);
-            (void)err;
         }
     }
 

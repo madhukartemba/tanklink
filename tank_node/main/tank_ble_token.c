@@ -47,7 +47,17 @@ esp_err_t tank_ble_token_init(void)
     size_t len = sizeof(s_key);
     err = nvs_get_blob(h, NVS_KEY_LINK, s_key, &len);
     nvs_close(h);
-    if (err != ESP_OK || len != sizeof(s_key) || !tl_nonzero(s_key, sizeof(s_key))) {
+    const bool missing = err == ESP_ERR_NVS_NOT_FOUND || err == ESP_ERR_NVS_INVALID_LENGTH ||
+                         (err == ESP_OK && (len != sizeof(s_key) ||
+                                            !tl_nonzero(s_key, sizeof(s_key))));
+    if (err != ESP_OK && !missing) {
+        /* A read error is not a missing key: replacing it would silently
+         * unpair the tank. Keep the stored key for the next wake. */
+        memset(s_key, 0, sizeof(s_key));
+        ESP_LOGE(TAG, "link key read failed: %s", esp_err_to_name(err));
+        return err;
+    }
+    if (missing) {
         esp_fill_random(s_key, sizeof(s_key));
         err = save_key();
         ESP_LOGI(TAG, "generated new link key");

@@ -14,16 +14,16 @@ The status LED shows the **error number** as **short flashes** with a long dark 
 | **4** | Pairing cancelled | Pairing mode was cancelled with a short button press. |
 | **5** | Pairing timed out | Hold-to-pair window expired without a successful pump ACK. |
 | **6** | Battery sense | The battery ADC did not start. The code is sent to the pump on later packets and shown in the app. |
-| **7** | Update failed | A firmware update over BLE stopped or was refused (lost link, wrong hash or signature). The tank keeps its old firmware. |
+| **7** | Update failed | A firmware update over BLE stopped or was refused (lost link, wrong hash or signature, or no progress for 20 s). Shown once the update window closes. The tank keeps its old firmware. |
 
 ### Button / LED behaviour (tank)
 
 | Action | LED |
 | --- | --- |
 | Boot | Soft fade pulses |
-| Hold to pair | Brightness ramps 0→100 over 3 s. Pairing starts at 3 s, while the button is still held, then a slow, smooth breathe (about 2.4 s per breath) for the ~30 s window |
+| Hold to pair | Dark for the first 0.6 s (a normal press shows no light), then brightness ramps to full at 3 s. Pairing starts at 3 s, while the button is still held, then a slow, smooth breathe (about 2.4 s per breath) for the ~30 s window |
 | Pairing success | Soft success pulse |
-| Short press (paired) | One short blink (BLE OTA listen ~10 s), including a tap that is already released when the chip wakes. After TX+ACK: **one** soft success pulse; on failure code **3**. Another short press during the window sends LoRa again. Holding 3 s during the window starts pairing without waiting for release |
+| Short press (paired) | No light while the tank listens for an update over BLE (~10 s), including a tap that is already released when the chip wakes. After TX+ACK: **one** soft success pulse; on failure code **3**. Another short press during the window sends LoRa again. Holding 3 s during the window starts pairing without waiting for release |
 | Heartbeat / float / boot TX (paired) | After full TX+ACK: **one** soft success pulse; on failure code **3** |
 | Short press (unpaired) | Code **1** long blinks |
 | Cancel pairing | Code **4** long blinks |

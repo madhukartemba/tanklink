@@ -9,6 +9,8 @@
 
 /** Release shorter than this is contact bounce, not the end of a press. */
 #define BUTTON_RELEASE_MS 80
+/** A press shorter than this shows no light. */
+#define HOLD_FEEDBACK_DELAY_MS 600
 
 #define TAG "TANK_BOARD"
 
@@ -55,7 +57,11 @@ esp_err_t tank_board_init(void)
         .intr_type = GPIO_INTR_DISABLE,
         .pin_bit_mask = mask,
     };
-    ESP_ERROR_CHECK(gpio_config(&in));
+    esp_err_t err = gpio_config(&in);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "input config: %s", esp_err_to_name(err));
+        return err;
+    }
 
     ESP_LOGI(TAG, "full=GPIO%d empty=GPIO%d (both pull-up) btn=GPIO%d led=GPIO%d",
              pin_full(), pin_empty(), pin_btn(), pin_led());
@@ -138,7 +144,10 @@ void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
     if (heartbeat_sec < 5) {
         heartbeat_sec = 5;
     }
-    ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup((uint64_t)heartbeat_sec * 1000000ULL));
+    esp_err_t err = esp_sleep_enable_timer_wakeup((uint64_t)heartbeat_sec * 1000000ULL);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "timer wake: %s", esp_err_to_name(err));
+    }
     ESP_LOGI(TAG, "sleep: timer=%us + floats + button", (unsigned)heartbeat_sec);
 }
 
@@ -230,7 +239,15 @@ tank_button_hold_event_t tank_button_hold_poll(tank_button_hold_t *hold,
         if (held_ms) {
             *held_ms = ms;
         }
-        const uint8_t p = ms >= threshold_ms ? 100 : (uint8_t)(ms * 100u / threshold_ms);
+        /* Dark for a normal press; the light only starts once it is clearly
+         * a hold, then ramps to full at the threshold. */
+        uint8_t p = 100;
+        if (ms < threshold_ms) {
+            p = ms <= HOLD_FEEDBACK_DELAY_MS || threshold_ms <= HOLD_FEEDBACK_DELAY_MS
+                    ? 0
+                    : (uint8_t)((ms - HOLD_FEEDBACK_DELAY_MS) * 100u /
+                                (threshold_ms - HOLD_FEEDBACK_DELAY_MS));
+        }
         if (pct) {
             *pct = p;
         }

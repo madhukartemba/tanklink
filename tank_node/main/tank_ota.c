@@ -5,13 +5,13 @@
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "host/ble_hs.h"
 #include "tinycrypt/sha256.h"
 
 #include "tank_gatt.h"
-#include "tank_errors.h"
 #include "tank_led.h"
 #include "tanklink_ble_uuid.h"
 
@@ -28,6 +28,11 @@ static uint8_t s_expect_sha[32];
 static struct tc_sha256_state_struct s_sha;
 static tank_ota_status_cb_t s_status_cb;
 static uint16_t s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
+static int64_t s_last_activity_us;
+/* Set when an update fails; the main task shows the LED code once BLE is
+ * done. Never blink here: this runs in the NimBLE host task, and a long
+ * blink there stalls the link until the phone gives up (GATT error 133). */
+static volatile bool s_failed;
 
 static void notify_status(void)
 {
@@ -40,8 +45,8 @@ static void set_err(uint8_t err)
 {
     s_err = err;
     s_state = TANKLINK_OTA_ST_ERR;
+    s_failed = true;
     tank_led_ota_pulse_stop();
-    tank_led_show_error(TANK_ERR_UPDATE_FAILED);
     notify_status();
 }
 
@@ -73,7 +78,25 @@ esp_err_t tank_ota_init(void)
     s_state = TANKLINK_OTA_ST_IDLE;
     s_err = TANKLINK_OTA_ERR_OK;
     s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
+    s_failed = false;
     return ESP_OK;
+}
+
+bool tank_ota_take_failure(void)
+{
+    const bool f = s_failed;
+    s_failed = false;
+    return f;
+}
+
+uint16_t tank_ota_owner_conn(void)
+{
+    return s_owner_conn;
+}
+
+uint32_t tank_ota_idle_ms(void)
+{
+    return (uint32_t)((esp_timer_get_time() - s_last_activity_us) / 1000);
 }
 
 bool tank_ota_is_active(void)
@@ -109,6 +132,7 @@ void tank_ota_on_disconnect(uint16_t conn_handle)
     if (is_owner(conn_handle) && tank_ota_is_active()) {
         ESP_LOGW(TAG, "OTA owner disconnected — abort");
         cleanup_session(false);
+        s_failed = true;
         notify_status();
     }
 }
@@ -154,6 +178,7 @@ uint8_t tank_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
     s_offset = 0;
     s_active = true;
     s_owner_conn = conn_handle;
+    s_last_activity_us = esp_timer_get_time();
     s_err = TANKLINK_OTA_ERR_OK;
     s_state = TANKLINK_OTA_ST_READY;
     tank_led_ota_pulse_start();
@@ -194,6 +219,7 @@ uint8_t tank_ota_write(uint16_t conn_handle, uint32_t offset, const uint8_t *dat
 
     (void)tc_sha256_update(&s_sha, data, len);
     s_offset += len;
+    s_last_activity_us = esp_timer_get_time();
     s_state = TANKLINK_OTA_ST_WRITING;
     s_err = TANKLINK_OTA_ERR_OK;
     if ((s_offset & 0xfff) == 0 || s_offset == s_image_size) {
@@ -278,13 +304,15 @@ uint8_t tank_ota_finish(uint16_t conn_handle)
     }
 
     tank_led_ota_pulse_stop();
-    tank_led_success();
+    tank_led_set_brightness(100); /* solid until the restart; no blocking pulse here */
     s_state = TANKLINK_OTA_ST_VERIFY_OK;
     s_err = TANKLINK_OTA_ERR_OK;
     notify_status();
     s_state = TANKLINK_OTA_ST_REBOOTING;
     notify_status();
     ESP_LOGI(TAG, "OTA OK — rebooting");
-    xTaskCreate(reboot_task, "tank_ota_rb", 2048, NULL, 5, NULL);
+    if (xTaskCreate(reboot_task, "tank_ota_rb", 2048, NULL, 5, NULL) != pdPASS) {
+        esp_restart(); /* the new image is already the boot partition */
+    }
     return TANKLINK_OTA_ERR_OK;
 }

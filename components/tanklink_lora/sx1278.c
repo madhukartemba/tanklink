@@ -266,7 +266,11 @@ esp_err_t sx1278_init(const sx1278_config_t *cfg)
             .pull_down_en = GPIO_PULLDOWN_DISABLE,
             .intr_type = GPIO_INTR_DISABLE,
         };
-        ESP_ERROR_CHECK(gpio_config(&io));
+        esp_err_t io_err = gpio_config(&io);
+        if (io_err != ESP_OK) {
+            ESP_LOGE(TAG, "RST pin: %s", esp_err_to_name(io_err));
+            return io_err;
+        }
         gpio_set_level(cfg->pin_rst, 0);
         esp_rom_delay_us(1000);
         gpio_set_level(cfg->pin_rst, 1);
@@ -300,6 +304,8 @@ esp_err_t sx1278_init(const sx1278_config_t *cfg)
     err = spi_bus_add_device(SPI2_HOST, &dev, &s_spi);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "spi_bus_add_device: %s", esp_err_to_name(err));
+        s_spi = NULL;
+        (void)spi_bus_free(SPI2_HOST);
         return err;
     }
 
@@ -311,6 +317,10 @@ esp_err_t sx1278_init(const sx1278_config_t *cfg)
     err = read_reg(REG_VERSION, &ver);
     if (err != ESP_OK || ver == 0x00 || ver == 0xff) {
         ESP_LOGE(TAG, "SX1278 not detected (ver=0x%02x)", ver);
+        /* Release the bus so a later init can start clean. */
+        spi_bus_remove_device(s_spi);
+        s_spi = NULL;
+        (void)spi_bus_free(SPI2_HOST);
         return ESP_ERR_NOT_FOUND;
     }
     s_freq_hz = cfg->freq_hz ? cfg->freq_hz : 433000000UL;

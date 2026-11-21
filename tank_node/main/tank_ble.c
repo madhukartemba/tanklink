@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -17,6 +18,7 @@
 
 #include "sdkconfig.h"
 #include "tank_board.h"
+#include "tank_errors.h"
 #include "tank_gatt.h"
 #include "tank_led.h"
 #include "tank_link.h"
@@ -37,6 +39,14 @@ static bool s_stack_up;
 /* After a failed update, stay up long enough for the phone to read the
  * tank's own error from OtaStatus instead of seeing the link drop (GATT 133). */
 #define OTA_ERROR_GRACE_MS 5000
+/* An update that makes no progress this long is dropped (the phone was
+ * backgrounded or stalled), so the tank can sleep again. */
+#define OTA_STALL_DISCONNECT_MS 20000
+/* If dropping the link did not end it, restart. The boot partition only
+ * changes after a verified image, so this is always safe. */
+#define OTA_STALL_RESTART_MS 30000
+/* The restart after a good update is 1.2 s away; this is the fallback. */
+#define OTA_REBOOT_FALLBACK_MS 10000
 
 static bool s_window_active;
 static bool s_connected;
@@ -64,6 +74,10 @@ static void on_sync(void)
     }
     s_nimble_ready = true;
     ESP_LOGI(TAG, "nimble sync ok");
+    /* After a host reset the stack syncs again; keep the window reachable. */
+    if (s_window_active && !s_connected) {
+        advertise();
+    }
 }
 
 static void on_reset(int reason)
@@ -204,11 +218,12 @@ esp_err_t tank_ble_init(void)
     ble_hs_cfg.gatts_register_cb = tank_gatt_register_cb;
 
     err = tank_gatt_init();
-    if (err != ESP_OK) {
-        return err;
+    if (err == ESP_OK) {
+        err = tank_ota_init();
     }
-    err = tank_ota_init();
     if (err != ESP_OK) {
+        ESP_LOGE(TAG, "GATT setup failed: %s", esp_err_to_name(err));
+        (void)nimble_port_deinit();
         return err;
     }
     s_nimble_ready = false;
@@ -245,14 +260,15 @@ void tank_ble_deinit(void)
         return;
     }
     s_window_active = false;
-    tank_ota_abort();
     ble_gap_adv_stop();
 
-    /* Espressif: stop host then deinit (disables BT controller). */
+    /* Espressif: stop host then deinit (disables BT controller). The update
+     * is aborted after the host stops, so no write can race the abort. */
     int rc = nimble_port_stop();
     if (rc != 0) {
         ESP_LOGW(TAG, "nimble_port_stop rc=%d — trying deinit anyway", rc);
     }
+    tank_ota_abort();
     esp_err_t err = nimble_port_deinit();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "nimble_port_deinit: %s", esp_err_to_name(err));
@@ -286,12 +302,17 @@ esp_err_t tank_ble_start_ota_window(uint32_t timeout_ms)
     s_window_active = true;
     s_window_ms = timeout_ms;
     s_window_deadline_us = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
-    /* Distinct from LoRa pairing breathe: one short blink, then dark. */
-    tank_led_blink(1, 120, 0);
-    tank_led_off();
     advertise();
     ESP_LOGI(TAG, "OTA advertise started (%u ms window)", (unsigned)timeout_ms);
     return ESP_OK;
+}
+
+/** The LED code for a failed update, shown from this task (never from BLE). */
+static void show_ota_failure(void)
+{
+    if (tank_ota_take_failure()) {
+        tank_led_show_error(TANK_ERR_UPDATE_FAILED);
+    }
 }
 
 tank_ble_window_result_t tank_ble_wait_ota_window(tank_button_hold_t *carry)
@@ -307,6 +328,8 @@ tank_ble_window_result_t tank_ble_wait_ota_window(tank_button_hold_t *carry)
         tank_button_hold_reset(&hold);
     }
     bool err_grace = false;
+    bool stall_kicked = false;
+    int64_t reboot_since_us = 0;
     while (s_window_active) {
         if (tank_ota_state() == TANKLINK_OTA_ST_ERR) {
             if (!err_grace) {
@@ -321,14 +344,35 @@ tank_ble_window_result_t tank_ble_wait_ota_window(tank_button_hold_t *carry)
             err_grace = false;
         }
         if (tank_ota_state() == TANKLINK_OTA_ST_REBOOTING) {
+            if (reboot_since_us == 0) {
+                reboot_since_us = esp_timer_get_time();
+            } else if (esp_timer_get_time() - reboot_since_us >
+                       (int64_t)OTA_REBOOT_FALLBACK_MS * 1000) {
+                ESP_LOGE(TAG, "restart after update did not happen — restarting");
+                esp_restart();
+            }
             vTaskDelay(pdMS_TO_TICKS(200));
             continue;
         }
         if (tank_ota_is_active()) {
             tank_button_hold_reset(&hold);
+            const uint32_t idle = tank_ota_idle_ms();
+            if (idle >= OTA_STALL_RESTART_MS) {
+                ESP_LOGE(TAG, "update stalled %u ms — restarting", (unsigned)idle);
+                esp_restart();
+            }
+            if (idle >= OTA_STALL_DISCONNECT_MS && !stall_kicked) {
+                stall_kicked = true;
+                const uint16_t conn = tank_ota_owner_conn();
+                ESP_LOGW(TAG, "update stalled %u ms — dropping the link", (unsigned)idle);
+                if (conn != BLE_HS_CONN_HANDLE_NONE) {
+                    (void)ble_gap_terminate(conn, BLE_ERR_REM_USER_CONN_TERM);
+                }
+            }
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
+        stall_kicked = false;
         if (esp_timer_get_time() >= s_window_deadline_us) {
             ESP_LOGI(TAG, "OTA window timed out");
             break;
@@ -367,6 +411,7 @@ tank_ble_window_result_t tank_ble_wait_ota_window(tank_button_hold_t *carry)
     if (!tank_ota_is_active()) {
         tank_led_off();
     }
+    show_ota_failure();
     return TANK_BLE_WINDOW_DONE;
 }
 
