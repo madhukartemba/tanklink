@@ -34,6 +34,9 @@ static bool s_nimble_ready;
 static bool s_stack_up;
 /* Once a phone connects, the window stays open at least this long. */
 #define CONNECTED_WINDOW_MS 60000
+/* After a failed update, stay up long enough for the phone to read the
+ * tank's own error from OtaStatus instead of seeing the link drop (GATT 133). */
+#define OTA_ERROR_GRACE_MS 5000
 
 static bool s_window_active;
 static bool s_connected;
@@ -303,7 +306,20 @@ tank_ble_window_result_t tank_ble_wait_ota_window(tank_button_hold_t *carry)
     } else {
         tank_button_hold_reset(&hold);
     }
+    bool err_grace = false;
     while (s_window_active) {
+        if (tank_ota_state() == TANKLINK_OTA_ST_ERR) {
+            if (!err_grace) {
+                err_grace = true;
+                const int64_t need =
+                    esp_timer_get_time() + (int64_t)OTA_ERROR_GRACE_MS * 1000;
+                if (s_window_deadline_us < need) {
+                    s_window_deadline_us = need;
+                }
+            }
+        } else {
+            err_grace = false;
+        }
         if (tank_ota_state() == TANKLINK_OTA_ST_REBOOTING) {
             vTaskDelay(pdMS_TO_TICKS(200));
             continue;

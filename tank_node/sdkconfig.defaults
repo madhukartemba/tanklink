@@ -13,6 +13,9 @@ CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_GAP_SERVICE=y
 CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
 CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512
+# The default 4 KB overflows when the OTA finish checks the image signature
+# in the host task (tank restarted at the last step of an update). Same as the pump.
+CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=6144
 
 CONFIG_TANK_FLOAT_FULL_GPIO=4
 CONFIG_TANK_ENABLE_EMPTY_FLOAT=y
