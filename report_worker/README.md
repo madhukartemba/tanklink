@@ -70,3 +70,7 @@ Check: a new issue the first time, a comment on the same issue the second time, 
 - The summary is posted inside a code block, so links, images, HTML and @mentions in it don't render.
 - The app key can be pulled out of the APK. It only stops casual spam; rotate it with an app release if it gets abused.
 - `@` in user text is defused so nobody gets pinged.
+
+## Refresh the release list now (`POST /v1/refresh`)
+
+The release list is cached for 10 minutes, and the pump's "latest firmware" answer follows it. After publishing or deleting a release, `scripts/refresh_worker.sh` makes the Worker forget the list and fetch it again straight away, and prints the newest app, pump and tank release it sees. The endpoint needs the `x-refresh-key` header to match the `REFRESH_KEY` secret (`npx wrangler secret put REFRESH_KEY`); without that secret it does not exist (404), and a wrong key gets 401. The script reads the key from `report_worker/.refresh_key` (gitignored) or `TANKLINK_REFRESH_KEY`. Phones re-check on their own every 14 minutes; the app's "Check for updates" button forces it.

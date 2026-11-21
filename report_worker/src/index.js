@@ -38,6 +38,12 @@
  * and its redirect carries a very long signed address. Only pump_node.bin of a
  * pump-v* release of RELEASES_REPO can be fetched this way.
  *
+ * POST /v1/refresh (header x-refresh-key: REFRESH_KEY) → forget the cached
+ * release list now and fetch it again, so a release you just published (or
+ * deleted) shows up at once instead of within RELEASES_FRESH_SEC. The pump's
+ * "latest" answers follow the list, so they refresh with it. Without a
+ * REFRESH_KEY secret the endpoint does not exist. scripts/refresh_worker.sh.
+ *
  * GET /app → 302 to TankLink.apk of the newest app-v* release (from the
  * same cached list). The install QR code points here, so it never has to
  * change. Falls back to the GitHub releases page.
@@ -76,6 +82,16 @@ export default {
         return json({ error: "method not allowed" }, 405);
       }
       return pumpLatest(url, env);
+    }
+    if (url.pathname === "/v1/refresh") {
+      if (request.method !== "POST" || !env.REFRESH_KEY) {
+        return json({ error: "not found" }, 404);
+      }
+      const given = request.headers.get("x-refresh-key") || "";
+      if (!(await sameSecret(given, env.REFRESH_KEY))) {
+        return json({ error: "bad key" }, 401);
+      }
+      return refreshReleases(env);
     }
     const dl = /^\/v1\/firmware\/pump\/download\/(\d+\.\d+\.\d+)\.bin$/.exec(url.pathname);
     if (dl) {
@@ -236,32 +252,31 @@ async function pumpLatest(url, env) {
   if (!Number.isInteger(proto) || proto < 0 || proto > 255) {
     return json({ error: "bad proto" }, 400);
   }
+  const list = await cachedReleases(env);
+  if (!list) return json({ error: "releases unavailable" }, 502);
+
+  // The answer is cached against the release list it was made from, so it is
+  // refreshed together with the list (including by /v1/refresh), never later.
+  const stamp = list.headers.get("x-fetched-at") || "0";
   const cache = caches.default;
   const key = new Request(
-    `https://cache.tanklink/pump-latest/${env.RELEASES_REPO}/${hw}/${proto}`,
+    `https://cache.tanklink/pump-latest/${env.RELEASES_REPO}/${hw}/${proto}/${stamp}`,
   );
   const hit = await cache.match(key);
-  const fetchedAt = Number(hit?.headers.get("x-fetched-at") || 0);
-  if (hit && Date.now() - fetchedAt < RELEASES_FRESH_SEC * 1000) {
-    return answerLatest(await hit.json(), url);
-  }
+  if (hit) return answerLatest(await hit.json(), url);
+
   let latest;
   try {
-    latest = await findPumpLatest(env, hw, proto);
+    latest = await findPumpLatest(await list.json(), hw, proto);
   } catch (e) {
     console.error("pump latest failed", e && e.message);
     return json({ error: "releases unavailable" }, 502);
   }
   if (!latest) return json({ error: "no firmware" }, 404);
-  const body = JSON.stringify(latest);
   await cache.put(
     key,
-    new Response(body, {
-      headers: {
-        ...jsonHeaders(),
-        "x-fetched-at": String(Date.now()),
-        "cache-control": `max-age=${RELEASES_KEEP_SEC}`,
-      },
+    new Response(JSON.stringify(latest), {
+      headers: { ...jsonHeaders(), "cache-control": `max-age=${RELEASES_KEEP_SEC}` },
     }),
   );
   return answerLatest(latest, url);
@@ -308,11 +323,9 @@ function jsonHeaders() {
   };
 }
 
-async function findPumpLatest(env, hw, proto) {
-  const cached = await cachedReleases(env);
-  if (!cached) throw new Error("no release list");
+async function findPumpLatest(releases, hw, proto) {
   const found = [];
-  for (const r of await cached.json()) {
+  for (const r of releases) {
     if (r.draft || r.prerelease) continue;
     const m = /^pump-v(\d+)\.(\d+)\.(\d+)$/.exec(r.tag_name || "");
     const bin = (r.assets || []).find((a) => a.name === "pump_node.bin");
@@ -382,11 +395,49 @@ function newer(a, b) {
   return false;
 }
 
+/** One cache entry for the list, whatever query the app sends: this is not a proxy. */
+function releasesKey(env) {
+  return new Request(`https://cache.tanklink/releases/${env.RELEASES_REPO}`);
+}
+
+/** Forget the cached release list, fetch it again, and say what is newest. */
+async function refreshReleases(env) {
+  await caches.default.delete(releasesKey(env));
+  const list = await cachedReleases(env);
+  if (!list) return json({ error: "GitHub could not be reached" }, 502);
+  const releases = await list.json();
+  const newest = {};
+  for (const r of releases) {
+    const m = /^(app|pump|tank)-v(\d+)\.(\d+)\.(\d+)$/.exec(r.tag_name || "");
+    if (!m || r.draft || r.prerelease) continue;
+    const v = [Number(m[2]), Number(m[3]), Number(m[4])];
+    if (!newest[m[1]] || newer(v, newest[m[1]].v)) newest[m[1]] = { v, tag: r.tag_name };
+  }
+  return json({
+    ok: true,
+    releases: releases.length,
+    newest: Object.fromEntries(Object.entries(newest).map(([k, x]) => [k, x.tag])),
+  });
+}
+
+/** Constant-time equality of two secrets (compares their hashes). */
+async function sameSecret(a, b) {
+  const enc = new TextEncoder();
+  const [x, y] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const ax = new Uint8Array(x);
+  const by = new Uint8Array(y);
+  let diff = 0;
+  for (let i = 0; i < ax.length; i++) diff |= ax[i] ^ by[i];
+  return diff === 0;
+}
+
 /** The cached list as a Response (refreshed when stale), or null. */
 async function cachedReleases(env) {
   const cache = caches.default;
-  // One cache entry, whatever query the app sends: this is not a proxy.
-  const key = new Request(`https://cache.tanklink/releases/${env.RELEASES_REPO}`);
+  const key = releasesKey(env);
   let cached = await cache.match(key);
   const fetchedAt = Number(cached?.headers.get("x-fetched-at") || 0);
   const fresh = cached && Date.now() - fetchedAt < RELEASES_FRESH_SEC * 1000;

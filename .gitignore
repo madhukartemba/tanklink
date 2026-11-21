@@ -73,3 +73,6 @@ fp-info-cache
 # Firmware signing key (docs/firmware-build-setup.md#signing-key)
 keys/
 *.pem
+
+# Key for the report service refresh endpoint (scripts/refresh_worker.sh)
+report_worker/.refresh_key
