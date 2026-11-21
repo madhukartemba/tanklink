@@ -85,23 +85,31 @@ class WifiScreen extends StatelessWidget {
                     ? Icons.wifi_rounded
                     : Icons.bluetooth_rounded,
               ),
-              title: const Text('Connect over'),
+              title: const Text('Use Wi-Fi when possible'),
               subtitle: Text(
                 pump.bleOnly
-                    ? 'Bluetooth only'
-                    : 'Automatic: Wi-Fi when the pump is reachable',
+                    ? 'Off: the app always uses Bluetooth, even at home.'
+                    : 'On: at home the app talks to the pump over Wi-Fi. '
+                          'Away from home, or if Wi-Fi fails, it uses Bluetooth.',
               ),
               trailing: Switch(
                 value: !pump.bleOnly,
                 onChanged: (auto) => session.setBleOnly(!auto),
               ),
             ),
-            Text(
-              session.connected
-                  ? 'Now using ${session.link == LinkKind.wifi ? 'Wi-Fi' : 'Bluetooth'}.'
-                  : '',
-              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
-            ),
+            if (session.connected)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  'Connected over '
+                  '${session.link == LinkKind.wifi ? 'Wi-Fi' : 'Bluetooth'} '
+                  'right now.',
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
           ],
           const Divider(height: 32),
           _PumpUpdates(session: session, connected: connected),
