@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'app_install.dart';
 import 'app_self_update.dart';
 import 'firmware_update.dart' show FwUpdatePhase;
+import '../util/nav.dart';
 import '../diag/report_builder.dart';
 import '../screens/report_problem_screen.dart';
 
@@ -125,22 +126,32 @@ Future<void> runAppSelfUpdate(BuildContext context) async {
   if (!Platform.isAndroid) return;
   final app = context.read<AppSelfUpdate>();
 
+  // Close only this dialog: a blind pop after the download would close
+  // whatever is on top, the home screen included.
+  BuildContext? dialog;
   showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (ctx) => const _AppUpdateProgressDialog(),
+    builder: (ctx) {
+      dialog = ctx;
+      return const PopScope(canPop: false, child: _AppUpdateProgressDialog());
+    },
   );
+  void closeDialog() {
+    final d = dialog;
+    if (d != null) popSelf(d);
+  }
 
   try {
     final path = await app.ensureApkDownloaded();
+    closeDialog();
     if (!context.mounted) return;
-    Navigator.of(context).pop();
     await AppInstall.installApk(path);
     app.setDone();
   } catch (e) {
     app.setError(e.toString());
+    closeDialog();
     if (context.mounted) {
-      Navigator.of(context).pop();
       final message = app.errorMessage ?? '$e';
       final nav = Navigator.of(context);
       ScaffoldMessenger.of(context).showSnackBar(

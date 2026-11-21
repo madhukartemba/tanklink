@@ -8,6 +8,7 @@ import '../ble/pump_session.dart';
 import 'firmware_update.dart';
 import '../diag/report_builder.dart';
 import '../screens/report_problem_screen.dart';
+import '../util/nav.dart';
 
 String _fmtBytes(int n) {
   if (n < 1024) return '$n B';
@@ -191,13 +192,24 @@ Future<void> runFirmwareUpdate(
     return;
   }
 
-  await showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (ctx) =>
-        _OtaProgressDialog(fromRelease: fromRelease, localBytes: localBytes),
-  );
-  fw.resetPhase();
+  // The dialog returns true for Retry. It can't start the retry itself: its
+  // own context is gone once it closes.
+  while (true) {
+    final retry = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) =>
+          _OtaProgressDialog(fromRelease: fromRelease, localBytes: localBytes),
+    );
+    fw.resetPhase();
+    if (retry != true || !context.mounted) return;
+    if (!(session.authed && session.connected)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connect to the pump first')),
+      );
+      return;
+    }
+  }
 }
 
 Future<void> pickAndInstallFirmware(BuildContext context) async {
@@ -281,10 +293,10 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
         onVerifying: fw.setVerifying,
         onRebooting: fw.setRebooting,
       );
+      // Stays open on "Update complete" until Done: closing it here too
+      // raced the Done tap, and the second close popped the home screen.
       fw.setDone();
       HapticFeedback.heavyImpact();
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
-      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       fw.setError(e.toString().replaceFirst('Bad state: ', ''));
       HapticFeedback.heavyImpact();
@@ -400,13 +412,13 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
         actions: [
           if (failed) ...[
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => popSelf(context),
               child: const Text('Close'),
             ),
             TextButton(
               onPressed: () {
                 final nav = Navigator.of(context);
-                nav.pop();
+                if (!popSelf(context)) return;
                 nav.push(
                   reportRoute(
                     ReportProblem(
@@ -421,20 +433,13 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
               child: const Text('Report'),
             ),
             FilledButton(
-              onPressed: () {
-                Navigator.pop(context);
-                runFirmwareUpdate(
-                  context,
-                  fromRelease: widget.fromRelease,
-                  localBytes: widget.localBytes,
-                );
-              },
+              onPressed: () => popSelf(context, true),
               child: const Text('Retry'),
             ),
           ],
           if (done)
             FilledButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => popSelf(context),
               child: const Text('Done'),
             ),
         ],

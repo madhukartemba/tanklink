@@ -15,6 +15,7 @@ import '../ble/pump_session.dart';
 import '../diag/app_log.dart';
 import '../diag/report_builder.dart';
 import '../diag/report_sender.dart';
+import '../util/nav.dart';
 
 /// Opens "Report a problem", pre-filled with [problem] when it comes from an
 /// error banner or a failed update.
@@ -191,7 +192,7 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
         ],
       ),
     );
-    if (mounted) Navigator.pop(context);
+    if (mounted) popSelf(context);
   }
 
   void _fail(String message) {

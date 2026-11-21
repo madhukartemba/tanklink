@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
+import '../util/nav.dart';
 import '../ble/pump_session.dart';
 import 'app_self_update.dart';
 import 'app_update_flow.dart';
@@ -322,7 +323,7 @@ class _UpdatesSheet extends StatelessWidget {
     final items = _pendingUpdates(context, home);
     if (items.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) Navigator.of(context).maybePop();
+        popSelf(context); // not maybePop: that closed whatever was on top
       });
     }
     final scheme = Theme.of(context).colorScheme;
@@ -342,10 +343,7 @@ class _UpdatesSheet extends StatelessWidget {
             const SizedBox(height: 16),
             for (var i = 0; i < items.length; i++) ...[
               if (i > 0) const SizedBox(height: kHomeUpdateBannerGap),
-              items[i].card(
-                before: () => Navigator.of(context).pop(),
-                short: true,
-              ),
+              items[i].card(before: () => popSelf(context), short: true),
             ],
           ],
         ),

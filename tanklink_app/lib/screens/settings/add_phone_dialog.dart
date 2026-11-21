@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../ble/pump_session.dart';
 import '../../diag/app_log.dart';
+import '../../util/nav.dart';
 
 /// Opens the pump's pairing mode so another phone can add it, and shows
 /// what to do on that phone until pairing ends or the user stops it.
@@ -85,7 +86,7 @@ class _AddPhoneDialogState extends State<_AddPhoneDialog> {
   Future<void> _stop() async {
     _poll?.cancel();
     if (_stage == _Stage.open) await widget.session.closePhonePairing();
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) popSelf(context);
   }
 
   @override

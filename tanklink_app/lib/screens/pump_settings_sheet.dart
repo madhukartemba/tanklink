@@ -22,6 +22,7 @@ import 'settings/auto_off_section.dart';
 import 'settings/factory_reset_dialog.dart';
 import 'report_problem_screen.dart';
 import '../util/error_text.dart';
+import '../util/nav.dart';
 
 Future<void> showPumpSettingsSheet(BuildContext context) {
   // Refresh release metadata when opening settings, unless it was checked
@@ -447,7 +448,7 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                 );
                 if (ok != true || !context.mounted) return;
                 await session.forgetPump(pump);
-                if (context.mounted) Navigator.pop(context);
+                if (context.mounted) popSelf(context);
               },
               child: const Text('Remove from this phone'),
             ),
@@ -471,7 +472,7 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                             ),
                           ),
                         );
-                        Navigator.pop(context);
+                        popSelf(context);
                       }
                     } catch (e) {
                       if (context.mounted) {

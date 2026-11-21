@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
+import '../util/nav.dart';
 
 class StarterSettingsScreen extends StatefulWidget {
   const StarterSettingsScreen({super.key});
@@ -49,7 +50,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
           ),
         ),
       );
-      Navigator.of(context).pop();
+      popSelf(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)

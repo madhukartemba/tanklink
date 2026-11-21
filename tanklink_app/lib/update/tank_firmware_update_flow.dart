@@ -7,6 +7,7 @@ import '../ble/pump_session.dart';
 import 'firmware_update.dart';
 import '../diag/report_builder.dart';
 import '../screens/report_problem_screen.dart';
+import '../util/nav.dart';
 
 String _fmtBytes(int n) {
   if (n < 1024) return '$n B';
@@ -261,10 +262,9 @@ class _TankOtaProgressDialogState extends State<_TankOtaProgressDialog> {
         onVerifying: fw.setVerifying,
         onRebooting: fw.setRebooting,
       );
+      // Stays open until Done (see the pump flow: an auto-close raced it).
       fw.setDone();
       HapticFeedback.heavyImpact();
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
-      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       fw.setError(e.toString().replaceFirst('Bad state: ', ''));
       HapticFeedback.heavyImpact();
@@ -359,13 +359,13 @@ class _TankOtaProgressDialogState extends State<_TankOtaProgressDialog> {
         actions: [
           if (failed) ...[
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => popSelf(context),
               child: const Text('Close'),
             ),
             TextButton(
               onPressed: () {
                 final nav = Navigator.of(context);
-                nav.pop();
+                if (!popSelf(context)) return;
                 nav.push(
                   reportRoute(
                     ReportProblem(
@@ -382,7 +382,7 @@ class _TankOtaProgressDialogState extends State<_TankOtaProgressDialog> {
           ],
           if (done)
             FilledButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => popSelf(context),
               child: const Text('Done'),
             ),
         ],

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../ble/pump_session.dart';
 import 'add_pump_screen.dart';
 import 'pump_settings_sheet.dart';
+import '../util/nav.dart';
 
 class PumpListScreen extends StatelessWidget {
   const PumpListScreen({super.key});
@@ -120,7 +121,7 @@ class PumpListScreen extends StatelessWidget {
                     ),
                     onTap: () async {
                       await session.selectPump(p);
-                      if (context.mounted) Navigator.pop(context);
+                      if (context.mounted) popSelf(context);
                     },
                     onLongPress: () => showRenamePumpDialog(context, p),
                   ),

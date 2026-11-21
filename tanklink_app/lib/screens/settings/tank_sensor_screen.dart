@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
+import '../../util/nav.dart';
 import '../../ble/pump_session.dart';
 import '../../util/format.dart';
 import '../../util/error_text.dart';
@@ -297,7 +298,7 @@ class TankSensorDetailScreen extends StatelessWidget {
     if (ok != true || !context.mounted) return;
     try {
       await session.unpairSensor(sensor);
-      if (context.mounted) Navigator.of(context).pop();
+      if (context.mounted) popSelf(context);
     } catch (e) {
       if (context.mounted) _snack(context, 'Unpair failed: ${_err(e)}');
     }
@@ -483,9 +484,8 @@ class _TankPairDialog extends StatelessWidget {
       builder: (context, _) {
         final added = _added;
         if (added != null && !session.tankPairing) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted) Navigator.of(context).pop();
-          });
+          // Every rebuild schedules this; only the first may close the dialog.
+          WidgetsBinding.instance.addPostFrameCallback((_) => popSelf(context));
         }
         return AlertDialog(
           title: Text(added != null ? 'Sensor paired' : 'Pairing tank…'),
