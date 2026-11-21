@@ -123,7 +123,7 @@ Other data the pump saves (all cleared by factory reset or `erase-flash`):
 
 | NVS namespace | Holds |
 | --- | --- |
-| `pump` | Runtime settings above |
+| `pump` | Runtime settings above, and the pump's name (`name`, up to 24 bytes of UTF-8; cleared by factory reset) |
 | `tl_pair` | Phone pairing: one 16-byte token per phone (up to 8) and which are in use |
 | `tl_tank` | Per paired sensor N: its LoRa link key (`key<N>`, the BLE OTA token is derived from it), the last seq it accepted (`seq<N>`, so replays stay refused after a restart) and its last packet (`last<N>`, for restoring last-seen after a restart). |
 | `tl_tanks` | Paired sensors (up to 4: MAC, float mode), tank slots (up to 8: sensor, which float, name, auto-off), and the selected tank (`slots`). Auto-fill per slot as a bit mask (`auto_fill`). |

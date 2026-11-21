@@ -168,6 +168,7 @@ class PumpSession extends ChangeNotifier {
   StreamSubscription<List<int>>? _wifiNotifySub;
   StreamSubscription<List<int>>? _alertNotifySub;
   StreamSubscription<List<int>>? _otaNotifySub;
+  StreamSubscription<List<int>>? _settingsNotifySub;
 
   /// The pump's own update status (OtaStatus): state and bytes written. Lets the
   /// app see an update it didn't start: the pump downloading one itself, or
@@ -542,14 +543,27 @@ class PumpSession extends ChangeNotifier {
     await connectSelected();
   }
 
+  /// The name is stored on the pump, so every phone shows the same one. Only
+  /// the connected pump can be renamed. Throws a plain-words [StateError].
   Future<void> renamePump(SavedPump pump, String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
+    if (utf8.encode(trimmed).length > TankLinkUuids.pumpNameMax) {
+      throw StateError(
+        'That name is too long. Use up to ${TankLinkUuids.pumpNameMax} characters.',
+      );
+    }
+    if (selectedRemoteId != pump.remoteId || !authed) {
+      throw StateError(
+        'Connect to ${pump.name} to rename it. The name is kept on the pump.',
+      );
+    }
+    await _cmd!.write([
+      TankLinkUuids.cmdRenamePump,
+      ...utf8.encode(trimmed),
+    ], withoutResponse: false);
     await _upsertPump(pump.copyWith(name: trimmed), select: false);
     unawaited(syncAlertBridge());
-    if (selectedRemoteId == pump.remoteId) {
-      notifyListeners();
-    }
   }
 
   Future<void> forgetPump(SavedPump pump) async {
@@ -1144,6 +1158,16 @@ class PumpSession extends ChangeNotifier {
     relayPulseMs = s.relayPulseMs;
     usageSettings = s.usage;
     autoUpdate = s.autoUpdate;
+    // The pump's name is the one every phone shows: take it when it differs.
+    final cur = selected;
+    if (s.name.isNotEmpty && cur != null && cur.name != s.name) {
+      unawaited(
+        _upsertPump(
+          cur.copyWith(name: s.name),
+          select: false,
+        ).then((_) => syncAlertBridge()),
+      );
+    }
   }
 
   bool get buzzerEnabled => (buzzerFlags & TankLinkUuids.buzzEnabled) != 0;
@@ -1769,11 +1793,13 @@ class PumpSession extends ChangeNotifier {
     if (stateVal.isNotEmpty) {
       _applyPumpOn(stateVal[0] != 0);
     }
-    try {
-      _applySettings(PumpSettings.parse(await _settings!.read()));
-    } catch (e) {
-      debugPrint('settings read failed: $e');
-    }
+    // Settings are followed, not read once: another phone renaming the pump or
+    // changing a setting shows up here.
+    _settingsNotifySub = await _follow(
+      _settings!,
+      _settingsNotifySub,
+      (v) => _applySettings(PumpSettings.parse(v)),
+    );
     await _bindWifi();
     await _bindOtaStatus();
     await _bindAlerts();
@@ -2143,6 +2169,8 @@ class PumpSession extends ChangeNotifier {
     _alertNotifySub = null;
     await _otaNotifySub?.cancel();
     _otaNotifySub = null;
+    await _settingsNotifySub?.cancel();
+    _settingsNotifySub = null;
     otaState = TankLinkUuids.otaStIdle;
     otaOffset = 0;
     pumpNotice = null;

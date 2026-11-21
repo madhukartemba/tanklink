@@ -77,6 +77,8 @@ size_t gatt_payload_settings(uint8_t out[GATT_SETTINGS_READ_LEN])
     put_u16(&out[19], u->price_centi);
     memcpy(&out[21], u->currency, PUMP_USAGE_CURRENCY_LEN);
     out[25] = pump_config_auto_update() ? 1 : 0;
+    memset(&out[26], 0, PUMP_NAME_MAX);
+    strncpy((char *)&out[26], pump_config_name(), PUMP_NAME_MAX);
     return GATT_SETTINGS_READ_LEN;
 }
 

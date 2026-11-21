@@ -45,6 +45,7 @@ typedef enum {
     SUB_BATTERY,
     SUB_WIFI,
     SUB_ALERTS,
+    SUB_SETTINGS,
     SUB_COUNT,
 } sub_t;
 
@@ -56,6 +57,7 @@ static const uint8_t s_sub_chr[SUB_COUNT] = {
     [SUB_HISTORY] = PUMP_API_CHR_HISTORY, [SUB_BATTERY] = PUMP_API_CHR_BATTERY,
     [SUB_WIFI] = PUMP_API_CHR_WIFI,
     [SUB_ALERTS] = PUMP_API_CHR_ALERT_LOG,
+    [SUB_SETTINGS] = PUMP_API_CHR_SETTINGS,
 };
 
 typedef struct {
@@ -185,6 +187,12 @@ void gatt_svr_notify_sched(void)
 {
     uint8_t buf[GATT_SCHED_MAX_LEN];
     notify_all(SUB_SCHED, buf, gatt_payload_sched(buf));
+}
+
+void gatt_svr_notify_settings(void)
+{
+    uint8_t buf[GATT_SETTINGS_READ_LEN];
+    notify_all(SUB_SETTINGS, buf, gatt_payload_settings(buf));
 }
 
 void gatt_svr_notify_alerts(void)
@@ -338,7 +346,8 @@ static const struct ble_gatt_svc_def s_services[] = {
             {.uuid = &uuid_state.u, .access_cb = on_chr, .arg = (void *)(uintptr_t)PUMP_API_CHR_STATE, .flags = F_R | F_N,
              .val_handle = &s_val_handle[SUB_STATE]},
             {.uuid = &uuid_cmd.u, .access_cb = on_chr, .arg = (void *)(uintptr_t)PUMP_API_CHR_CMD, .flags = F_W},
-            {.uuid = &uuid_settings.u, .access_cb = on_chr, .arg = (void *)(uintptr_t)PUMP_API_CHR_SETTINGS, .flags = F_R | F_W},
+            {.uuid = &uuid_settings.u, .access_cb = on_chr, .arg = (void *)(uintptr_t)PUMP_API_CHR_SETTINGS, .flags = F_R | F_W | F_N,
+             .val_handle = &s_val_handle[SUB_SETTINGS]},
             {.uuid = &uuid_ota_ctrl.u, .access_cb = on_chr, .arg = (void *)(uintptr_t)PUMP_API_CHR_OTA_CTRL, .flags = F_W},
             {.uuid = &uuid_ota_data.u, .access_cb = on_chr, .arg = (void *)(uintptr_t)PUMP_API_CHR_OTA_DATA,
              .flags = F_W | BLE_GATT_CHR_F_WRITE_NO_RSP},

@@ -192,6 +192,12 @@ List<PumpAlert> parseAlertLog(List<int> b) {
   return out;
 }
 
+/// UTF-8 text up to its first NUL.
+String _nulTerminated(List<int> b) {
+  final end = b.indexOf(0);
+  return utf8.decode(end < 0 ? b : b.sublist(0, end), allowMalformed: true);
+}
+
 /// Pump Settings characteristic (pump-wide; auto-off and float modes are
 /// per tank and per sensor).
 class PumpSettings {
@@ -204,6 +210,7 @@ class PumpSettings {
     this.runSeconds = 0,
     this.usage = const UsageSettings(),
     this.autoUpdate = false,
+    this.name = '',
   });
 
   final int buzzerFlags;
@@ -219,13 +226,18 @@ class PumpSettings {
   /// with [encodeUsage]).
   final UsageSettings usage;
 
-  /// The pump installs its own updates at night (minor 5, last byte).
+  /// The pump installs its own updates when it is idle (minor 5).
   final bool autoUpdate;
 
-  static const _readLen = 26;
+  /// The pump's own name, shown by every phone that has it. Empty until
+  /// someone names it (minor 8).
+  final String name;
+
+  static const _readLen = 50;
 
   /// run(4) serial(5) buzzer_flags tone led starter pulse_ms(2), then
-  /// flow_dlpm(2) watts(2) price_centi(2) currency(4) auto_update(1).
+  /// flow_dlpm(2) watts(2) price_centi(2) currency(4) auto_update(1) name(24,
+  /// UTF-8, NUL-padded).
   static PumpSettings? parse(List<int> b) {
     if (b.length < _readLen) return null;
     final flow = _u16(b, 15);
@@ -240,6 +252,7 @@ class PumpSettings {
         currency: utf8.decode(end < 0 ? cur : cur.sublist(0, end)),
       ),
       autoUpdate: b[25] != 0,
+      name: _nulTerminated(b.sublist(26, 50)),
       runSeconds: _u32(b, 0),
       buzzerFlags: b[9],
       buzzerTone: b[10].clamp(0, 3),

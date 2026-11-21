@@ -79,7 +79,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 7
+#define TANKLINK_PROTO_MINOR 8
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -154,6 +154,9 @@ extern "C" {
 #define TANKLINK_CMD_UPDATE_DISMISS 0xAC
 /* Raise a test alert (minor 6): shows up like a real one for two minutes. */
 #define TANKLINK_CMD_TEST_ALERT 0xAD
+/* Give the pump its name (minor 8): the UTF-8 bytes, 1 to 24, no control
+ * characters. Shown by every phone that has the pump. */
+#define TANKLINK_CMD_RENAME_PUMP 0xAE
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
 /* Open / close the phone pairing window from a signed-in phone (minor 2).

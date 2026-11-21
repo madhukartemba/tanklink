@@ -12,12 +12,14 @@
 #define NVS_NAMESPACE "pump"
 #define NVS_KEY "cfg"
 #define NVS_KEY_USAGE "usage"
+#define NVS_KEY_NAME "name"
 #define DEFAULT_BUZZ_FLAGS \
     (PUMP_BUZZ_FLAG_ENABLED | PUMP_BUZZ_FLAG_ON_BUTTON | PUMP_BUZZ_FLAG_ON_PUMP | \
      PUMP_BUZZ_FLAG_ON_AUTO)
 
 static pump_config_t s_cfg;
 static pump_usage_t s_usage;
+static char s_name[PUMP_NAME_MAX + 1];
 
 static void usage_defaults(pump_usage_t *u)
 {
@@ -38,6 +40,88 @@ static void load_usage(void)
         usage_defaults(&s_usage);
     }
     nvs_close(h);
+}
+
+static void load_name(void)
+{
+    s_name[0] = '\0';
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    size_t len = sizeof(s_name);
+    if (nvs_get_str(h, NVS_KEY_NAME, s_name, &len) != ESP_OK) {
+        s_name[0] = '\0';
+    }
+    nvs_close(h);
+}
+
+const char *pump_config_name(void)
+{
+    return s_name;
+}
+
+/** Well-formed UTF-8 (so a name is never cut in the middle of a character). */
+static bool utf8_valid(const uint8_t *s, size_t n)
+{
+    for (size_t i = 0; i < n;) {
+        const uint8_t c = s[i];
+        size_t extra;
+        if (c < 0x80) {
+            extra = 0;
+        } else if ((c >> 5) == 0x6) {
+            extra = 1;
+        } else if ((c >> 4) == 0xE) {
+            extra = 2;
+        } else if ((c >> 3) == 0x1E) {
+            extra = 3;
+        } else {
+            return false;
+        }
+        for (size_t k = 1; k <= extra; k++) {
+            if (i + k >= n || (s[i + k] & 0xC0) != 0x80) { /* also: cut off mid-character */
+                return false;
+            }
+        }
+        i += extra + 1;
+    }
+    return true;
+}
+
+esp_err_t pump_config_set_name(const uint8_t *utf8, size_t len)
+{
+    while (len > 0 && utf8[0] == ' ') {
+        utf8++;
+        len--;
+    }
+    while (len > 0 && utf8[len - 1] == ' ') {
+        len--;
+    }
+    if (!utf8 || len == 0 || len > PUMP_NAME_MAX || !utf8_valid(utf8, len)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    for (size_t i = 0; i < len; i++) {
+        if (utf8[i] < 0x20 || utf8[i] == 0x7f) {
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    char name[PUMP_NAME_MAX + 1];
+    memcpy(name, utf8, len);
+    name[len] = '\0';
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = nvs_set_str(h, NVS_KEY_NAME, name);
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
+    }
+    nvs_close(h);
+    if (err == ESP_OK) {
+        memcpy(s_name, name, sizeof(s_name));
+    }
+    return err;
 }
 
 const pump_usage_t *pump_config_usage(void)
@@ -109,6 +193,7 @@ esp_err_t pump_config_init(void)
 {
     load_defaults(&s_cfg);
     load_usage();
+    load_name();
 
     nvs_handle_t handle;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
@@ -163,6 +248,13 @@ esp_err_t pump_config_reset_defaults(void)
     pump_usage_t usage;
     usage_defaults(&usage);
     (void)pump_config_set_usage(&usage);
+    s_name[0] = '\0';
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_erase_key(h, NVS_KEY_NAME);
+        nvs_commit(h);
+        nvs_close(h);
+    }
     return pump_config_set(&s_cfg);
 }
 

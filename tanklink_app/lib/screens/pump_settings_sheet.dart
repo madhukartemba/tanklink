@@ -57,9 +57,11 @@ Future<void> showRenamePumpDialog(BuildContext context, SavedPump pump) async {
         controller: controller,
         autofocus: true,
         textCapitalization: TextCapitalization.words,
+        maxLength: TankLinkUuids.pumpNameMax,
         decoration: const InputDecoration(
           labelText: 'Name',
           hintText: 'Kitchen, Roof, Bore…',
+          helperText: 'Shown on every phone that has this pump',
         ),
         onSubmitted: (v) => Navigator.pop(ctx, v),
       ),
@@ -76,7 +78,14 @@ Future<void> showRenamePumpDialog(BuildContext context, SavedPump pump) async {
     ),
   );
   if (name != null && context.mounted) {
-    await context.read<PumpSession>().renamePump(pump, name);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await context.read<PumpSession>().renamePump(pump, name);
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Bad state: ', ''))),
+      );
+    }
   }
 }
 

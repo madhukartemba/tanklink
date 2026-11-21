@@ -114,6 +114,7 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xAB` | Install the update the check found | none |
 | `0xAC` | Forget the "updated automatically" notice | none |
 | `0xAD` | Raise a test alert (see Alerts) | none |
+| `0xAE` | Name the pump (minor 8). Refused if empty, longer than 24 bytes, not valid UTF-8 or containing control characters; leading and trailing spaces are dropped | `name` (UTF-8, 1–24 bytes) |
 | `0xB1` | Test beep | — |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |
@@ -129,9 +130,11 @@ Maximum write length is 18 bytes.
 
 Minor 5 appends `auto_update(1)` to both the read and the write: 1 = the pump installs an update it found by itself, but only when it is unlikely to get in the way: the pump has been off for 10 minutes, it has been up for 10 minutes, no fill schedule is due in the next 60 minutes (with schedules set, the clock must be known), and a tank that fills by itself is not low. A failed try waits 6 hours. Off by default.
 
-Read, 25 bytes:
+Read, 50 bytes (read and notify; the pump notifies whenever a setting or its name changes, to signed-in phones):
 
-`run_secs(u32) serial(4 chars + NUL) buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16) flow_dlpm(u16) watts(u16) price_centi(u16) currency(4)`
+`run_secs(u32) serial(4 chars + NUL) buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16) flow_dlpm(u16) watts(u16) price_centi(u16) currency(4) auto_update(1) name(24)`
+
+- **Name** (minor 8): the pump's own name, UTF-8, NUL-padded, empty until someone names it. Set with Cmd `0xAE` (below). Stored on the pump, so every phone that has the pump shows the same name; the app takes the pump's name when it connects and whenever it changes. The Bluetooth advertising name stays `TankLink-XXXX`.
 
 - Usage, for the app's Water and power screen (set with Cmd `0xA9`): `flow_dlpm` pump flow in tenths of a litre a minute (0 = not set), `watts` pump power (default 750), `price_centi` price of a kWh in hundredths (0 = not set), `currency` UTF-8, NUL-padded (default ₹). Saved on the pump so every phone shows the same figures.
 

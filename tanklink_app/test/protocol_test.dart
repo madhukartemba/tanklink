@@ -114,9 +114,12 @@ void main() {
         ...[0x20, 0x03], // 8.00 per kWh
         0xE2, 0x82, 0xB9, 0, // ₹
         1, // install updates by itself at night (minor 5)
+        ...'Kitchen'.codeUnits,
+        ...List.filled(17, 0), // the pump's name (minor 8)
       ];
       final s = PumpSettings.parse(read)!;
       expect(s.autoUpdate, isTrue);
+      expect(s.name, 'Kitchen');
       expect(s.usage.flowLpm, 38);
       expect(s.usage.pumpWatts, 750);
       expect(s.usage.pricePerKwh, 8);
@@ -132,7 +135,7 @@ void main() {
 
     test('returns null when too short', () {
       expect(PumpSettings.parse(List.filled(10, 0)), isNull);
-      expect(PumpSettings.parse(List.filled(25, 0)), isNull);
+      expect(PumpSettings.parse(List.filled(49, 0)), isNull);
     });
 
     test('unset flow and price read as null', () {
@@ -141,11 +144,13 @@ void main() {
         0, 0, 0xee, 0x02, 0, 0, // flow unset, 750 W, price unset
         0, 0, 0, 0,
         0, // auto_update
+        ...List.filled(24, 0), // no name yet
       ])!;
       expect(s.usage.flowLpm, isNull);
       expect(s.usage.pricePerKwh, isNull);
       expect(s.usage.pumpWatts, 750);
       expect(s.usage.currency, '');
+      expect(s.name, isEmpty);
     });
   });
 

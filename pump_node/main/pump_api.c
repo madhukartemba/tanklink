@@ -228,6 +228,13 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
         pump_control_set(body[0] == TANKLINK_CMD_ON, PUMP_CAUSE_APP);
         return PUMP_API_OK;
 
+    case TANKLINK_CMD_RENAME_PUMP:
+        if (pump_config_set_name(&body[1], len - 1) != ESP_OK) {
+            return PUMP_API_ERR_REFUSED; /* empty, too long, not UTF-8 or has control characters */
+        }
+        gatt_svr_notify_settings();
+        return PUMP_API_OK;
+
     case TANKLINK_CMD_TEST_ALERT:
         pump_alert_raise(TL_ALERT_TEST, 0xFF);
         return PUMP_API_OK;
@@ -362,7 +369,11 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
         u.watts = (uint16_t)(body[3] | (body[4] << 8));
         u.price_centi = (uint16_t)(body[5] | (body[6] << 8));
         memcpy(u.currency, &body[7], PUMP_USAGE_CURRENCY_LEN);
-        return refused_if(pump_config_set_usage(&u) != ESP_OK);
+        if (pump_config_set_usage(&u) != ESP_OK) {
+            return PUMP_API_ERR_REFUSED;
+        }
+        gatt_svr_notify_settings();
+        return PUMP_API_OK;
     }
 
     case TANKLINK_CMD_TANK_AUTO_OFF:
@@ -401,6 +412,7 @@ static pump_api_err_t write_settings(const uint8_t *buf, size_t len)
     }
     ESP_LOGI(TAG, "settings buzz=0x%02x tone=%u led=%u starter=%u pulse=%ums", buf[0], buf[1],
              buf[2], buf[3], (unsigned)pulse);
+    gatt_svr_notify_settings();
     return PUMP_API_OK;
 }
 
@@ -607,8 +619,8 @@ pump_api_err_t pump_api_write(pump_api_session_t *s, uint8_t chr, const uint8_t 
         break;
     }
     case PUMP_API_CHR_CMD:
-        /* Longest command: rename = opcode + slot + name. */
-        err = len < 1 || len > 1 + 1 + PUMP_TANK_NAME_LEN ? PUMP_API_ERR_LEN
+        /* Longest command: renaming the pump = opcode + name (24). */
+        err = len < 1 || len > 1 + PUMP_NAME_MAX ? PUMP_API_ERR_LEN
                                                           : run_command(s, data, len);
         break;
     case PUMP_API_CHR_SETTINGS:

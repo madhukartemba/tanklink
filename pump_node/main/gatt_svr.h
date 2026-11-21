@@ -39,6 +39,7 @@ void gatt_svr_notify_history(void);
 void gatt_svr_notify_battery(void);
 void gatt_svr_notify_sched(void);
 void gatt_svr_notify_wifi(void);
+void gatt_svr_notify_settings(void);
 void gatt_svr_notify_alerts(void);
 void gatt_svr_notify_ota_status(void);
 

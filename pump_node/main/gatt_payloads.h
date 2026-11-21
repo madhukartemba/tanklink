@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 #include "pump_battery_log.h"
+#include "pump_config.h"
 #include "pump_history.h"
 #include "pump_sched.h"
 #include "pump_tanks.h"
@@ -23,7 +24,8 @@
 extern "C" {
 #endif
 
-#define GATT_SETTINGS_READ_LEN (16 + TANKLINK_USAGE_LEN)
+/* 26 bytes of settings, then the pump name (24, UTF-8, NUL-padded). */
+#define GATT_SETTINGS_READ_LEN (16 + TANKLINK_USAGE_LEN + PUMP_NAME_MAX)
 #define GATT_OTA_STATUS_LEN 6
 #define GATT_WIFI_STATUS_MAX_LEN (7 + PUMP_WIFI_SSID_MAX + TANKLINK_WIFI_UPDATE_LEN)
 #define GATT_WIFI_SCAN_MAX_LEN (3 + PUMP_WIFI_SCAN_PAGE * (3 + PUMP_WIFI_SSID_MAX))

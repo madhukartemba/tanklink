@@ -60,6 +60,10 @@ class TankLinkUuids {
   /// Raise a test alert on the pump (minor 6).
   static const cmdTestAlert = 0xAD;
 
+  /// Give the pump its name (minor 8): the UTF-8 bytes, at most [pumpNameMax].
+  static const cmdRenamePump = 0xAE;
+  static const pumpNameMax = 24;
+
   /// Wi-Fi setup and status (minor 4).
   static final wifi = Guid('7f1a0011-ac01-4c8c-9b2e-74616e6b6c6e');
 

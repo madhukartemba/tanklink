@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
 #include "buzzer.h"
@@ -20,6 +21,10 @@ extern "C" {
 #define PUMP_RELAY_PULSE_MS_DEFAULT 1000
 #define PUMP_RELAY_PULSE_MS_MIN 50
 #define PUMP_RELAY_PULSE_MS_MAX 2000
+
+/* The pump's own name, shown by every phone that has it. UTF-8, up to this many
+ * bytes, no control characters. Empty until someone names it. */
+#define PUMP_NAME_MAX 24
 
 /* What the app needs to turn run time into litres and cost. Saved under its
  * own key, so changing it never touches the other settings. */
@@ -54,6 +59,11 @@ const pump_config_t *pump_config_get(void);
 esp_err_t pump_config_set(const pump_config_t *cfg);
 /** Restore factory defaults and persist. */
 esp_err_t pump_config_reset_defaults(void);
+
+const char *pump_config_name(void);
+/** Save the name: [len] bytes of valid UTF-8, 1 to PUMP_NAME_MAX, no control
+ * characters; leading and trailing spaces are dropped. */
+esp_err_t pump_config_set_name(const uint8_t *utf8, size_t len);
 
 const pump_usage_t *pump_config_usage(void);
 esp_err_t pump_config_set_usage(const pump_usage_t *usage);
