@@ -1,6 +1,6 @@
 # Plan: local Wi-Fi for the pump
 
-Status: **Phases 1, 2 and 3 are built (compile, not yet tried on a board); the app has the Wi-Fi byte layouts, tests and the UTC offset on the clock write. Phase 0 (hardware spike), the rest of Phase 4 and Phase 5 are not started.** Android app only. Local network first; internet is used only for time and pump firmware downloads. No cloud control.
+Status: **Phases 1–4 and the Phase 5 docs are written and compile (firmware builds, `flutter analyze` is clean, protocol and framing tests pass). None of it has run on a board or phone. Phase 0 (hardware spike) and the release are not done.** Draft release notes are in `docs/release-notes-wifi/`; versions are bumped by `scripts/release.sh` (pump 0.21.0, app 1.10.0). Android app only. Local network first; internet is used only for time and pump firmware downloads. No cloud control.
 
 ## Goal
 
