@@ -17,6 +17,7 @@ object AlertStore {
         val key: ByteArray, // the pump's alert key
         val tanks: List<String>, // tank names by slot
         val sensors: List<String>, // sensor names by index
+        val flowLpm: Double? = null, // pump flow, litres a minute (for "about N litres")
     ) {
         fun deviceIdBytes(): ByteArray =
             ByteArray(id.length / 2) { id.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
@@ -56,13 +57,19 @@ object AlertStore {
                 key,
                 strings(o.getJSONArray("tanks")),
                 strings(o.getJSONArray("sensors")),
+                if (o.has("flow")) o.getDouble("flow") else null,
             )
         }
     }
 
     fun setPumps(c: Context, pumps: List<Pump>) {
+        val old = pumps(c).associateBy { it.id }
         val arr = JSONArray()
-        for (p in pumps) {
+        for (p0 in pumps) {
+            // The flow is only known for the pump the app is connected to: keep
+            // what was saved for the others.
+            val flow = p0.flowLpm ?: old[p0.id]?.flowLpm
+            val p = Pump(p0.id, p0.mac, p0.name, p0.key, p0.tanks, p0.sensors, flow)
             arr.put(
                 JSONObject()
                     .put("id", p.id)
@@ -70,7 +77,8 @@ object AlertStore {
                     .put("name", p.name)
                     .put("key", p.key.joinToString("") { "%02x".format(it) })
                     .put("tanks", JSONArray(p.tanks))
-                    .put("sensors", JSONArray(p.sensors)),
+                    .put("sensors", JSONArray(p.sensors))
+                    .apply { if (p.flowLpm != null) put("flow", p.flowLpm) },
             )
         }
         prefs(c).edit().putString("pumps", arr.toString()).apply()

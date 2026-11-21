@@ -176,9 +176,9 @@ static void set_state(bool on, bool beep, pump_cause_t cause)
         pump_history_add(&fill);
         /* Only these two stops are news: the others are the user's own doing. */
         if (cause == PUMP_CAUSE_TANK_FULL) {
-            pump_alert_raise(TL_ALERT_TANK_FULL, fill.slot);
+            pump_alert_raise(TL_ALERT_TANK_FULL, PUMP_ALERT_FILL_ARG(fill.slot, fill.ran_sec));
         } else if (cause == PUMP_CAUSE_AUTO_OFF) {
-            pump_alert_raise(TL_ALERT_AUTO_OFF, fill.slot);
+            pump_alert_raise(TL_ALERT_AUTO_OFF, PUMP_ALERT_FILL_ARG(fill.slot, fill.ran_sec));
         }
         s_stopped_us = esp_timer_get_time();
         if (s_fill_started_by == PUMP_CAUSE_AUTO_FILL && cause != PUMP_CAUSE_TANK_FULL) {

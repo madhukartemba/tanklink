@@ -16,6 +16,18 @@ import java.net.Inet4Address
 import java.util.ArrayDeque
 
 class MainActivity : FlutterActivity() {
+    // Alerts aren't shown as notifications while the app is on screen: the app
+    // already shows them (see AlertNotifier.appVisible).
+    override fun onResume() {
+        super.onResume()
+        AlertNotifier.appVisible = true
+    }
+
+    override fun onPause() {
+        AlertNotifier.appVisible = false
+        super.onPause()
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALERTS_CHANNEL)
@@ -173,6 +185,7 @@ class MainActivity : FlutterActivity() {
                         key,
                         (m["tanks"] as? List<String>) ?: emptyList(),
                         (m["sensors"] as? List<String>) ?: emptyList(),
+                        (m["flow"] as? Number)?.toDouble(),
                     )
                 }
                 AlertStore.setPumps(this, pumps)

@@ -379,7 +379,8 @@ void app_main(void)
     pump_alert_init();
     pump_alert_set_change_callback(on_pair_state_changed); /* restarts advertising */
     if (pump_runlog_interrupted_this_boot()) {
-        pump_alert_raise(TL_ALERT_POWER_CUT, pump_tanks_active());
+        pump_alert_raise(TL_ALERT_POWER_CUT,
+                         PUMP_ALERT_FILL_ARG(pump_tanks_active(), pump_runlog_event()->ran_sec));
     }
     board_set_long_press_callback(on_ble_pair_hold);
     board_set_factory_reset_callback(on_factory_reset_hold);

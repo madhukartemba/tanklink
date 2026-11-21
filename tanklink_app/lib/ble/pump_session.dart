@@ -830,6 +830,10 @@ class PumpSession extends ChangeNotifier {
         'mac': p.remoteId,
         'name': p.name,
         'key': hex(key),
+        // Flow lets the notification say "about 480 litres" (known for the
+        // connected pump; Kotlin keeps the last one for the others).
+        if (isCurrent && usageSettings.flowLpm != null)
+          'flow': usageSettings.flowLpm,
         // Names are known for the pump we are connected to.
         'tanks': [
           for (var i = 0; i < TankLinkUuids.tankSlotMax; i++)

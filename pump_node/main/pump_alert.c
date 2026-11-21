@@ -24,6 +24,8 @@
 #define BATTERY_LOW_PCT 20
 #define BATTERY_OK_PCT 30
 #define BATTERY_REPEAT_US (24LL * 3600 * 1000000)
+/* A sensor that keeps dropping in and out of range isn't news every time. */
+#define OFFLINE_COOLDOWN_US (30LL * 60 * 1000000)
 
 typedef struct {
     uint8_t seq;
@@ -43,6 +45,7 @@ static bool s_current_valid;
 static alert_t s_log[PUMP_ALERT_LOG_MAX]; /* newest first */
 static int s_log_n;
 static void (*s_change_cb)(void);
+static int64_t s_offline_last_us; /* 0 = never */
 
 /* Per sensor: low already raised, and when. */
 static struct {
@@ -167,6 +170,14 @@ void pump_alert_raise(tl_alert_type_t type, uint8_t arg)
         xSemaphoreGive(s_lock);
         return;
     }
+    if (type == TL_ALERT_TANK_OFFLINE) {
+        const int64_t now = esp_timer_get_time();
+        if (s_offline_last_us != 0 && now - s_offline_last_us < OFFLINE_COOLDOWN_US) {
+            xSemaphoreGive(s_lock);
+            return;
+        }
+        s_offline_last_us = now;
+    }
     s_seq = (uint8_t)(s_seq == 255 ? 1 : s_seq + 1); /* 0 means "none" */
     save_seq();
     alert_t a = {.seq = s_seq, .type = (uint8_t)type, .arg = arg};
@@ -203,7 +214,7 @@ void pump_alert_note_battery(uint8_t sensor, uint8_t pct)
     }
     xSemaphoreGive(s_lock);
     if (raise) {
-        pump_alert_raise(TL_ALERT_BATTERY_LOW, sensor);
+        pump_alert_raise(TL_ALERT_BATTERY_LOW, PUMP_ALERT_BATTERY_ARG(sensor, pct));
     }
 }
 

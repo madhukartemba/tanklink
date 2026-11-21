@@ -38,6 +38,15 @@ typedef enum {
 
 #define PUMP_ALERT_LOG_MAX 8
 
+/* What [arg] carries (it is signed by the tag with the rest of the alert).
+ *  TANK_FULL, AUTO_OFF, POWER_CUT: bits 0-2 the tank slot (0-7), bits 3-7 how
+ *    long the fill ran in 5-minute steps (0 = under 5 min, 31 = 155 min or more).
+ *  BATTERY_LOW: bits 0-1 the sensor index (0-3), bits 2-7 the battery % / 2.
+ *  TANK_OFFLINE: the tank slot. TEST: 0xFF. */
+#define PUMP_ALERT_FILL_ARG(slot, ran_sec) \
+    ((uint8_t)(((slot) & 7) | ((((ran_sec) / 300) > 31 ? 31 : ((ran_sec) / 300)) << 3)))
+#define PUMP_ALERT_BATTERY_ARG(sensor, pct) ((uint8_t)(((sensor) & 3) | (((pct) / 2) << 2)))
+
 void pump_alert_init(void);
 
 /** Call every few hundred ms: ends an alert's time in the advertisement. */

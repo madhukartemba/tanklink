@@ -293,12 +293,14 @@ An alert is `seq(1) type(1) arg(1)` plus a 4-byte **tag** that proves this pump 
 
 | Type | Meaning | `arg` |
 | --- | --- | --- |
-| 1 | Tank full: a fill stopped because the tank is full | tank slot |
-| 2 | A fill stopped by auto-off | tank slot |
-| 3 | A fill was cut short by a power cut | tank slot |
-| 4 | The selected tank's sensor went out of range | tank slot |
-| 5 | A sensor's battery is at or below 20 % (again after 24 hours while it stays low, and after it has been back above 30 %) | sensor index |
+| 1 | Tank full: a fill stopped because the tank is full | fill (below) |
+| 2 | A fill stopped by auto-off | fill |
+| 3 | A fill was cut short by a power cut | fill |
+| 4 | The selected tank's sensor went out of range (at most once every 30 minutes) | tank slot |
+| 5 | A sensor's battery is at or below 20 % (again after 24 hours while it stays low, and after it has been back above 30 %) | battery (below) |
 | 6 | Test alert (Cmd `0xAD`) | `0xFF` |
+
+`arg` is signed by the tag with the rest of the alert. For types 1–3 ("fill"): bits 0–2 are the tank slot and bits 3–7 are how long the fill ran, in 5-minute steps (0 = under 5 minutes, 31 = 155 minutes or more). For type 5 ("battery"): bits 0–1 are the sensor index and bits 2–7 are the battery percentage divided by 2. The app turns these into text such as "Tank 1 is full. The pump stopped after about 40 minutes, about 480 litres."
 
 Only a stop by "tank full" or by auto-off is an alert; stops from the app, the button or the system are the user's own action.
 
