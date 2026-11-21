@@ -25,6 +25,9 @@
 #define NVS_KEY_SSID "ssid"
 #define NVS_KEY_PASS "pass"
 
+/* esp_wifi_set_max_tx_power units: 0.25 dBm. */
+#define PUMP_WIFI_TX_POWER 34
+
 #define BACKOFF_MIN_MS 2000
 #define BACKOFF_MAX_MS (5 * 60 * 1000)
 /* Apply an SNTP time only when it differs this much, to spare the RTC. */
@@ -295,10 +298,13 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
         case WIFI_REASON_NO_AP_FOUND:
             set_state(PUMP_WIFI_NOT_FOUND);
             break;
+        /* Only a failed key exchange means a wrong password. AUTH_EXPIRE and
+         * ASSOC_EXPIRE are the router not answering in time (busy, or the
+         * radio shared with Bluetooth): just retry. */
         case WIFI_REASON_AUTH_FAIL:
         case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
         case WIFI_REASON_HANDSHAKE_TIMEOUT:
-        case WIFI_REASON_AUTH_EXPIRE:
+        case WIFI_REASON_MIC_FAILURE:
             set_state(PUMP_WIFI_WRONG_PASSWORD);
             break;
         default:
@@ -384,6 +390,13 @@ static esp_err_t ensure_started(void)
         err = esp_wifi_start();
     }
     s_started = err == ESP_OK;
+    if (s_started) {
+        /* 8.5 dBm. At the default (20 dBm) the C3 SuperMini's small antenna and
+         * supply make the router miss the pump's first frames: every attempt
+         * ended in "auth expired" (reason 2) and it never joined. Measured:
+         * joins at once at 8.5 dBm, never at 20 dBm, 30 cm from the router. */
+        esp_wifi_set_max_tx_power(PUMP_WIFI_TX_POWER);
+    }
     return err;
 }
 
@@ -394,6 +407,11 @@ static void apply_creds(void)
     strlcpy((char *)wc.sta.ssid, s_ssid, sizeof(wc.sta.ssid));
     strlcpy((char *)wc.sta.password, s_pass, sizeof(wc.sta.password));
     wc.sta.threshold.authmode = s_pass[0] ? WIFI_AUTH_WPA_PSK : WIFI_AUTH_OPEN;
+    /* Look at every channel and join the strongest access point of this name.
+     * The default joins the first one heard, which with a mesh or several
+     * routers sharing a name can be a far one that never answers. */
+    wc.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    wc.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
     wc.sta.pmf_cfg.capable = true;
     wc.sta.pmf_cfg.required = false;
     esp_wifi_set_config(WIFI_IF_STA, &wc);
