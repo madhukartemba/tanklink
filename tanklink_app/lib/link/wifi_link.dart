@@ -160,6 +160,9 @@ class WifiLink {
   ) {
     // The socket is a single-subscription stream: keep its subscription and
     // hand it new handlers.
+    // A socket error also arrives here (errno 103 when Android drops the
+    // connection): without a listener it was an "uncaught error".
+    unawaited(_socket.done.catchError((Object e) => _close('$e')));
     _sub
       ..onData(_onData)
       ..onError((Object e) => _close('$e'))
@@ -283,15 +286,24 @@ class WifiLink {
       }
       _waiting.add(c);
       _txCounter++;
-      _socket.add(
-        buildWifiFrame(
-          type,
-          chr,
-          _txCounter,
-          payload,
-          key: tagged ? _key : null,
-        ),
-      );
+      try {
+        _socket.add(
+          buildWifiFrame(
+            type,
+            chr,
+            _txCounter,
+            payload,
+            key: tagged ? _key : null,
+          ),
+        );
+      } catch (e) {
+        // A socket that already failed: tell this caller and close, instead of
+        // leaving the queue stuck on a request that never completes.
+        _waiting.remove(c);
+        if (!c.isCompleted) c.completeError(StateError('Wi-Fi link closed'));
+        _close('$e');
+        return;
+      }
       try {
         await c.future.timeout(const Duration(seconds: 8));
       } catch (_) {

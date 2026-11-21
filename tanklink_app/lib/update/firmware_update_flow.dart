@@ -567,6 +567,16 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
               },
               child: const Text('Report'),
             ),
+            // The pump's own download failed: the phone can send it instead.
+            if (widget.method == PumpUpdateMethod.pumpDownloads &&
+                availableUpdateMethods(
+                  context.read<PumpSession>(),
+                  context.read<PumpFirmwareUpdate>(),
+                ).contains(PumpUpdateMethod.phoneWifi))
+              TextButton(
+                onPressed: () => popSelf(context, PumpUpdateMethod.phoneWifi),
+                child: const Text('Send from this phone'),
+              ),
             if (widget.method != PumpUpdateMethod.bluetooth)
               TextButton(
                 onPressed: () => popSelf(context, PumpUpdateMethod.bluetooth),

@@ -42,6 +42,9 @@
 /* The TLS handshake and certificate checks run on this task: measured use is
  * about 3.3 KB, so this leaves plenty of margin. */
 #define JOB_STACK 6144
+/* A download that can't connect or stalls is tried again this many times. */
+#define DOWNLOAD_TRIES 3
+#define DOWNLOAD_TIMEOUT_MS 10000
 #define URL_MAX 320
 #define REPLY_MAX 768
 
@@ -278,25 +281,22 @@ static void save_overnight(const uint8_t v[3])
     nvs_close(h);
 }
 
-static void do_install(bool automatic)
+/** One try: start the OTA session and download into it. True when all bytes arrived. */
+static bool download_once(void)
 {
-    if (pump_control_is_on() || pump_ota_is_active()) {
-        ESP_LOGW(TAG, "install refused: pump busy");
-        return;
-    }
     if (pump_ota_start(PUMP_API_LOCAL_ID, s_size, s_sha) != TANKLINK_OTA_ERR_OK) {
         ESP_LOGW(TAG, "install: OTA refused to start");
-        gatt_svr_notify_ota_status();
-        return;
+        return false;
     }
     gatt_svr_notify_ota_status();
 
     download_t d = {0};
-    /* GitHub redirects to its download host with a long signed address. */
+    /* GitHub redirects to its download host with a long signed address. A short
+     * timeout, because the pump_ota session times out after 60 s of silence. */
     const esp_http_client_config_t cfg = {
         .url = s_url,
         .crt_bundle_attach = esp_crt_bundle_attach,
-        .timeout_ms = 20000,
+        .timeout_ms = DOWNLOAD_TIMEOUT_MS,
         .buffer_size = 4096,
         .buffer_size_tx = 1024,
         .max_redirection_count = 5,
@@ -304,18 +304,43 @@ static void do_install(bool automatic)
         .user_data = &d,
     };
     esp_http_client_handle_t c = esp_http_client_init(&cfg);
-    esp_err_t err = c ? esp_http_client_perform(c) : ESP_FAIL;
+    const esp_err_t err = c ? esp_http_client_perform(c) : ESP_FAIL;
     const int status = c ? esp_http_client_get_status_code(c) : 0;
     if (c) {
         esp_http_client_cleanup(c);
     }
-    if (err != ESP_OK || status != 200 || d.failed || d.offset != s_size) {
+    const bool ok = err == ESP_OK && status == 200 && !d.failed && d.offset == s_size;
+    if (!ok) {
         ESP_LOGW(TAG, "download failed: err=%s status=%d got=%u of %u", esp_err_to_name(err),
                  status, (unsigned)d.offset, (unsigned)s_size);
         if (pump_ota_is_active()) {
             pump_ota_abort_from(PUMP_API_LOCAL_ID);
         }
         gatt_svr_notify_ota_status();
+    }
+    return ok;
+}
+
+static void do_install(bool automatic)
+{
+    if (pump_control_is_on() || pump_ota_is_active()) {
+        ESP_LOGW(TAG, "install refused: pump busy");
+        return;
+    }
+    /* The download host sometimes doesn't answer (a busy CDN address, or one
+     * this network drops): try again, a new connection may use another one. */
+    bool ok = false;
+    for (int attempt = 1; attempt <= DOWNLOAD_TRIES && !ok; attempt++) {
+        if (attempt > 1) {
+            ESP_LOGI(TAG, "download try %d of %d", attempt, DOWNLOAD_TRIES);
+            vTaskDelay(pdMS_TO_TICKS(3000));
+            if (pump_control_is_on()) {
+                return; /* someone started the pump meanwhile */
+            }
+        }
+        ok = download_once();
+    }
+    if (!ok) {
         return;
     }
     if (automatic) {

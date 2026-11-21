@@ -1993,7 +1993,8 @@ class PumpSession extends ChangeNotifier {
         if (sawInstalling && u != PumpUpdateState.installing) {
           done.completeError(
             StateError(
-              'The pump couldn’t download the update. Check its Wi-Fi.',
+              'The pump couldn’t reach the download server. Try again, or '
+              'send the update from this phone.',
             ),
           );
         } else if (!sawInstalling &&
