@@ -7,6 +7,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -174,7 +175,13 @@ static void do_check(void)
     }
     int n = -1;
     int status = 0;
-    if (esp_http_client_open(c, 0) != ESP_OK) {
+    const esp_err_t open_err = esp_http_client_open(c, 0);
+    if (open_err != ESP_OK) {
+        int tls_code = 0, tls_flags = 0;
+        esp_http_client_get_and_clear_last_tls_error(c, &tls_code, &tls_flags);
+        ESP_LOGW(TAG, "check: can't connect: %s (tls 0x%x flags 0x%x errno %d), heap %u",
+                 esp_err_to_name(open_err), tls_code, tls_flags, esp_http_client_get_errno(c),
+                 (unsigned)esp_get_free_heap_size());
         s_check_result = TANKLINK_CHECK_NO_INTERNET;
         goto out;
     }

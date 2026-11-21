@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -287,6 +290,38 @@ Future<void> runFirmwareUpdate(
       return;
     }
   }
+}
+
+/// Debug builds only: send a test image to the pump over Wi-Fi, to try the
+/// transfer without a newer release. The image is any signed `pump_node.bin`
+/// (the one just built works: the pump restarts into the same version):
+///
+///     adb push pump_node/build/pump_node.bin \
+///       /sdcard/Android/data/com.tanklink.tanklink/files/pump_test.bin
+Future<void> runTestWifiUpdate(BuildContext context) async {
+  final session = context.read<PumpSession>();
+  final messenger = ScaffoldMessenger.of(context);
+  void say(String text) =>
+      messenger.showSnackBar(SnackBar(content: Text(text)));
+
+  if (session.link != LinkKind.wifi) {
+    say('Not on Wi-Fi yet: wait for the Wi-Fi icon in the pump header');
+    return;
+  }
+  final dir = await getExternalStorageDirectory();
+  final file = dir == null ? null : File('${dir.path}/pump_test.bin');
+  if (file == null || !await file.exists()) {
+    say('Put a pump_node.bin at ${file?.path ?? 'the app files folder'}');
+    return;
+  }
+  final bytes = await file.readAsBytes();
+  if (!context.mounted) return;
+  await runFirmwareUpdate(
+    context,
+    fromRelease: false,
+    localBytes: bytes,
+    method: PumpUpdateMethod.phoneWifi,
+  );
 }
 
 Future<void> pickAndInstallFirmware(BuildContext context) async {

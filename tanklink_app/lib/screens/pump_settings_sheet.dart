@@ -8,6 +8,7 @@ import '../ble/tanklink_uuids.dart';
 import '../link/pump_link.dart';
 import '../update/app_self_update.dart';
 import '../update/firmware_update.dart';
+import '../update/firmware_update_flow.dart' show runTestWifiUpdate;
 import '../util/format.dart';
 import 'error_codes_screen.dart';
 import 'fill_history_screen.dart';
@@ -313,6 +314,14 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => openReportScreen(context),
             ),
+            if (kDebugMode && ready)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.system_update_alt_rounded),
+                title: const Text('Test update over Wi-Fi'),
+                subtitle: const Text('Debug build only'),
+                onTap: () => runTestWifiUpdate(context),
+              ),
             if (kDebugMode && ready)
               ListTile(
                 contentPadding: EdgeInsets.zero,
