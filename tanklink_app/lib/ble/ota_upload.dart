@@ -69,7 +69,13 @@ Future<void> uploadFirmware(
     }
 
     onVerifying?.call();
-    await ota.ctrl.write([TankLinkUuids.otaOpFinish], withoutResponse: false);
+    try {
+      await ota.ctrl.write([TankLinkUuids.otaOpFinish], withoutResponse: false);
+    } catch (e) {
+      // The board refuses a bad image with an error the phone only sees as a
+      // generic GATT failure; its own reason is in OtaStatus.
+      throw StateError(await _boardReason(ota.status, e));
+    }
     await waitFor({
       TankLinkUuids.otaStVerifyOk,
       TankLinkUuids.otaStRebooting,
@@ -91,3 +97,28 @@ List<int> _u32(int v) => [
   (v >> 16) & 0xff,
   (v >> 24) & 0xff,
 ];
+
+/// The board's own reason for a failed OTA (OtaStatus: state, error), or
+/// the phone's error when the board can't be read (it restarted or the link
+/// dropped).
+Future<String> _boardReason(BluetoothCharacteristic status, Object e) async {
+  try {
+    final v = await status.read().timeout(const Duration(seconds: 3));
+    if (v.length >= 2 && v[1] != 0) {
+      return 'The board refused the update: ${_otaErrors[v[1]] ?? 'error ${v[1]}'} '
+          '(OTA error ${v[1]})';
+    }
+  } catch (_) {}
+  return 'The link dropped while the board was checking the update: $e';
+}
+
+/// OTA_STATUS error byte (tanklink_uuid.h / tanklink_ble_uuid.h).
+const _otaErrors = {
+  1: 'not signed in',
+  2: 'the pump is running',
+  3: 'bad size or offset',
+  4: 'the image was rejected or flash failed (image check or signature)',
+  5: 'what arrived does not match the image (SHA-256)',
+  6: 'wrong update state',
+  7: 'another update is running',
+};
