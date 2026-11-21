@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../alerts/alerts_prompt.dart';
 import '../ble/pump_session.dart';
 import '../link/pump_link.dart';
 import '../update/app_self_update.dart';
@@ -29,6 +30,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Looks for updates every [updateCheckInterval] while the app is in the
   /// foreground, so an app left open for days still finds new releases.
   Timer? _updateTimer;
+
+  /// The one-time alerts permission prompt has been started (see build).
+  bool _alertPromptStarted = false;
 
   @override
   void initState() {
@@ -107,6 +111,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final scheme = Theme.of(context).colorScheme;
     final ready = session.ready;
     final linked = session.authed && session.connected;
+    // First time a pump is on screen: explain and ask for notifications.
+    if (pump != null && !_alertPromptStarted) {
+      _alertPromptStarted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(askForAlertsOnce(context));
+      });
+    }
 
     return Scaffold(
       body: SafeArea(

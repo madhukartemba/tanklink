@@ -2,7 +2,7 @@
 
 Status: **The Bluetooth channel (Phases 1 and 3) is built and compiles; it has not been tried with a pump and phone yet. The Wi-Fi channels (Phases 2, 4 and 5) are designed here but deferred.** Android only (12 and later). Builds on the shipped local Wi-Fi feature (pump 0.21.0, app 1.10.0).
 
-**Scope decision:** alerts go over Bluetooth only for now, because it works with the app closed and needs no server, account or internet. The alert core is still built so that more channels can be added later without changing the alert format (a sink list in `pump_alert.c`). Anything below about webhooks, ntfy, Telegram or push is the later design, not part of the first release.
+**Alerts are on by default** (the app asks for notification and Nearby devices permission once, with a reason, the first time a pump is on the home screen). **Scope decision:** alerts go over Bluetooth only for now, because it works with the app closed and needs no server, account or internet. The alert core is still built so that more channels can be added later without changing the alert format (a sink list in `pump_alert.c`). Anything below about webhooks, ntfy, Telegram or push is the later design, not part of the first release.
 
 ## Goal
 

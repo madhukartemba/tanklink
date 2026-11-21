@@ -72,6 +72,9 @@ class AlertBridge {
   static Future<bool> batteryUnrestricted() async =>
       await _call<bool>('batteryUnrestricted') ?? false;
 
+  static Future<void> openNotificationSettings() =>
+      _call<bool>('openNotificationSettings');
+
   static Future<void> openBatterySettings() =>
       _call<bool>('openBatterySettings');
 }

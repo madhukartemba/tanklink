@@ -226,6 +226,14 @@ class MainActivity : FlutterActivity() {
                 val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
                 result.success(pm.isIgnoringBatteryOptimizations(packageName))
             }
+            "openNotificationSettings" -> {
+                startActivity(
+                    Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+                result.success(true)
+            }
             "openBatterySettings" -> {
                 startActivity(
                     Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)

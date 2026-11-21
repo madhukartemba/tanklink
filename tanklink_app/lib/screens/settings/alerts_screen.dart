@@ -150,7 +150,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                         ),
                         subtitle: const Text('Allow it so alerts can show.'),
                         trailing: TextButton(
-                          onPressed: AlertBridge.openBatterySettings,
+                          onPressed: AlertBridge.openNotificationSettings,
                           child: const Text('Open'),
                         ),
                       ),

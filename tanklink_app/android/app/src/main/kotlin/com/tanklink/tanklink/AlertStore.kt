@@ -28,7 +28,8 @@ object AlertStore {
 
     private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun enabled(c: Context) = prefs(c).getBoolean("enabled", false)
+    /** On unless the user turned it off. */
+    fun enabled(c: Context) = prefs(c).getBoolean("enabled", true)
 
     fun setEnabled(c: Context, on: Boolean) = prefs(c).edit().putBoolean("enabled", on).apply()
 
