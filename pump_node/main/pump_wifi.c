@@ -16,6 +16,7 @@
 
 #include "pump_clock.h"
 #include "pump_pair.h"
+#include "pump_wifi_api.h"
 #include "pump_sched.h"
 #include "tanklink_uuid.h"
 
@@ -334,6 +335,7 @@ static void on_ip_event(void *arg, esp_event_base_t base, int32_t id, void *data
         ESP_LOGI(TAG, "got IP " IPSTR " rssi=%d", IP2STR(&e->ip_info.ip), s_rssi);
         start_mdns();
         start_sntp();
+        pump_wifi_api_start();
         if (s_state == PUMP_WIFI_CONNECTED) {
             notify_change(); /* address changed */
         }

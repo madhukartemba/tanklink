@@ -1,6 +1,6 @@
 # Plan: local Wi-Fi for the pump
 
-Status: **Phase 1 firmware is built (compiles, not yet tried on a board); the app has the Wi-Fi byte layouts, tests and the UTC offset on the clock write. Phase 0 (hardware spike), Phase 2, Phase 3, the rest of Phase 4 and Phase 5 are not started.** Android app only. Local network first; internet is used only for time and pump firmware downloads. No cloud control.
+Status: **Phases 1 and 2 firmware are built (compile, not yet tried on a board); the app has the Wi-Fi byte layouts, tests and the UTC offset on the clock write. Phase 0 (hardware spike), Phase 3, the rest of Phase 4 and Phase 5 are not started.** Android app only. Local network first; internet is used only for time and pump firmware downloads. No cloud control.
 
 ## Goal
 
@@ -170,7 +170,7 @@ Today the handlers live in `gatt_svr.c`, tied to NimBLE connection handles (`s_c
 - New `pump_api.c` / `pump_api.h`: a **session** (transport, id, authed, phone index, nonce) and `pump_api_read(session, chr, out)` / `pump_api_write(session, chr, data, len)`. Move each handler's logic from `gatt_svr.c` here. Payload building stays in `gatt_payloads.c`.
 - `gatt_svr.c` keeps the NimBLE glue: the service table, and access callbacks that call `pump_api_*` with the BLE session for that connection.
 - New `pump_wifi_api.c`: the TCP server, framing, tags, and calls into `pump_api_*` with a TCP session.
-- Notifications: the existing `gatt_svr_notify_*` calls become `pump_api_notify(chr)`, which sends to subscribed BLE connections and to every signed-in TCP client.
+- Notifications: the existing `gatt_svr_notify_*` calls stay (other modules call them); each now also sends to every signed-in TCP client through `pump_wifi_api_notify`.
 - OTA: `pump_ota_start/write/finish/on_disconnect` take a **session id** instead of `conn_handle`, so either transport can run an update. One update at a time stays the rule. Over TCP, OTA data writes can be up to 4 KB per frame.
 - Pairing a new phone (Pair characteristic) and claiming stay **BLE only**, so someone on the network can't claim a pump.
 

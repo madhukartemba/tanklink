@@ -16,6 +16,8 @@ idf_component_register(
         "pump_factory.c"
         "pump_ota.c"
         "pump_wifi.c"
+        "pump_api.c"
+        "pump_wifi_api.c"
         "gatt_svr.c"
         "gatt_payloads.c"
         "pump_control.c"

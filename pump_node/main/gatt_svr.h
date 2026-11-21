@@ -39,6 +39,12 @@ void gatt_svr_notify_history(void);
 void gatt_svr_notify_battery(void);
 void gatt_svr_notify_sched(void);
 void gatt_svr_notify_wifi(void);
+void gatt_svr_notify_ota_status(void);
+
+/* For pump_api: sign out, or end, BLE connections. */
+void gatt_svr_sign_out_all(void);
+void gatt_svr_drop_others(uint16_t keep_id);
+void gatt_svr_drop(uint16_t conn_handle);
 
 #ifdef __cplusplus
 }

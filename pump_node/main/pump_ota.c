@@ -11,7 +11,7 @@
 #include "host/ble_hs.h"
 #include "tinycrypt/sha256.h"
 
-#include "gatt_svr.h"
+#include "pump_api.h"
 #include "pump_control.h"
 #include "relay_control.h"
 #include "status_led.h"
@@ -183,7 +183,7 @@ void pump_ota_on_disconnect(uint16_t conn_handle)
 
 uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t sha256[32])
 {
-    if (!gatt_svr_is_authed_conn(conn_handle)) {
+    if (!pump_api_id_authed(conn_handle)) {
         set_err(TANKLINK_OTA_ERR_NOT_AUTH);
         return TANKLINK_OTA_ERR_NOT_AUTH;
     }
@@ -247,7 +247,7 @@ uint8_t pump_ota_write(uint16_t conn_handle, uint32_t offset, const uint8_t *dat
         set_err(TANKLINK_OTA_ERR_STATE);
         return TANKLINK_OTA_ERR_STATE;
     }
-    if (!is_owner(conn_handle) || !gatt_svr_is_authed_conn(conn_handle)) {
+    if (!is_owner(conn_handle) || !pump_api_id_authed(conn_handle)) {
         cleanup_session(true);
         set_err(TANKLINK_OTA_ERR_NOT_AUTH);
         return TANKLINK_OTA_ERR_NOT_AUTH;
@@ -326,7 +326,7 @@ uint8_t pump_ota_finish(uint16_t conn_handle)
         set_err(TANKLINK_OTA_ERR_STATE);
         return TANKLINK_OTA_ERR_STATE;
     }
-    if (!is_owner(conn_handle) || !gatt_svr_is_authed_conn(conn_handle)) {
+    if (!is_owner(conn_handle) || !pump_api_id_authed(conn_handle)) {
         cleanup_session(true);
         set_err(TANKLINK_OTA_ERR_NOT_AUTH);
         return TANKLINK_OTA_ERR_NOT_AUTH;
@@ -401,7 +401,7 @@ void pump_ota_poll(void)
         const uint16_t conn = s_owner_conn;
         if (conn != BLE_HS_CONN_HANDLE_NONE) {
             ESP_LOGW(TAG, "update stalled %u s — dropping the link", (unsigned)(idle / 1000));
-            (void)ble_gap_terminate(conn, BLE_ERR_REM_USER_CONN_TERM);
+            pump_api_drop_id(conn);
         }
     }
 }

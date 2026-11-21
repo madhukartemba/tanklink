@@ -275,6 +275,33 @@ The pump must be off and the connection authed.
 | | | 6 | wrong state |
 | | | 7 | busy |
 
+## Wi-Fi transport
+
+The same characteristics, over TCP, when the pump is on Wi-Fi (the Wifi characteristic sets that up). Port **7580**, at most 3 clients; the pump advertises `_tanklink._tcp` over mDNS (see Wifi above). Reads, writes and notifications carry **exactly the bytes BLE does** (the characteristic's UUID suffix byte names it, `0x02` Info to `0x11` Wifi). Only the framing is new. Pairing a new phone (Pair) is **BLE only**, so nobody on the network can claim a pump.
+
+Frame, all little-endian:
+
+| Bytes | Field |
+| --- | --- |
+| 2 | length of everything after this field, tag included |
+| 1 | type: `0x01` HELLO, `0x02` AUTH, `0x03` READ, `0x04` WRITE, `0x05` RESULT, `0x06` NOTIFY, `0x07` ERROR (reserved) |
+| 1 | characteristic id (0 for HELLO) |
+| 4 | frame counter: each side counts its own frames from 1 |
+| n | payload |
+| 8 | tag, on every frame after AUTH: first 8 bytes of `HMAC-SHA256(session_key, every byte before the tag, length field included)` |
+
+- **HELLO** (pump → app, on connect): `nonce(16)` then the Info payload.
+- **AUTH** (app → pump, untagged): the 16-byte answer `HMAC-SHA256(token, "TLauth" || nonce)[0..16)`, the same as the BLE Auth write, with HELLO's nonce. On success the pump replies RESULT (tagged); on failure it replies RESULT with status 1 (untagged) and closes.
+- `session_key = HMAC-SHA256(token, nonce || "tcp")`, from the same token and nonce. Every later frame carries a tag; the receiver closes the connection on a bad tag or a counter that doesn't go up.
+- Before AUTH only AUTH and a READ of Info (untagged) are accepted. Anything else closes the connection.
+- **READ**: empty payload. **WRITE**: the bytes BLE would write (an OTA data write may carry up to 4096 bytes after the 4-byte offset). Requests are answered in order.
+- **RESULT**: the request's characteristic id, then `status(1)` (0 ok, 1 not signed in, 2 bad length, 3 refused, 4 out of memory) and, for a successful READ, the value.
+- **NOTIFY**: a characteristic's value, sent to every signed-in client (the pump gives each one everything BLE would, whether or not it "subscribed").
+- A client that sends nothing for 90 s is dropped (send a READ of State as a keep-alive), and one that hasn't signed in after 10 s. A client too slow to take a notification is cut off.
+- Payloads aren't encrypted (pump state isn't secret). The tag stops anyone else on the network from sending commands or changing replies. The Wi-Fi password in Wifi SET uses the same keystream as over BLE, with the nonce from HELLO.
+
+`scripts/wifi_api_check.py` is a reference client: HELLO, AUTH, reads Info and State, and can send a test beep.
+
 ## Tank characteristics
 
 The tank only runs BLE during a ~10 s window after a short button press, for OTA.
