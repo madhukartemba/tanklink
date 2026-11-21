@@ -145,8 +145,11 @@ List<_UpdateItem> _pendingUpdates(BuildContext context, BuildContext actions) {
   final items = <_UpdateItem>[];
 
   final pumpFw = context.watch<PumpFirmwareUpdate>();
+  // Not while the pump is updating: "update available" would be wrong, and the
+  // home screen already shows the update's progress.
   if (session.authed &&
       session.connected &&
+      !session.pumpUpdating &&
       pumpFw.showHomeBanner(session.firmware)) {
     final current = session.firmware.isEmpty ? '—' : session.firmware;
     final latest = pumpFw.latestVersion ?? '';
@@ -170,6 +173,7 @@ List<_UpdateItem> _pendingUpdates(BuildContext context, BuildContext actions) {
   final pumpFound = session.wifiStatus;
   if (session.authed &&
       session.connected &&
+      !session.pumpUpdating &&
       pumpFound?.update == PumpUpdateState.available &&
       pumpFound?.availableVersion != null &&
       !pumpFw.showHomeBanner(session.firmware)) {
