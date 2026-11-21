@@ -81,4 +81,6 @@ idf.py -p /dev/cu.usbmodemXXXX erase-flash flash
 
 ## Pumps that update themselves (Wi-Fi)
 
+After publishing, `scripts/refresh_worker.sh` (run by `scripts/release.sh`) makes the report service look at the release list again straight away. Without it a pump can take 10–20 minutes to see the new version.
+
 A pump with Wi-Fi asks the report service for the newest `pump-v*` release that fits it and downloads `pump_node.bin` itself. The service only passes on the release's `firmware-manifest.json` data (`version`, `sha256`, `proto_major`, `hw_revs`), so keep the manifest correct (`scripts/make_pump_manifest.sh`). Even if the service or the download were tampered with, the pump refuses an image whose sha256 differs from the release's or that isn't signed with the TankLink key (`docs/firmware-build-setup.md#signing-key`), exactly as for an update from the app.

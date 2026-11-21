@@ -250,4 +250,10 @@ if [[ -n "$APP_VER" ]]; then
   # The install QR (tanklink.madhukartemba.in/app) finds this release itself.
 fi
 
+step "Refreshing the update service's release list"
+# The report service caches the release list for 10 minutes; this makes it look
+# again now. Needs report_worker/.refresh_key (see report_worker/README.md); not
+# fatal if it is missing or the service can't be reached.
+"$ROOT/scripts/refresh_worker.sh" || echo "  (not refreshed: phones and pumps see the new release within ~10-20 minutes)"
+
 step "Done"

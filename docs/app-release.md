@@ -53,7 +53,7 @@ cp tanklink_app/build/app/outputs/flutter-apk/app-release.apk /tmp/TankLink.apk
 
 Use **[`docs/app-qr.svg`](app-qr.svg)**: `https://tanklink.madhukartemba.in/app`. The report service ([`report_worker/`](../report_worker/)) answers with a redirect to `TankLink.apk` of the newest `app-v*` release, so it needs no upload step and the code never has to change. If the service can't read the release list it redirects to the GitHub releases page. Version 3, medium error correction, 4-module quiet zone.
 
-The app lists releases through the report service (`GET /v1/releases` in [`report_worker/`](../report_worker/), a 10-minute cached copy of the GitHub API list; GitHub directly if it can't be reached), picks the newest `app-v*` tag, verifies `app-manifest.json` **sha256**, downloads **TankLink.apk**, and opens the system install UI.
+The app lists releases through the report service (`GET /v1/releases` in [`report_worker/`](../report_worker/), a 10-minute cached copy of the GitHub API list; GitHub directly if it can't be reached), picks the newest `app-v*` tag, verifies `app-manifest.json` **sha256**, downloads **TankLink.apk**, and opens the system install UI. A just-published release can take up to ~10 minutes to appear because of that cache; `scripts/release.sh` ends by running `scripts/refresh_worker.sh`, and you can run it yourself any time.
 
 ## Versioning
 
