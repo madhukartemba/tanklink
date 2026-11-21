@@ -27,6 +27,10 @@ uint8_t pump_ota_abort(void);
 /** Verify hash, set boot partition, schedule reboot (owner conn only). */
 uint8_t pump_ota_finish(uint16_t conn_handle);
 
+/** While held, an aborted session leaves the light alone (no red flash, no
+ * restore): pump_update keeps the update animation across download retries. */
+void pump_ota_set_led_hold(bool hold);
+
 /** If the OTA owner disconnects, abort the transfer. */
 void pump_ota_on_disconnect(uint16_t conn_handle);
 

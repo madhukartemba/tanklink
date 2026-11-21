@@ -42,6 +42,14 @@ uint8_t pump_control_last_error(void);
 void pump_control_set_error(uint8_t code);
 void pump_control_clear_error(void);
 
+/**
+ * Put the steady light back after something temporary (tank pairing, an
+ * update) ends: the update animation if an update is still running, else the
+ * pairing, unpaired, running or idle light. Doesn't touch a light that shows
+ * an error code or hold progress.
+ */
+void pump_control_restore_led(void);
+
 /** Show the idle LED unless a pairing, update or running state owns it. */
 void pump_control_refresh_idle_led(void);
 

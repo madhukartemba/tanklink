@@ -30,6 +30,7 @@ static uint8_t s_expect_sha[32];
 static struct tc_sha256_state_struct s_sha;
 static pump_ota_status_cb_t s_status_cb;
 static status_led_mode_t s_led_before;
+static bool s_led_hold;
 static uint16_t s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
 /* Milliseconds since boot, 32-bit so the poll task can't read half a write. */
 static volatile uint32_t s_last_activity_ms;
@@ -120,7 +121,9 @@ static void cleanup_session(bool keep_err)
     if (!keep_err) {
         s_err = TANKLINK_OTA_ERR_OK;
         s_state = TANKLINK_OTA_ST_IDLE;
-        if (was_updating) {
+        if (s_led_hold) {
+            /* pump_update owns the light across its download tries. */
+        } else if (was_updating) {
             /* Abort / disconnect mid-OTA — flash red, then restore. */
             show_ota_err_led();
         } else {
@@ -150,6 +153,11 @@ bool pump_ota_is_active(void)
            s_state == TANKLINK_OTA_ST_WRITING ||
            s_state == TANKLINK_OTA_ST_VERIFY_OK ||
            s_state == TANKLINK_OTA_ST_REBOOTING;
+}
+
+void pump_ota_set_led_hold(bool hold)
+{
+    s_led_hold = hold;
 }
 
 void pump_ota_set_status_cb(pump_ota_status_cb_t cb)

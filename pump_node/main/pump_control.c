@@ -110,6 +110,25 @@ void pump_control_clear_error(void)
     gatt_svr_notify_tank();
 }
 
+void pump_control_restore_led(void)
+{
+    const status_led_mode_t mode = status_led_get_mode();
+    if (mode == STATUS_LED_ERROR || mode == STATUS_LED_HOLD_PROGRESS) {
+        return;
+    }
+    if (pump_update_in_progress()) {
+        status_led_set_mode(STATUS_LED_UPDATING); /* back to the update animation */
+    } else if (pump_pair_pairing_active()) {
+        status_led_set_mode(STATUS_LED_PAIRING);
+    } else if (!pump_pair_is_paired()) {
+        status_led_set_mode(STATUS_LED_UNPAIRED);
+    } else if (s_on) {
+        status_led_set_mode(STATUS_LED_PUMP_ON);
+    } else {
+        status_led_set_mode(STATUS_LED_IDLE);
+    }
+}
+
 void pump_control_refresh_idle_led(void)
 {
     const status_led_mode_t mode = status_led_get_mode();

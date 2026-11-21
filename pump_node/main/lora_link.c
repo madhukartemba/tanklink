@@ -555,15 +555,8 @@ static void restore_led_after_tank_pair(void)
     if (status_led_get_mode() != STATUS_LED_TANK_PAIRING) {
         return;
     }
-    if (pump_pair_pairing_active()) {
-        status_led_set_mode(STATUS_LED_PAIRING);
-    } else if (!pump_pair_is_paired()) {
-        status_led_set_mode(STATUS_LED_UNPAIRED);
-    } else if (pump_control_is_on()) {
-        status_led_set_mode(STATUS_LED_PUMP_ON);
-    } else {
-        status_led_set_mode(STATUS_LED_IDLE);
-    }
+    /* Back to what was showing: the update animation if an update is running. */
+    pump_control_restore_led();
 }
 
 static bool pairing_window_open(void)

@@ -24,6 +24,7 @@
 #include "pump_tanks.h"
 #include "lora_link.h"
 #include "pump_wifi.h"
+#include "status_led.h"
 #include "tanklink_uuid.h"
 
 #define TAG "UPDATE"
@@ -327,6 +328,12 @@ static void do_install(bool automatic)
         ESP_LOGW(TAG, "install refused: pump busy");
         return;
     }
+    /* Show the update animation for the whole install, including the TLS setup
+     * and the pauses between tries, and don't flash red on a failed try. */
+    if (status_led_get_mode() == STATUS_LED_IDLE) {
+        status_led_set_mode(STATUS_LED_UPDATING);
+    }
+    pump_ota_set_led_hold(true);
     /* The download host sometimes doesn't answer (a busy CDN address, or one
      * this network drops): try again, a new connection may use another one. */
     bool ok = false;
@@ -340,7 +347,12 @@ static void do_install(bool automatic)
         }
         ok = download_once();
     }
+    pump_ota_set_led_hold(false);
     if (!ok) {
+        /* Failed for good: the light goes back to normal. */
+        if (status_led_get_mode() == STATUS_LED_UPDATING) {
+            pump_control_restore_led();
+        }
         return;
     }
     if (automatic) {
