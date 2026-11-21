@@ -38,6 +38,7 @@ void gatt_svr_notify_nodes(void);
 void gatt_svr_notify_history(void);
 void gatt_svr_notify_battery(void);
 void gatt_svr_notify_sched(void);
+void gatt_svr_notify_wifi(void);
 
 #ifdef __cplusplus
 }

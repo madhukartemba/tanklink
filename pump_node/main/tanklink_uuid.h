@@ -25,6 +25,7 @@ extern "C" {
  *   Sensors  7f1a000e-ac01-4c8c-9b2e-74616e6b6c6e
  *   History  7f1a000f-ac01-4c8c-9b2e-74616e6b6c6e
  *   Battery  7f1a0010-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Wifi     7f1a0011-ac01-4c8c-9b2e-74616e6b6c6e
  */
 #define TANKLINK_UUID_BASE_TAIL 0x6e, 0x6c, 0x6b, 0x6e, 0x61, 0x74, 0x2e, 0x9b, \
                                 0x8c, 0x4c, 0x01, 0xac
@@ -45,6 +46,7 @@ extern "C" {
 #define TANKLINK_CHR_NODES_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0e, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_HISTORY_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x0f, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_BATTERY_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x10, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_WIFI_INIT  BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x11, 0x00, 0x1a, 0x7f)
 
 #define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
 /* GAP name before the serial suffix is known. Adverts use PREFIX + serial. */
@@ -73,7 +75,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 3
+#define TANKLINK_PROTO_MINOR 4
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -168,6 +170,25 @@ extern "C" {
 #define TANKLINK_SCHED_OP_SET_CLOCK 0x01
 #define TANKLINK_SCHED_OP_SET_LIST  0x02
 #define TANKLINK_SCHED_MAX          4
+/* The set-clock write may end with the phone's UTC offset (minutes, i16, minor
+ * 4): the pump needs it to turn SNTP's UTC into local time. */
+#define TANKLINK_SCHED_CLOCK_LEN        8
+#define TANKLINK_SCHED_CLOCK_UTC_OFF_AT 8
+
+/* Wifi (read + write + notify, authed, minor 4).
+ * Read, status: state(1) rssi(i8, 0 = none) ip(4, a.b.c.d in byte order, 0 =
+ * none) ssid_len(1) ssid. State: 0 off, 1 connecting, 2 connected, 3 wrong
+ * password, 4 network not found. Notified when state, signal or address change.
+ * Write, op in byte 0: SET ssid_len ssid pass_len pass (pass XOR'd with the
+ * keystream, see docs/PROTOCOL.md); FORGET; SCAN; SCAN_PAGE page(1): reads
+ * return scan_page = scanning(1) total(1) count(1), then count x
+ * ssid_len ssid rssi(i8) auth(1), up to 8 per page. */
+#define TANKLINK_WIFI_OP_SET       0x01
+#define TANKLINK_WIFI_OP_FORGET    0x02
+#define TANKLINK_WIFI_OP_SCAN      0x03
+#define TANKLINK_WIFI_OP_SCAN_PAGE 0x04
+#define TANKLINK_WIFI_OP_STATUS    0x05 /* later reads return the status again */
+#define TANKLINK_WIFI_KEYSTREAM_LEN 64
 
 /* Info read length for this protocol version. */
 #define TANKLINK_INFO_LEN 18

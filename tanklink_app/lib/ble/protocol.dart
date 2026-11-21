@@ -470,7 +470,8 @@ class ScheduleState {
     );
   }
 
-  /// Set-clock write: the phone's local time.
+  /// Set-clock write: the phone's local time, then its UTC offset in minutes
+  /// (i16), so the pump can turn SNTP time into local time.
   static List<int> encodeClock(DateTime now) => [
     TankLinkUuids.schedOpSetClock,
     now.year & 0xff,
@@ -480,6 +481,8 @@ class ScheduleState {
     now.hour,
     now.minute,
     now.second,
+    now.timeZoneOffset.inMinutes & 0xff,
+    (now.timeZoneOffset.inMinutes >> 8) & 0xff,
   ];
 
   /// Replace-list write. [schedules] must already be sorted and valid.
@@ -580,4 +583,145 @@ Map<int, List<BatteryDay>>? parseBatteryLog(List<int> b) {
     ];
   }
   return out;
+}
+
+/// What the pump's Wi-Fi is doing (Wifi characteristic state byte).
+enum WifiState { off, connecting, connected, wrongPassword, notFound }
+
+/// Wifi read: state rssi ip(4) ssid_len ssid.
+class WifiStatus {
+  const WifiStatus({
+    required this.state,
+    required this.rssi,
+    required this.ip,
+    required this.ssid,
+  });
+
+  final WifiState state;
+
+  /// dBm while connected, null otherwise.
+  final int? rssi;
+
+  /// Dotted address, null when the pump has none.
+  final String? ip;
+  final String ssid;
+
+  static WifiStatus? parse(List<int> b) {
+    if (b.length < 7 || b.length < 7 + b[6]) {
+      return null;
+    }
+    final st = b[0] < WifiState.values.length
+        ? WifiState.values[b[0]]
+        : WifiState.off;
+    final rssi = b[1] == 0 ? null : (b[1] > 127 ? b[1] - 256 : b[1]);
+    final hasIp = b[2] != 0 || b[3] != 0 || b[4] != 0 || b[5] != 0;
+    return WifiStatus(
+      state: st,
+      rssi: rssi,
+      ip: hasIp ? '${b[2]}.${b[3]}.${b[4]}.${b[5]}' : null,
+      ssid: utf8.decode(b.sublist(7, 7 + b[6]), allowMalformed: true),
+    );
+  }
+}
+
+/// One network from a Wifi scan page.
+class WifiNetwork {
+  const WifiNetwork({
+    required this.ssid,
+    required this.rssi,
+    required this.secured,
+    required this.supported,
+  });
+
+  final String ssid;
+  final int rssi;
+  final bool secured;
+
+  /// False for WPA-Enterprise, which the pump can't join.
+  final bool supported;
+}
+
+/// Wifi scan page: scanning total count, then ssid_len ssid rssi auth.
+class WifiScanPage {
+  const WifiScanPage({
+    required this.scanning,
+    required this.total,
+    required this.networks,
+  });
+
+  final bool scanning;
+  final int total;
+  final List<WifiNetwork> networks;
+
+  static WifiScanPage? parse(List<int> b) {
+    if (b.length < 3) {
+      return null;
+    }
+    final nets = <WifiNetwork>[];
+    var o = 3;
+    for (var i = 0; i < b[2]; i++) {
+      if (o >= b.length || o + 1 + b[o] + 2 > b.length) {
+        return null;
+      }
+      final n = b[o];
+      final rssi = b[o + 1 + n];
+      nets.add(
+        WifiNetwork(
+          ssid: utf8.decode(b.sublist(o + 1, o + 1 + n), allowMalformed: true),
+          rssi: rssi > 127 ? rssi - 256 : rssi,
+          secured: b[o + 2 + n] != 0,
+          supported: b[o + 2 + n] != 2,
+        ),
+      );
+      o += n + 3;
+    }
+    return WifiScanPage(scanning: b[0] != 0, total: b[1], networks: nets);
+  }
+}
+
+/// Wifi write encoders.
+class WifiCommands {
+  /// 64 bytes of keystream for the password: HMAC-SHA256(token, nonce ||
+  /// "wifi" || 0) followed by the same with 1. [nonce] is the Auth nonce this
+  /// connection signed in with. Same as pump_node/main/gatt_svr.c.
+  static Uint8List keystream(List<int> token, List<int> nonce) {
+    final out = <int>[];
+    for (var block = 0; block < 2; block++) {
+      out.addAll(
+        Hmac(
+          sha256,
+          token,
+        ).convert([...nonce, ...'wifi'.codeUnits, block]).bytes,
+      );
+    }
+    return Uint8List.fromList(out);
+  }
+
+  /// SET: the password is XOR'd with the keystream, so it never crosses BLE
+  /// in the clear. Up to 32 UTF-8 bytes of name and 63 of password.
+  static List<int> set(
+    String ssid,
+    String password,
+    List<int> token,
+    List<int> nonce,
+  ) {
+    final name = utf8.encode(ssid);
+    final pass = utf8.encode(password);
+    if (name.isEmpty || name.length > 32 || pass.length > 63) {
+      throw ArgumentError('network name or password too long');
+    }
+    final ks = keystream(token, nonce);
+    return [
+      TankLinkUuids.wifiOpSet,
+      name.length,
+      ...name,
+      pass.length,
+      for (var i = 0; i < pass.length; i++) pass[i] ^ ks[i],
+    ];
+  }
+
+  static List<int> forget() => [TankLinkUuids.wifiOpForget];
+  static List<int> scan() => [TankLinkUuids.wifiOpScan];
+  static List<int> scanPage(int page) => [TankLinkUuids.wifiOpScanPage, page];
+  static List<int> status() => [TankLinkUuids.wifiOpStatus];
 }

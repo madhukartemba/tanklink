@@ -410,6 +410,8 @@ void main() {
     });
 
     test('encodes the clock and the list', () {
+      final off = DateTime(2026, 11, 17, 14, 5, 9).timeZoneOffset.inMinutes;
+      final utcOffset = [off & 0xff, (off >> 8) & 0xff];
       expect(ScheduleState.encodeClock(DateTime(2026, 11, 17, 14, 5, 9)), [
         TankLinkUuids.schedOpSetClock,
         0xEA,
@@ -419,6 +421,7 @@ void main() {
         14,
         5,
         9,
+        ...utcOffset,
       ]);
       expect(
         ScheduleState.encodeList([
@@ -477,5 +480,75 @@ void main() {
 
   test('encodeTankName keeps printable ASCII only', () {
     expect(encodeTankName('  Roof tank ✓ '), 'Roof tank'.codeUnits);
+  });
+
+  group('Wifi', () {
+    test('keystream and password match the firmware', () {
+      // Same vector as the Wifi SET handler in pump_node/main/gatt_svr.c.
+      final token = List<int>.generate(16, (i) => i);
+      final nonce = List<int>.generate(16, (i) => 16 + i);
+      final ks = WifiCommands.keystream(token, nonce);
+      expect(ks.length, 64);
+      expect(
+        ks
+            .sublist(0, 32)
+            .map((v) => v.toRadixString(16).padLeft(2, '0'))
+            .join(),
+        '8292bd2d2b6038ee2f1392f2e50e422c8462d640c2acb467915ac222264ebb66',
+      );
+      final w = WifiCommands.set('Home', 'hunter2pass', token, nonce);
+      expect(w.sublist(0, 6), [TankLinkUuids.wifiOpSet, 4, 72, 111, 109, 101]);
+      expect(w[6], 11);
+      expect(
+        w.sublist(7).map((v) => v.toRadixString(16).padLeft(2, '0')).join(),
+        'eae7d3594e120a9e4e60e1',
+      );
+    });
+
+    test('parses status and a scan page', () {
+      final st = WifiStatus.parse([
+        2,
+        0xC4,
+        192,
+        168,
+        1,
+        50,
+        4,
+        72,
+        111,
+        109,
+        101,
+      ])!;
+      expect(st.state, WifiState.connected);
+      expect(st.rssi, -60);
+      expect(st.ip, '192.168.1.50');
+      expect(st.ssid, 'Home');
+      expect(WifiStatus.parse([0, 0, 0, 0, 0, 0, 0])!.ip, isNull);
+      expect(WifiStatus.parse([1, 0]), isNull);
+
+      final page = WifiScanPage.parse([
+        0,
+        2,
+        2,
+        4,
+        72,
+        111,
+        109,
+        101,
+        0xC4,
+        1,
+        3,
+        67,
+        111,
+        114,
+        0xB0,
+        2,
+      ])!;
+      expect(page.scanning, isFalse);
+      expect(page.total, 2);
+      expect(page.networks.first.ssid, 'Home');
+      expect(page.networks.first.rssi, -60);
+      expect(page.networks.last.supported, isFalse);
+    });
   });
 }

@@ -51,6 +51,14 @@ bool pump_clock_is_valid(void);
 esp_err_t pump_clock_set(int year, unsigned month, unsigned day,
                          unsigned hour, unsigned minute, unsigned second);
 
+/** Set the clock from local seconds since 1970 (same path as a phone sync). */
+esp_err_t pump_clock_set_unix(int64_t local_unix);
+
+/** The phone's UTC offset in minutes, saved on every phone sync. False until
+ * a phone has sent one: SNTP can't give local time without it. */
+bool pump_clock_utc_offset(int16_t *minutes);
+void pump_clock_set_utc_offset(int16_t minutes);
+
 /** Current local civil time. False while the time is unknown. */
 bool pump_clock_now(pump_civil_time_t *out);
 

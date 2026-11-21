@@ -53,6 +53,7 @@ All UUIDs are `7f1a00XX-ac01-4c8c-9b2e-74616e6b6c6e`.
 | 0e | Sensors (paired tank sensors) | ✓ | |
 | 0f | History (last fills) | ✓ | |
 | 10 | Battery (daily battery per sensor) | ✓ | |
+| 11 | Wifi (network setup and status, minor 4) | ✓ | |
 
 Advertised names: pump `TankLink-XXXX` (last 4 hex of MAC), tank `TL-Tank-XXXX`. The tank also puts its `tank_id` in manufacturer data under company ID `0xFFFF`.
 
@@ -170,7 +171,7 @@ Read and notify: `clock_valid(1) hour(1) minute(1) count(1)` followed by `count`
 
 Write:
 
-- `0x01 year(u16) month(1) day(1) hour(1) minute(1) second(1)`: at least 8 bytes. Sets the pump clock from the phone and writes it to the DS3231. Without a DS3231 (or with its battery flat), the clock is lost on reboot until the app sets it again. "Already started today" marks are kept when a sync moves the clock by 5 minutes or less, so the app's 15-minute re-sync can't start a schedule twice.
+- `0x01 year(u16) month(1) day(1) hour(1) minute(1) second(1) [utc_offset(i16)]`: at least 8 bytes. The optional last two bytes (minor 4) are the phone's UTC offset in minutes; the pump saves it (NVS `tl_clock/utc_off`) so SNTP time over Wi-Fi can be turned into local time. Sets the pump clock from the phone and writes it to the DS3231. Without a DS3231 (or with its battery flat), the clock is lost on reboot until the app sets it again. "Already started today" marks are kept when a sync moves the clock by 5 minutes or less, so the app's 15-minute re-sync can't start a schedule twice.
 - `0x02 count(1)` followed by `count` × `enabled hour minute slot`: replaces the whole list. Maximum 4 entries.
 
 ### Tanks (read + notify, authed)
@@ -234,6 +235,26 @@ Causes: 0 unknown, 1 app, 2 pump button, 3 schedule, 4 tank full, 5 auto-off, 6 
 Each paired sensor's lowest and highest battery % on each pump-local day, for the last 14 days. `count(1)` followed by, per sensor: `sensor_index(1) days(1)`, then `days` × `day(u16, pump-local days since 1970) min_pct(1) max_pct(1)`, oldest first.
 
 Only logged while the pump knows the time; 0 % readings (no battery sense) are skipped. A sensor's log is cleared when it is unpaired. The app turns the daily lows into a trend: on solar, a falling low means the panel isn't keeping up. Notified when a log changes.
+
+### Wifi (read + write + notify, authed; minor 4)
+
+Optional. The pump joins one 2.4 GHz network (no WPA-Enterprise, no captive portals) and then sets its clock over SNTP and advertises `tanklink-<serial>.local`, service `_tanklink._tcp` on port 7580, TXT `id=<device id hex>`, `proto=<major>.<minor>`. Without a saved network nothing Wi-Fi runs.
+
+Read (status): `state(1) rssi(i8, 0 = none) ip(4, a.b.c.d in byte order, 0 = none) ssid_len(1) ssid`. State: 0 off, 1 connecting, 2 connected, 3 wrong password, 4 network not found. Notified when the state, address or signal changes.
+
+Write, op in byte 0:
+
+| Op | Payload | Does |
+| --- | --- | --- |
+| `0x01` SET | `ssid_len ssid pass_len pass` | Saves the network and connects. Empty password = open network |
+| `0x02` FORGET | none | Disconnects and clears the saved network |
+| `0x03` SCAN | none | Starts a scan (the pump scans so the app needs no location permission) |
+| `0x04` SCAN_PAGE | `page(1)` | Later reads return that page of the scan results |
+| `0x05` STATUS | none | Later reads return the status again |
+
+Scan page read: `scanning(1) total(1) count(1)`, then `count` × `ssid_len ssid rssi(i8) auth(1)`; up to 8 per page, strongest first, `auth` 0 open, 1 secured, 2 not supported (Enterprise).
+
+**Password.** BLE isn't encrypted, so in SET the password bytes are XOR'd with a 64-byte keystream: `HMAC-SHA256(token, auth_nonce || "wifi" || 0x00)` followed by the same with `0x01`. `token` is the signed-in phone's token and `auth_nonce` is the Auth nonce that connection signed in with (the one the app read just before its successful Auth write). A phone that has only just claimed the pump has no such nonce and must sign in again first. Test vector in `tanklink_app/test/protocol_test.dart`.
 
 ### OTA (pump and tank) — frozen
 

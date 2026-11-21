@@ -38,6 +38,19 @@ class TankLinkUuids {
   /// Each sensor's daily battery low and high.
   static final battery = Guid('7f1a0010-ac01-4c8c-9b2e-74616e6b6c6e');
 
+  /// Wi-Fi setup and status (minor 4).
+  static final wifi = Guid('7f1a0011-ac01-4c8c-9b2e-74616e6b6c6e');
+
+  /// Wifi write ops (byte 0).
+  static const wifiOpSet = 0x01;
+  static const wifiOpForget = 0x02;
+  static const wifiOpScan = 0x03;
+  static const wifiOpScanPage = 0x04;
+  static const wifiOpStatus = 0x05;
+
+  /// Networks per scan page.
+  static const wifiScanPage = 8;
+
   /// History entry: started(u32) ran_sec(u32) slot started_by stopped_by pad.
   static const historyEntryLen = 12;
 

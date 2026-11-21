@@ -1,4 +1,5 @@
 dependencies:
+  espressif/mdns: "^1.4.0"
   espressif/led_strip: "^3.1.1"
   # PixelEngine from GitHub (pinned commit). Fetched by the ESP-IDF component manager.
   PixelEngine:

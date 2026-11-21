@@ -16,6 +16,7 @@
 #include "pump_history.h"
 #include "pump_sched.h"
 #include "pump_tanks.h"
+#include "pump_wifi.h"
 #include "tanklink_uuid.h"
 
 #ifdef __cplusplus
@@ -24,6 +25,8 @@ extern "C" {
 
 #define GATT_SETTINGS_READ_LEN (15 + TANKLINK_USAGE_LEN)
 #define GATT_OTA_STATUS_LEN 6
+#define GATT_WIFI_STATUS_MAX_LEN (7 + PUMP_WIFI_SSID_MAX)
+#define GATT_WIFI_SCAN_MAX_LEN (3 + PUMP_WIFI_SCAN_PAGE * (3 + PUMP_WIFI_SSID_MAX))
 #define GATT_SCHED_MAX_LEN (4 + PUMP_SCHED_MAX * 4 + 1)
 #define GATT_TANKS_MAX_LEN (2 + PUMP_TANK_SLOT_MAX * TANKLINK_TANKS_ENTRY_LEN + 1)
 /* Entry list, then one fault byte per entry. */
@@ -55,6 +58,12 @@ size_t gatt_payload_battery(uint8_t out[GATT_BATTERY_MAX_LEN]);
 
 /** Sensors: every paired tank sensor. */
 size_t gatt_payload_nodes(uint8_t out[GATT_NODES_MAX_LEN]);
+
+/** Wifi status: state, signal, address, network name. */
+size_t gatt_payload_wifi_status(uint8_t out[GATT_WIFI_STATUS_MAX_LEN]);
+
+/** Wifi scan results, [page] of PUMP_WIFI_SCAN_PAGE networks. */
+size_t gatt_payload_wifi_scan(uint8_t out[GATT_WIFI_SCAN_MAX_LEN], uint8_t page);
 
 /** OtaStatus: state, error, offset. */
 size_t gatt_payload_ota_status(uint8_t out[GATT_OTA_STATUS_LEN]);

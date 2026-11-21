@@ -277,6 +277,15 @@ int pump_pair_check_response(const uint8_t nonce[TL_NONCE_LEN],
     return found;
 }
 
+bool pump_pair_phone_token(int phone, uint8_t out[TANKLINK_TOKEN_LEN])
+{
+    if (phone < 0 || phone >= PUMP_PAIR_PHONES_MAX || !(s_pair.phones & (1u << phone))) {
+        return false;
+    }
+    memcpy(out, s_pair.tokens[phone], TANKLINK_TOKEN_LEN);
+    return true;
+}
+
 int pump_pair_phone_count(void)
 {
     return __builtin_popcount(s_pair.phones);

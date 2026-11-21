@@ -12,6 +12,7 @@
 #include "pump_runlog.h"
 #include "pump_sched.h"
 #include "pump_tanks.h"
+#include "pump_wifi.h"
 #include "pump_history.h"
 #include "relay_control.h"
 #include "status_led.h"
@@ -54,6 +55,10 @@ esp_err_t pump_factory_reset(void)
     err = pump_config_reset_defaults();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "config reset failed: %s", esp_err_to_name(err));
+    }
+    err = pump_wifi_forget();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "wifi clear failed: %s", esp_err_to_name(err));
     }
     pump_config_apply_buzzer();
     pump_config_apply_led();

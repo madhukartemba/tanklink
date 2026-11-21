@@ -32,6 +32,7 @@
 #include "pump_runlog.h"
 #include "pump_sched.h"
 #include "pump_tanks.h"
+#include "pump_wifi.h"
 #include "status_led.h"
 #include "tanklink_uuid.h"
 
@@ -55,6 +56,7 @@ typedef enum {
     SUB_NODES,
     SUB_HISTORY,
     SUB_BATTERY,
+    SUB_WIFI,
     SUB_COUNT,
 } sub_t;
 
@@ -65,8 +67,12 @@ typedef struct {
     int8_t phone;                /* pump_pair phone index once authed, else -1 */
     uint8_t history_start;       /* History page a read returns (fill index) */
     uint8_t nonce[TL_NONCE_LEN]; /* Auth challenge, new after every attempt */
+    uint8_t auth_nonce[TL_NONCE_LEN]; /* the nonce this phone signed in with (zeros after a claim) */
+    uint8_t wifi_page;           /* Wifi read: scan page, or WIFI_READ_STATUS */
     bool subscribed[SUB_COUNT];
 } conn_slot_t;
+
+#define WIFI_READ_STATUS 0xFF
 
 static conn_slot_t s_conns[TANKLINK_MAX_BLE_CONN];
 
@@ -95,6 +101,7 @@ static conn_slot_t *slot_alloc(uint16_t conn_handle)
             s_conns[i].in_use = true;
             s_conns[i].conn_handle = conn_handle;
             s_conns[i].phone = -1;
+            s_conns[i].wifi_page = WIFI_READ_STATUS;
             esp_fill_random(s_conns[i].nonce, sizeof(s_conns[i].nonce));
             return &s_conns[i];
         }
@@ -106,6 +113,7 @@ static void sign_out(conn_slot_t *slot)
 {
     slot->authed = false;
     slot->phone = -1;
+    memset(slot->auth_nonce, 0, sizeof(slot->auth_nonce));
 }
 
 static void clear_all_auth(void)
@@ -186,6 +194,12 @@ void gatt_svr_notify_sched(void)
 {
     uint8_t buf[GATT_SCHED_MAX_LEN];
     notify_all(SUB_SCHED, buf, gatt_payload_sched(buf));
+}
+
+void gatt_svr_notify_wifi(void)
+{
+    uint8_t buf[GATT_WIFI_STATUS_MAX_LEN];
+    notify_all(SUB_WIFI, buf, gatt_payload_wifi_status(buf));
 }
 
 static void notify_ota_status(void)
@@ -315,6 +329,9 @@ static int on_auth(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ct
         return rc;
     }
     const int phone = pump_pair_check_response(slot->nonce, resp);
+    if (phone >= 0) {
+        memcpy(slot->auth_nonce, slot->nonce, sizeof(slot->auth_nonce));
+    }
     esp_fill_random(slot->nonce, sizeof(slot->nonce));
     slot->authed = phone >= 0;
     slot->phone = (int8_t)phone;
@@ -564,8 +581,13 @@ static int on_tank(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ct
 /** Set-clock write: year(u16) month day hour minute second. */
 static int set_clock(const uint8_t *buf, uint16_t len)
 {
-    if (len < 8) {
+    if (len < TANKLINK_SCHED_CLOCK_LEN) {
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    if (len >= TANKLINK_SCHED_CLOCK_UTC_OFF_AT + 2) {
+        pump_clock_set_utc_offset(
+            (int16_t)((uint16_t)buf[TANKLINK_SCHED_CLOCK_UTC_OFF_AT] |
+                      ((uint16_t)buf[TANKLINK_SCHED_CLOCK_UTC_OFF_AT + 1] << 8)));
     }
     const int year = (int)buf[1] | ((int)buf[2] << 8);
     int64_t before = 0;
@@ -621,7 +643,7 @@ static int on_sched(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *c
     if (!is_write(ctxt)) {
         return BLE_ATT_ERR_UNLIKELY;
     }
-    uint8_t buf[2 + PUMP_SCHED_MAX * 4];
+    uint8_t buf[2 + PUMP_SCHED_MAX * 4 + 4];
     uint16_t len = 0;
     int rc = read_write(ctxt, buf, sizeof(buf), 1, &len);
     if (rc != 0) {
@@ -705,6 +727,102 @@ static int on_battery(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt 
     return reply(ctxt, buf, gatt_payload_battery(buf));
 }
 
+/**
+ * Wifi: read = status, or the scan page chosen by SCAN_PAGE. Write = SET /
+ * FORGET / SCAN / SCAN_PAGE / STATUS. The password in SET is XOR'd with a
+ * keystream made from this phone's token and the nonce it signed in with, so
+ * it never crosses the (unencrypted) BLE link in the clear.
+ */
+static int wifi_set(const conn_slot_t *slot, const uint8_t *buf, uint16_t len)
+{
+    if (len < 3) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    const unsigned ssid_len = buf[1];
+    if (ssid_len == 0 || ssid_len > PUMP_WIFI_SSID_MAX || len < 2 + ssid_len + 1) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    const unsigned pass_len = buf[2 + ssid_len];
+    if (pass_len > PUMP_WIFI_PASS_MAX || len < 3 + ssid_len + pass_len) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+    char ssid[PUMP_WIFI_SSID_MAX + 1];
+    char pass[PUMP_WIFI_PASS_MAX + 1];
+    memcpy(ssid, &buf[2], ssid_len);
+    ssid[ssid_len] = '\0';
+    if (pass_len > 0) {
+        uint8_t token[TANKLINK_TOKEN_LEN];
+        if (!tl_nonzero(slot->auth_nonce, sizeof(slot->auth_nonce)) ||
+            !pump_pair_phone_token(slot->phone, token)) {
+            return BLE_ATT_ERR_WRITE_NOT_PERMITTED; /* sign in again first */
+        }
+        uint8_t ks[TANKLINK_WIFI_KEYSTREAM_LEN];
+        for (uint8_t block = 0; block < 2; block++) {
+            const uint8_t tail[5] = {'w', 'i', 'f', 'i', block};
+            tl_hmac_sha256(token, sizeof(token), slot->auth_nonce, sizeof(slot->auth_nonce),
+                           tail, sizeof(tail), &ks[block * 32]);
+        }
+        memset(token, 0, sizeof(token));
+        for (unsigned i = 0; i < pass_len; i++) {
+            pass[i] = (char)(buf[3 + ssid_len + i] ^ ks[i]);
+        }
+        memset(ks, 0, sizeof(ks));
+    }
+    pass[pass_len] = '\0';
+    const esp_err_t err = pump_wifi_set(ssid, pass);
+    memset(pass, 0, sizeof(pass));
+    ESP_LOGI(TAG, "wifi set \"%s\": %s", ssid, esp_err_to_name(err));
+    return err == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+}
+
+static int on_wifi(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    conn_slot_t *slot = slot_find(conn);
+    if (!slot || !slot->authed) {
+        return is_read(ctxt) ? BLE_ATT_ERR_READ_NOT_PERMITTED : BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    }
+    if (is_read(ctxt)) {
+        if (slot->wifi_page == WIFI_READ_STATUS) {
+            uint8_t buf[GATT_WIFI_STATUS_MAX_LEN];
+            return reply(ctxt, buf, gatt_payload_wifi_status(buf));
+        }
+        uint8_t buf[GATT_WIFI_SCAN_MAX_LEN];
+        return reply(ctxt, buf, gatt_payload_wifi_scan(buf, slot->wifi_page));
+    }
+    if (!is_write(ctxt)) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t buf[2 + PUMP_WIFI_SSID_MAX + 1 + PUMP_WIFI_PASS_MAX];
+    uint16_t len = 0;
+    const int rc = read_write(ctxt, buf, sizeof(buf), 1, &len);
+    if (rc != 0) {
+        return rc;
+    }
+    status_led_notify_activity();
+    switch (buf[0]) {
+    case TANKLINK_WIFI_OP_SET:
+        slot->wifi_page = WIFI_READ_STATUS;
+        return wifi_set(slot, buf, len);
+    case TANKLINK_WIFI_OP_FORGET:
+        slot->wifi_page = WIFI_READ_STATUS;
+        return pump_wifi_forget() == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+    case TANKLINK_WIFI_OP_SCAN:
+        slot->wifi_page = WIFI_READ_STATUS;
+        return pump_wifi_scan_start() == ESP_OK ? 0 : BLE_ATT_ERR_UNLIKELY;
+    case TANKLINK_WIFI_OP_SCAN_PAGE:
+        if (len < 2) {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
+        slot->wifi_page = buf[1] == WIFI_READ_STATUS ? 0 : buf[1];
+        return 0;
+    case TANKLINK_WIFI_OP_STATUS:
+        slot->wifi_page = WIFI_READ_STATUS;
+        return 0;
+    default:
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+}
+
 static int on_ota_status(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
                          void *arg)
 {
@@ -786,6 +904,7 @@ static const ble_uuid128_t uuid_tanks = TANKLINK_CHR_TANKS_INIT;
 static const ble_uuid128_t uuid_nodes = TANKLINK_CHR_NODES_INIT;
 static const ble_uuid128_t uuid_history = TANKLINK_CHR_HISTORY_INIT;
 static const ble_uuid128_t uuid_battery = TANKLINK_CHR_BATTERY_INIT;
+static const ble_uuid128_t uuid_wifi = TANKLINK_CHR_WIFI_INIT;
 
 #define F_R BLE_GATT_CHR_F_READ
 #define F_W BLE_GATT_CHR_F_WRITE
@@ -821,6 +940,8 @@ static const struct ble_gatt_svc_def s_services[] = {
              .val_handle = &s_val_handle[SUB_HISTORY]},
             {.uuid = &uuid_battery.u, .access_cb = on_battery, .flags = F_R | F_N,
              .val_handle = &s_val_handle[SUB_BATTERY]},
+            {.uuid = &uuid_wifi.u, .access_cb = on_wifi, .flags = F_R | F_W | F_N,
+             .val_handle = &s_val_handle[SUB_WIFI]},
             {0},
         },
     },

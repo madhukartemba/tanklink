@@ -272,3 +272,43 @@ size_t gatt_payload_ota_status(uint8_t out[GATT_OTA_STATUS_LEN])
     put_u32(&out[2], pump_ota_offset());
     return GATT_OTA_STATUS_LEN;
 }
+
+size_t gatt_payload_wifi_status(uint8_t out[GATT_WIFI_STATUS_MAX_LEN])
+{
+    const uint32_t ip = pump_wifi_ip();
+    const char *ssid = pump_wifi_ssid();
+    const size_t n = strlen(ssid);
+    out[0] = (uint8_t)pump_wifi_state();
+    out[1] = (uint8_t)pump_wifi_rssi();
+    out[2] = (uint8_t)(ip & 0xff);
+    out[3] = (uint8_t)((ip >> 8) & 0xff);
+    out[4] = (uint8_t)((ip >> 16) & 0xff);
+    out[5] = (uint8_t)((ip >> 24) & 0xff);
+    out[6] = (uint8_t)n;
+    memcpy(&out[7], ssid, n);
+    return 7 + n;
+}
+
+size_t gatt_payload_wifi_scan(uint8_t out[GATT_WIFI_SCAN_MAX_LEN], uint8_t page)
+{
+    const int total = pump_wifi_scan_count();
+    const int first = (int)page * PUMP_WIFI_SCAN_PAGE;
+    size_t at = 3;
+    int count = 0;
+    for (int i = first; i < total && count < PUMP_WIFI_SCAN_PAGE; i++, count++) {
+        pump_wifi_net_t net;
+        if (!pump_wifi_scan_get(i, &net)) {
+            break;
+        }
+        const size_t n = strlen(net.ssid);
+        out[at++] = (uint8_t)n;
+        memcpy(&out[at], net.ssid, n);
+        at += n;
+        out[at++] = (uint8_t)net.rssi;
+        out[at++] = net.auth;
+    }
+    out[0] = pump_wifi_scan_busy() ? 1 : 0;
+    out[1] = (uint8_t)total;
+    out[2] = (uint8_t)count;
+    return at;
+}

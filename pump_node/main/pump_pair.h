@@ -53,6 +53,10 @@ esp_err_t pump_pair_unpair(void);
 int pump_pair_check_response(const uint8_t nonce[TL_NONCE_LEN],
                              const uint8_t resp[TL_AUTH_RESP_LEN]);
 
+/** [phone]'s token, for keys derived from it (the Wi-Fi password). False if
+ * that phone isn't paired. */
+bool pump_pair_phone_token(int phone, uint8_t out[TANKLINK_TOKEN_LEN]);
+
 /** Keep only [keep_phone]'s token (sign out every other phone). */
 esp_err_t pump_pair_forget_others(int keep_phone);
 

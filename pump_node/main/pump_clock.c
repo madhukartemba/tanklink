@@ -2,6 +2,7 @@
 
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "pump_control.h"
 #include "pump_errors.h"
@@ -164,8 +165,64 @@ static esp_err_t load_from_rtc(void)
     return ESP_OK;
 }
 
+#define NVS_NS "tl_clock"
+#define NVS_KEY_UTC_OFF "utc_off"
+
+static int16_t s_utc_off_min;
+static bool s_utc_off_known;
+
+static void load_utc_offset(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    int16_t v = 0;
+    if (nvs_get_i16(h, NVS_KEY_UTC_OFF, &v) == ESP_OK) {
+        s_utc_off_min = v;
+        s_utc_off_known = true;
+    }
+    nvs_close(h);
+}
+
+bool pump_clock_utc_offset(int16_t *minutes)
+{
+    if (!s_utc_off_known) {
+        return false;
+    }
+    if (minutes) {
+        *minutes = s_utc_off_min;
+    }
+    return true;
+}
+
+void pump_clock_set_utc_offset(int16_t minutes)
+{
+    if (s_utc_off_known && s_utc_off_min == minutes) {
+        return;
+    }
+    s_utc_off_min = minutes;
+    s_utc_off_known = true;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    if (nvs_set_i16(h, NVS_KEY_UTC_OFF, minutes) == ESP_OK) {
+        nvs_commit(h);
+    }
+    nvs_close(h);
+}
+
+esp_err_t pump_clock_set_unix(int64_t local_unix)
+{
+    pump_civil_time_t t;
+    unix_to_civil(local_unix, &t);
+    return pump_clock_set(t.year, t.month, t.day, t.hour, t.minute, t.second);
+}
+
 void pump_clock_init(void)
 {
+    load_utc_offset();
     const esp_err_t err = pump_rtc_init();
     if (err == ESP_ERR_NOT_SUPPORTED) {
         return;

@@ -36,6 +36,7 @@
 #include "pump_ota.h"
 #include "pump_pair.h"
 #include "pump_runlog.h"
+#include "pump_wifi.h"
 #include "relay_control.h"
 #include "status_led.h"
 #include "tanklink_uuid.h"
@@ -117,6 +118,7 @@ static void pair_poll_task(void *arg)
     while (1) {
         pump_pair_poll();
         pump_clock_poll();
+        pump_wifi_poll();
         pump_control_poll();
         pump_ota_poll();
         pump_diag_poll();
@@ -410,4 +412,8 @@ void app_main(void)
     }
 
     nimble_port_freertos_init(host_task);
+
+    /* Optional Wi-Fi, after BLE: off (and free) until the app sets a network. */
+    pump_wifi_set_change_callback(gatt_svr_notify_wifi);
+    soft(pump_wifi_init(), "Wi-Fi");
 }
