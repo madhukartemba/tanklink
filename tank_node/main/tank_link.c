@@ -21,6 +21,8 @@
 #define TAG "TANK_LINK"
 #define NVS_NS "tank"
 #define NVS_KEY_SEQ "seq32"
+/* The notice to the old pump is a courtesy: a couple of tries, then move on. */
+#define UNPAIR_TRIES 2
 
 static uint32_t s_seq;
 static bool s_radio_ok;
@@ -193,14 +195,13 @@ static void fill_status(tanklink_lora_status_t *pkt, const tank_inputs_t *in,
 }
 
 static esp_err_t send_with_ack(const uint8_t *payload, size_t len, uint32_t seq,
-                               const uint8_t key[TL_KEY_LEN],
+                               const uint8_t key[TL_KEY_LEN], int attempts,
                                tank_link_should_cancel_fn should_cancel, void *ctx)
 {
     if (!s_radio_ok) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    const int attempts = CONFIG_TANK_TX_RETRIES;
     const uint32_t ack_ms = CONFIG_TANK_ACK_TIMEOUT_MS;
     const tanklink_lora_status_t *hdr = (const tanklink_lora_status_t *)payload;
 
@@ -237,7 +238,7 @@ esp_err_t tank_link_send_status(const tank_inputs_t *in, uint8_t battery_pct,
     fill_status(pkt, in, battery_pct, button_event, false);
     const uint8_t *key = tank_link_key();
     const size_t len = tl_lora_seal(key, buf, TANKLINK_LORA_STATUS_BODY_LEN);
-    esp_err_t err = send_with_ack(buf, len, pkt->seq, key, should_cancel, ctx);
+    esp_err_t err = send_with_ack(buf, len, pkt->seq, key, CONFIG_TANK_TX_RETRIES, should_cancel, ctx);
     if (err == ESP_ERR_INVALID_STATE && should_cancel) {
         return err;
     }
@@ -263,10 +264,28 @@ esp_err_t tank_link_send_pair_request(uint8_t battery_pct,
     fill_status(pkt, &in, battery_pct, true, true);
     memcpy(buf + TANKLINK_LORA_STATUS_BODY_LEN, key, sizeof(key));
     const size_t len = tl_lora_seal(key, buf, TANKLINK_LORA_PAIR_BODY_LEN);
-    esp_err_t err = send_with_ack(buf, len, pkt->seq, key, should_cancel, ctx);
+    esp_err_t err = send_with_ack(buf, len, pkt->seq, key, CONFIG_TANK_TX_RETRIES, should_cancel, ctx);
     if (err == ESP_OK) {
         err = tank_link_key_commit(key);
     }
     memset(key, 0, sizeof(key));
+    return err;
+}
+
+esp_err_t tank_link_send_unpair(uint8_t battery_pct, const uint8_t key[TL_KEY_LEN])
+{
+    if (!s_radio_ok || !tl_nonzero(key, TL_KEY_LEN)) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    tank_inputs_t in;
+    tank_board_read(&in);
+    uint8_t buf[TANKLINK_LORA_STATUS_LEN];
+    tanklink_lora_status_t *pkt = (tanklink_lora_status_t *)buf;
+    fill_status(pkt, &in, battery_pct, false, false);
+    pkt->type = TANKLINK_LORA_TYPE_UNPAIR;
+    const size_t len = tl_lora_seal(key, buf, TANKLINK_LORA_STATUS_BODY_LEN);
+    const esp_err_t err = send_with_ack(buf, len, pkt->seq, key, UNPAIR_TRIES, NULL, NULL);
+    ESP_LOGI(TAG, "unpair notice: %s", err == ESP_OK ? "the old pump acknowledged"
+                                                      : "no answer (pump out of range?)");
     return err;
 }

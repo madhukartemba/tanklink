@@ -37,6 +37,16 @@ esp_err_t tank_link_send_status(const tank_inputs_t *in, uint8_t battery_pct,
                                 void *ctx);
 
 /**
+ * Tell the pump a tank was paired with that it has been removed: an UNPAIR
+ * tagged with [key], the link key that pairing used. A pump that holds that key
+ * removes this sensor. If the tank was just paired again with the same pump, the
+ * pump already has a newer key and ignores it (which is why this is sent after
+ * pairing, not before). Two attempts, then it gives up quietly: the pump may be
+ * out of range, and the tank can still be removed from the app.
+ */
+esp_err_t tank_link_send_unpair(uint8_t battery_pct, const uint8_t key[16]);
+
+/**
  * PAIR with ACK retries. Optional cancel returns true to abort (ESP_ERR_INVALID_STATE).
  * on_attempt called before each TX (for LED flash tick ownership in caller).
  */

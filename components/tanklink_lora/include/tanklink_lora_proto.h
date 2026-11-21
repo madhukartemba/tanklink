@@ -20,6 +20,11 @@ extern "C" {
 #define TANKLINK_LORA_TYPE_STATUS 0x01
 #define TANKLINK_LORA_TYPE_PAIR 0x02
 #define TANKLINK_LORA_TYPE_ACK 0x03
+/* The tank is leaving its pump (it went into pairing mode): a STATUS-sized
+ * packet tagged with the link key it was paired with. The pump that holds that
+ * key removes the sensor and ACKs. A new type within the same major: a pump
+ * that doesn't know it ignores it. */
+#define TANKLINK_LORA_TYPE_UNPAIR 0x04
 
 /** Raw float pin levels: bit set when that pin is HIGH (internal pull-up). */
 #define TANKLINK_LORA_FLAG_SENSOR1 (1u << 0)
@@ -51,6 +56,7 @@ typedef struct __attribute__((packed)) {
  * On air:
  *   STATUS, ACK: status body, then the 8-byte tag.
  *   PAIR:        status body, link key(16), then the 8-byte tag.
+ *   UNPAIR:      status body, then the 8-byte tag (same size as STATUS).
  * The tag is HMAC-SHA256(link key, everything before it), first 8 bytes.
  * PAIR is tagged with the key it carries; the pump's ACK to a PAIR is
  * tagged with that same key, which is how the tank knows the pump took it.

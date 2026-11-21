@@ -628,6 +628,41 @@ static void on_pair_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t sn
     gatt_svr_notify_nodes();
 }
 
+/**
+ * A tank that was paired with this pump went into pairing mode (it is leaving):
+ * remove its sensor, as if it were unpaired from the app. Only the pump that
+ * holds the tank's current link key can verify it, so a tank that was just
+ * paired again with this same pump (which has the new key) is not removed.
+ * Refused while the pump fills that tank's tank, as the app's Unpair is.
+ */
+static void on_unpair_packet(const uint8_t *buf, size_t n)
+{
+    const tanklink_lora_status_t *pkt = (const tanklink_lora_status_t *)buf;
+    const int node = pump_tanks_node_find(pkt->tank_id);
+    if (node < 0) {
+        return; /* not ours */
+    }
+    node_rt_t *rt = &s_rt[node];
+    if (!rt->has_key || !tl_lora_verify(rt->key, buf, n)) {
+        ESP_LOGW(TAG, "UNPAIR ignored — sensor %d bad tag (re-paired with a new key?)", node);
+        return;
+    }
+    if (rt->seq_known && pkt->seq < rt->last_seq) {
+        ESP_LOGW(TAG, "UNPAIR ignored — sensor %d old seq", node);
+        return;
+    }
+    uint8_t key[TL_KEY_LEN]; /* the removal clears the runtime state */
+    memcpy(key, rt->key, sizeof(key));
+    const esp_err_t err = lora_link_unpair_node((uint8_t)node);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "UNPAIR for sensor %d refused: %s", node, esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "sensor %d left: its tank went into pairing mode", node);
+        send_ack(pkt, key);
+    }
+    memset(key, 0, sizeof(key));
+}
+
 static void on_status_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t snr)
 {
     const tanklink_lora_status_t *pkt = (const tanklink_lora_status_t *)buf;
@@ -739,6 +774,8 @@ static void lora_task(void *arg)
                 on_pair_packet(buf, n, rssi, snr);
             } else if (pkt->type == TANKLINK_LORA_TYPE_STATUS) {
                 on_status_packet(buf, n, rssi, snr);
+            } else if (pkt->type == TANKLINK_LORA_TYPE_UNPAIR) {
+                on_unpair_packet(buf, n);
             }
         } else if (err != ESP_ERR_NOT_FOUND && err != ESP_ERR_INVALID_CRC) {
             vTaskDelay(pdMS_TO_TICKS(20));

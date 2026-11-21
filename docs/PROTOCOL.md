@@ -355,7 +355,7 @@ The tank only runs BLE during a ~10 s window after a short button press, for OTA
 | --- | --- | --- |
 | 0 | 2 | magic `'T' 'L'` (`0x54 0x4C`) |
 | 2 | 1 | LoRa protocol major (currently **5**) |
-| 3 | 1 | type: `0x01` STATUS, `0x02` PAIR, `0x03` ACK |
+| 3 | 1 | type: `0x01` STATUS, `0x02` PAIR, `0x03` ACK, `0x04` UNPAIR |
 | 4 | 1 | flags |
 | 5 | 1 | battery % |
 | 6 | 4 | seq (u32, per tank, only goes up; kept in the tank's NVS) |
@@ -368,6 +368,7 @@ On air:
 
 - STATUS and ACK: the 21-byte body, then an 8-byte tag (29 bytes).
 - PAIR: the body, the tank's new 16-byte **link key**, then the tag (45 bytes).
+- UNPAIR: the same size as STATUS (29 bytes), `type = 0x04`, tagged with the link key the tank was paired with.
 
 The tag is `HMAC-SHA256(link key, everything before it)`, first 8 bytes (`tl_lora_seal` / `tl_lora_verify`). A packet with a wrong tag is dropped. PAIR is tagged with the key it carries; the pump's ACK to it is tagged with the same key, and the tank only starts using the new key once it gets that ACK, so a failed pairing leaves the old link working.
 
@@ -382,4 +383,6 @@ Exchange:
 1. The tank sends STATUS (or PAIR, with a new link key, when the button has been held 3 s).
 2. The pump accepts PAIR only while its tank-pair window is open (Cmd `0xA1`). It accepts STATUS only from a paired `tank_id` (up to 4) with a valid tag.
 3. The pump replies ACK with the same layout, `type = 0x03`, the same `seq`, tagged with that tank's key. The tank retries up to 5 times without an ACK, with a random 40–440 ms gap so two tanks that collided don't retry in step. It only accepts a correctly tagged ACK carrying its own `tank_id` and `seq`.
+
+**Leaving a pump (UNPAIR, `0x04`).** When a tank that was paired goes into pairing mode, it tells the pump it was paired with that it is gone, so the pump removes the sensor (as *Unpair* in the app does) instead of showing it offline for ever. The tank sends it **last**: after it paired with a new pump, or after pairing was cancelled or timed out. It is tagged with the **old** link key and sent twice at most (no more waiting if nobody answers). The pump that holds that key finds the sensor by `tank_id`, checks the tag and that `seq` is not older than the last it saw, removes the sensor and ACKs (tagged with the same key). A pump that was just paired again with the same tank already has the new key, so it fails the tag check and ignores the notice: re-pairing with the same pump keeps its tank names, schedules and settings. The pump refuses it while it fills that sensor's tank (the same rule as *Unpair*); the sensor can then be removed from the app. A pump that doesn't know type `0x04` ignores it, so no coordinated update is needed (`TANKLINK_LORA_VER` is unchanged).
 4. The pump drops a STATUS whose `seq` is below the last one it saw from that tank (a replay). The same `seq` again is a retry: it is ACKed and updates RSSI/SNR but not state. The pump saves the last `seq` per tank in NVS, so this holds across restarts.
