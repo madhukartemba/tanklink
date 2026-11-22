@@ -22,7 +22,7 @@ BLE stays required: first setup, phone pairing, tank sensor pairing and **tank f
 | Pump updates sent from the phone over Wi-Fi (about 10–30 s instead of minutes) | 2 | No |
 | Pump downloads and installs its own updates | 3 | Yes |
 | Pump checks daily for a new version; the app shows "Update available" right away | 3 | Yes |
-| Optional: install pump updates automatically at night when idle (off by default) | 3 | Yes |
+| Optional: install pump updates automatically when idle (on by default since pump 0.28.1) | 3 | Yes |
 | Time set automatically (SNTP), even without the DS3231 or a phone sync | 1 | Yes |
 | Wi-Fi signal and status in the app, for troubleshooting | 1 | No |
 
@@ -208,7 +208,7 @@ It uses the same rules as the app (`AGENTS.md` → Versions): highest semver amo
 - New commands (`tanklink_uuid.h`, next free values; check for clashes): `CMD_UPDATE_CHECK`, `CMD_UPDATE_INSTALL`.
 - Append to the State or Info payload (minor bump): update-available flag + version (3 bytes), and the last check result (ok / no internet / error).
 
-### 3.3 Automatic install (off by default)
+### 3.3 Automatic install (on by default since pump 0.28.1)
 
 **As built:** not a fixed night window. It installs when the pump is unlikely to be needed: off for 10 minutes, up for 10 minutes, no schedule within 60 minutes (clock must be known if schedules exist), and an auto-fill tank not low; a failed try waits 6 hours. The notes below are the original idea.
 

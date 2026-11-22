@@ -106,7 +106,7 @@ Stored on the pump in NVS namespace `pump`, key `cfg`. Defaults apply after a fi
 | Setting | Default | Range / values | App location |
 | --- | --- | --- | --- |
 | Auto-off (per tank) | 30 min | 1 – 240 min (can't be turned off) | Pump settings. Stored with the tank slot in `tl_tanks` |
-| Install updates automatically | off | on / off, needs Wi-Fi; only when the pump is idle and no fill is planned | Pump settings. `auto_update` in `pump` `cfg` |
+| Install updates automatically | **on** | on / off, needs Wi-Fi; only when the pump is idle and no fill is planned | Pump settings. `auto_update` in `pump` `cfg` |
 | Auto-fill (per tank) | off | on / off, only for a tank with both floats | Pump settings → Fill when low. `auto_fill` in `tl_tanks` |
 | Water and power | flow not set, 750 W, price not set, ₹ | flow (L/min), power (W), price per kWh, currency | Water and power → Pump details. `usage` in `pump`, its own key, so it never resets the other settings |
 | Buzzer | on for button, pump start/stop, auto-off | per-event switches | Pump settings |

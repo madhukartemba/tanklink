@@ -180,6 +180,7 @@ static void load_defaults(pump_config_t *cfg)
     cfg->led_brightness = PUMP_LED_BRIGHTNESS_DEFAULT;
     cfg->starter_type = PUMP_STARTER_NONE;
     cfg->relay_pulse_ms = CONFIG_PUMP_RELAY_PULSE_MS;
+    cfg->auto_update = 1; /* on: it only acts once Wi-Fi is set up, and only when idle */
 }
 
 static bool settings_valid(uint8_t tone, uint8_t led, uint8_t starter, uint32_t pulse_ms)

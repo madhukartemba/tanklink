@@ -128,7 +128,7 @@ Maximum write length is 18 bytes.
 
 ### Settings (read no auth, write authed)
 
-Minor 5 appends `auto_update(1)` to both the read and the write: 1 = the pump installs an update it found by itself, but only when it is unlikely to get in the way: the pump has been off for 10 minutes, it has been up for 10 minutes, no fill schedule is due in the next 60 minutes (with schedules set, the clock must be known), and a tank that fills by itself is not low. A failed try waits 6 hours. Off by default.
+Minor 5 appends `auto_update(1)` to both the read and the write: 1 = the pump installs an update it found by itself, but only when it is unlikely to get in the way: the pump has been off for 10 minutes, it has been up for 10 minutes, no fill schedule is due in the next 60 minutes (with schedules set, the clock must be known), and a tank that fills by itself is not low. A failed try waits 6 hours. On by default (from pump 0.28.1); it does nothing until the pump has Wi-Fi.
 
 Read, 50 bytes (read and notify; the pump notifies whenever a setting or its name changes, to signed-in phones):
 
