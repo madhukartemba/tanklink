@@ -19,7 +19,7 @@
 #define CONFIG_PUMP_FACTORY_RESET_EXTRA_MS 10000
 #endif
 #ifndef CONFIG_PUMP_ACTION_HOLD_MS
-#define CONFIG_PUMP_ACTION_HOLD_MS 500
+#define CONFIG_PUMP_ACTION_HOLD_MS 1000
 #endif
 
 static board_button_cb_t s_start_cb;
@@ -157,9 +157,13 @@ static void button_task(void *arg)
                         ESP_LOGI(TAG, "ON armed — release to start, keep holding for BLE pair");
                     }
                     /* Phase 2: fill toward BLE pairing. */
-                    const uint32_t base = stopped_on_press ? 0 : action_ms;
-                    const uint32_t span = stopped_on_press ? pair_ms : (pair_ms - action_ms);
-                    update_hold_pct(held_ms - base, span);
+                    if (stopped_on_press) {
+                        update_hold_pct(held_ms, pair_ms);
+                    } else {
+                        /* Stay fully spread once armed; restarting from 0 made the
+                         * bloom collapse and regrow. */
+                        update_hold_pct(action_ms, action_ms);
+                    }
                 }
                 if (held_ms >= pair_ms) {
                     pair_fired = true;

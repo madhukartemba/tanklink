@@ -672,7 +672,8 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::Blue, 9.5f, 0.42f, 0.05f, 2.2f));
         break;
     case STATUS_LED_HOLD_PROGRESS:
-        s_px.addAnimation(std::make_unique<HoldBloom>(kN, &s_hold_pct, &s_hold_color));
+        /* Immediate, not the 1 s crossfade: the bloom must start on the press. */
+        s_px.setAnimationImmediate(std::make_unique<HoldBloom>(kN, &s_hold_pct, &s_hold_color));
         break;
     case STATUS_LED_UPDATING:
         s_px.addAnimation(std::make_unique<UpdateProgress>(kN, &s_ota_pct, &s_ota_color));
@@ -739,8 +740,11 @@ void anim_task(void *arg)
             }
         }
 
-        /* Follow hold target quickly but without hard steps. */
-        s_hold_pct += (static_cast<float>(s_hold_pct_target) - s_hold_pct) * 0.42f;
+        /* Grow quickly with the button; after release shrink back slowly while the
+         * next animation fades in, so the bloom never snaps or freezes. */
+        const bool holding = (s_mode == STATUS_LED_HOLD_PROGRESS);
+        const float hold_goal = holding ? static_cast<float>(s_hold_pct_target) : 0.0f;
+        s_hold_pct += (hold_goal - s_hold_pct) * (holding ? 0.35f : 0.12f);
         s_ota_pct += (static_cast<float>(s_ota_pct_target) - s_ota_pct) * 0.22f;
 
         s_px.update();
