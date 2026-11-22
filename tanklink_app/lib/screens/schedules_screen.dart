@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
 import '../util/format.dart';
+import '../util/error_text.dart';
 
 class SchedulesScreen extends StatefulWidget {
   const SchedulesScreen({super.key});
@@ -32,7 +33,7 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
       await context.read<PumpSession>().replaceFillSchedules(next);
     } catch (e) {
       if (!mounted) return;
-      final msg = e.toString().replaceFirst('StateError: ', '');
+      final msg = errorMessage(e);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } finally {
       if (mounted) setState(() => _busy = false);

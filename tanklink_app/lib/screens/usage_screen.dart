@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
 import '../util/water_use.dart';
+import '../util/error_text.dart';
 
 /// Water and power use, worked out from how long the pump ran.
 ///
@@ -156,11 +157,7 @@ class _UsageScreenState extends State<UsageScreen> {
       await session.setUsageSettings(next);
     } catch (e) {
       messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Couldn\u2019t save: ${'$e'.replaceFirst('StateError: ', '')}',
-          ),
-        ),
+        SnackBar(content: Text('Couldn\u2019t save: ${errorMessage(e)}')),
       );
     }
   }

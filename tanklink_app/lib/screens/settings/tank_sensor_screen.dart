@@ -8,8 +8,7 @@ import '../../util/error_text.dart';
 import '../../ble/tanklink_uuids.dart';
 import 'update_tiles.dart';
 
-String _err(Object e) =>
-    e.toString().replaceFirst(RegExp(r'^(StateError|Bad state): '), '');
+String _err(Object e) => errorMessage(e);
 
 void _snack(BuildContext context, String msg) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));

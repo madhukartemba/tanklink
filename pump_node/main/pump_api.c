@@ -408,6 +408,11 @@ static pump_api_err_t write_settings(const uint8_t *buf, size_t len)
         .relay_pulse_ms = (uint16_t)(buf[4] | (buf[5] << 8)),
         .auto_update = buf[6] != 0,
     };
+    /* A new starter type stops the motor with the old profile first: never
+     * mid-fill, or the pump would think it still runs. */
+    if (set.starter_type != pump_config_starter_type() && pump_control_is_on()) {
+        return PUMP_API_ERR_REFUSED;
+    }
     if (pump_config_set_settings(&set) != ESP_OK) {
         return PUMP_API_ERR_REFUSED;
     }

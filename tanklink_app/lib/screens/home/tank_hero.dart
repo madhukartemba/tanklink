@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../ble/pump_session.dart';
 import '../../util/format.dart';
+import '../../util/error_text.dart';
 
 /// Full-area tank status — level, signal, battery; no FW / tank ID.
 class TankHero extends StatelessWidget {
@@ -107,7 +108,9 @@ class TankHero extends StatelessWidget {
                 } catch (e) {
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Tank pair failed: $e')),
+                    SnackBar(
+                      content: Text('Tank pair failed: ${errorMessage(e)}'),
+                    ),
                   );
                 }
               },

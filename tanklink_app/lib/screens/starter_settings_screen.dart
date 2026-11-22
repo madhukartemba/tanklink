@@ -5,6 +5,7 @@ import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
 import '../util/format.dart';
 import '../util/nav.dart';
+import '../util/error_text.dart';
 
 class StarterSettingsScreen extends StatefulWidget {
   const StarterSettingsScreen({super.key});
@@ -26,7 +27,8 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
       TankLinkUuids.relayPulseMsMin,
       TankLinkUuids.relayPulseMsMax,
     );
-    _hydrated = true;
+    // Until signed in the values are only defaults: keep following them.
+    _hydrated = session.ready;
   }
 
   Future<void> _confirm() async {
@@ -50,8 +52,9 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
       popSelf(context);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Couldn’t save starter: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Couldn’t save starter: ${errorMessage(e)}')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -67,6 +70,8 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
         _draftPulseMs != session.relayPulseMs;
     final twoButton = _draftType == TankLinkUuids.starterTwoButton;
     final singlePhase = _draftType == TankLinkUuids.starterSinglePhase;
+    // Changing the type mid-fill would stop the motor: the pump refuses it.
+    final typeLocked = _saving || session.pumpOn;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Starter')),
@@ -78,12 +83,19 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
             'matches your panel, then confirm.',
             style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14),
           ),
+          if (session.pumpOn) ...[
+            const SizedBox(height: 8),
+            Text(
+              'The pump is running. Stop it to change the starter type.',
+              style: TextStyle(color: scheme.error, fontSize: 14),
+            ),
+          ],
           const SizedBox(height: 16),
           _StarterOption(
             selected: _draftType == TankLinkUuids.starterNone,
             title: 'Not configured',
             subtitle: 'App on/off only',
-            onTap: _saving
+            onTap: typeLocked
                 ? null
                 : () => setState(() => _draftType = TankLinkUuids.starterNone),
           ),
@@ -91,7 +103,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
             selected: twoButton,
             title: 'Two-button starter',
             subtitle: 'Presses the Start and Stop buttons',
-            onTap: _saving
+            onTap: typeLocked
                 ? null
                 : () => setState(
                     () => _draftType = TankLinkUuids.starterTwoButton,
@@ -101,7 +113,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
             selected: singlePhase,
             title: 'Single-phase MCB starter',
             subtitle: 'Relay 1 stays on while the pump runs',
-            onTap: _saving
+            onTap: typeLocked
                 ? null
                 : () => setState(
                     () => _draftType = TankLinkUuids.starterSinglePhase,

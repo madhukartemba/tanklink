@@ -1102,6 +1102,9 @@ class PumpSession extends ChangeNotifier {
       await sub.cancel();
 
       if (device.remoteId.str != pump.remoteId) {
+        // Same pump, new Bluetooth address: replace the entry, don't add one.
+        final i = pumps.indexWhere((p) => p.remoteId == pump.remoteId);
+        if (i >= 0) pumps.removeAt(i);
         await _upsertPump(pump.copyWith(remoteId: device.remoteId.str));
       }
       return device;
@@ -1185,9 +1188,7 @@ class PumpSession extends ChangeNotifier {
     bool? autoUpdate,
   }) async {
     if (_settings == null || !authed) {
-      status = 'Not connected';
-      notifyListeners();
-      return;
+      throw StateError('Connect to the pump first');
     }
     final next = PumpSettings(
       buzzerFlags: flags ?? buzzerFlags,
@@ -1336,6 +1337,11 @@ class PumpSession extends ChangeNotifier {
     required int type,
     required int pulseMs,
   }) async {
+    // A new starter type stops the motor with the old one first; the pump
+    // refuses it mid-fill, so don't send it.
+    if (pumpOn && type != starterType) {
+      throw StateError('Stop the pump before changing the starter');
+    }
     await _writeSettings(
       starter: type,
       pulseMs: pulseMs.clamp(
@@ -2410,9 +2416,7 @@ class PumpSession extends ChangeNotifier {
       _applyTankStatus(TankStatus.parse(value));
       notifyListeners();
     });
-    try {
-      _applyTankStatus(TankStatus.parse(await _tank!.read()));
-    } catch (_) {}
+    _applyTankStatus(TankStatus.parse(await _tank!.read()));
   }
 
   /// Push the phone's local civil time. Schedules do not run until this lands.
@@ -2425,10 +2429,8 @@ class PumpSession extends ChangeNotifier {
       ScheduleState.encodeClock(DateTime.now()),
       withoutResponse: false,
     );
-    try {
-      _applySchedule(ScheduleState.parse(await chr.read()));
-      notifyListeners();
-    } catch (_) {}
+    _applySchedule(ScheduleState.parse(await chr.read()));
+    notifyListeners();
   }
 
   /// Replace the pump's daily fill times. Throws if the pump rejects the list.
@@ -2476,7 +2478,11 @@ class PumpSession extends ChangeNotifier {
     _clockSyncTimer?.cancel();
     _clockSyncTimer = Timer.periodic(const Duration(minutes: 15), (_) {
       if (authed && connected) {
-        unawaited(syncPumpClock());
+        unawaited(
+          syncPumpClock().catchError((Object e) {
+            AppLog.w('pump', 'Clock sync failed: $e'); // tried again in 15 min
+          }),
+        );
       }
     });
   }
@@ -2533,13 +2539,7 @@ class PumpSession extends ChangeNotifier {
       _applyTanks(TankList.parse(value));
       notifyListeners();
     });
-    try {
-      final v = await chr.read();
-      AppLog.i('pump', 'Tank list: ${v.length} bytes');
-      _applyTanks(TankList.parse(v));
-    } catch (e) {
-      AppLog.w('pump', 'Tank list read failed: $e');
-    }
+    _applyTanks(TankList.parse(await chr.read()));
     final sensorsChr = _sensorsChr!;
     await _sensorsNotifySub?.cancel();
     await sensorsChr.setNotifyValue(true);
@@ -2547,11 +2547,7 @@ class PumpSession extends ChangeNotifier {
       _applySensors(TankSensor.parseList(value));
       notifyListeners();
     });
-    try {
-      _applySensors(TankSensor.parseList(await sensorsChr.read()));
-    } catch (e) {
-      AppLog.w('pump', 'Sensor list read failed: $e');
-    }
+    _applySensors(TankSensor.parseList(await sensorsChr.read()));
     // Reads and notifies give the newest page; the rest is read page by page.
     _historyNotifySub = await _follow(_historyChr!, _historyNotifySub, (v) {
       final page = HistoryPage.parse(v);
@@ -2569,7 +2565,6 @@ class PumpSession extends ChangeNotifier {
     });
   }
 
-  /// Subscribe to [chr], apply each value with [apply], and read it once.
   Future<void>? _historyRead;
 
   /// All of the pump's fills, [TankLinkUuids.historyPage] at a time: write
@@ -2596,6 +2591,9 @@ class PumpSession extends ChangeNotifier {
     }
   }();
 
+  /// Subscribe to [chr], apply each value with [apply], and read it once. A
+  /// failed read fails the session (and the connect is tried again) rather
+  /// than leaving a screen on stale or empty data.
   Future<StreamSubscription<List<int>>> _follow(
     PumpChr chr,
     StreamSubscription<List<int>>? old,
@@ -2609,7 +2607,10 @@ class PumpSession extends ChangeNotifier {
     });
     try {
       apply(await chr.read());
-    } catch (_) {}
+    } catch (_) {
+      await sub.cancel();
+      rethrow;
+    }
     return sub;
   }
 

@@ -12,6 +12,7 @@ import '../ble/tanklink_uuids.dart';
 import 'github_release_util.dart';
 import 'semver.dart';
 import '../diag/app_log.dart';
+import '../util/error_text.dart' as err;
 
 enum FwUpdatePhase {
   idle,
@@ -317,7 +318,7 @@ class FirmwareUpdate extends ChangeNotifier {
       return bytes;
     } catch (e) {
       AppLog.e('update', 'Download failed', e);
-      errorMessage = e.toString();
+      errorMessage = err.errorMessage(e);
       phase = FwUpdatePhase.error;
       notifyListeners();
       rethrow;

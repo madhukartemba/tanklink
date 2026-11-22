@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../ble/pump_session.dart';
 import '../../ble/tanklink_uuids.dart';
 import '../../util/format.dart';
+import '../../util/error_text.dart';
 
 /// Auto-off switch and duration for one tank. With several tanks a selector
 /// picks which tank is being edited; each tank keeps its own limit.
@@ -49,9 +50,8 @@ class _AutoOffSectionState extends State<AutoOffSection> {
       await session.setAutoOffMinutes(_editSlot!, minutes);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('StateError: ', ''))),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(errorMessage(e))));
     }
   }
 
@@ -220,11 +220,8 @@ class _AutoFillRowState extends State<_AutoFillRow> {
       await widget.session.setAutoFill(widget.slot, on);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceFirst('StateError: ', '')),
-          ),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(errorMessage(e))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);

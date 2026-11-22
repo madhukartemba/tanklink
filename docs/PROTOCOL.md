@@ -142,7 +142,7 @@ Write, at least 7 bytes (extra bytes from a newer app are ignored):
 
 `buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16) auto_update(1)`
 
-The pump checks every field before it saves any of them, and saves them with one flash write. A value out of range refuses the whole write: `buzzer_tone` 0–3, `led_brightness` 1–100, `starter_type` 0–2, `relay_pulse_ms` 50–2000.
+The pump checks every field before it saves any of them, and saves them with one flash write. A value out of range refuses the whole write: `buzzer_tone` 0–3, `led_brightness` 1–100, `starter_type` 0–2, `relay_pulse_ms` 50–2000. A different `starter_type` is also refused while the pump runs (changing it stops the motor).
 
 - `buzzer_flags`: bit 0 enabled, bit 1 on button, bit 2 on pump start/stop, bit 3 on auto-off.
 - `starter_type`: 0 = none (on/off tracked, relays untouched), 1 = two-button starter (relay 1 pulses Start, relay 2 pulses Stop, each for `relay_pulse_ms`), 2 = single-phase MCB starter (minor 9: relay 1 held closed while the pump runs, relay 2 unused; `relay_pulse_ms` is kept but not used).

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../alerts/alert_bridge.dart';
 import '../../ble/pump_session.dart';
 import '../../ble/tanklink_uuids.dart';
+import '../../util/error_text.dart';
 
 /// Alerts with the app closed: the pump puts an alert in its Bluetooth
 /// advertisement and Android wakes the app to show it (docs/plan-alerts.md).
@@ -99,9 +100,7 @@ class _AlertsScreenState extends State<AlertsScreen>
         ),
       );
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Bad state: ', ''))),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(errorMessage(e))));
     } finally {
       if (mounted) setState(() => _sending = false);
     }

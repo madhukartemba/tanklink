@@ -4,8 +4,9 @@ import 'package:provider/provider.dart';
 import '../../ble/pump_session.dart';
 import '../../link/pump_link.dart';
 import '../../update/firmware_update_flow.dart' show showFirmwareConfirmSheet;
+import '../../util/error_text.dart';
 
-String _why(Object e) => e.toString().replaceFirst('Bad state: ', '');
+String _why(Object e) => errorMessage(e);
 
 /// Wi-Fi for the pump: status, picking a network, forgetting it, how the
 /// phone connects and whether the pump installs its own updates. Works over

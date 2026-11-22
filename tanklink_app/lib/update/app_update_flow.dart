@@ -9,6 +9,7 @@ import 'firmware_update.dart' show FwUpdatePhase;
 import '../util/nav.dart';
 import '../diag/report_builder.dart';
 import '../screens/report_problem_screen.dart';
+import '../util/error_text.dart';
 
 String _fmtBytes(int n) {
   if (n < 1024) return '$n B';
@@ -149,10 +150,10 @@ Future<void> runAppSelfUpdate(BuildContext context) async {
     await AppInstall.installApk(path);
     app.setDone();
   } catch (e) {
-    app.setError(e.toString());
+    app.setError(errorMessage(e));
     closeDialog();
     if (context.mounted) {
-      final message = app.errorMessage ?? '$e';
+      final message = app.errorMessage ?? errorMessage(e);
       final nav = Navigator.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -164,7 +165,8 @@ Future<void> runAppSelfUpdate(BuildContext context) async {
                 ReportProblem(
                   kind: 'app-update',
                   title: 'App update failed',
-                  detail: message,
+                  detail:
+                      '$e', // the full error; the snackbar shows it cut short
                   seenAt: DateTime.now(),
                 ),
               ),

@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../ble/pump_session.dart';
+import '../../util/snack.dart';
 
 class BuzzerSettingsSheet extends StatelessWidget {
   const BuzzerSettingsSheet({super.key});
@@ -40,7 +41,10 @@ class BuzzerSettingsSheet extends StatelessWidget {
                 enabled ? 'Sounds enabled on the pump' : 'All beeps muted',
               ),
               value: enabled,
-              onChanged: (v) => session.setBuzzerSettings(enabled: v),
+              onChanged: (v) => runOrSnack(
+                context,
+                () => session.setBuzzerSettings(enabled: v),
+              ),
             ),
             const Divider(height: 24),
             IgnorePointer(
@@ -55,7 +59,10 @@ class BuzzerSettingsSheet extends StatelessWidget {
                       title: const Text('On button press'),
                       subtitle: const Text('Short press on the pump'),
                       value: session.buzzOnButton,
-                      onChanged: (v) => session.setBuzzerSettings(onButton: v),
+                      onChanged: (v) => runOrSnack(
+                        context,
+                        () => session.setBuzzerSettings(onButton: v),
+                      ),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
@@ -64,14 +71,20 @@ class BuzzerSettingsSheet extends StatelessWidget {
                         'When started or stopped from the app',
                       ),
                       value: session.buzzOnPump,
-                      onChanged: (v) => session.setBuzzerSettings(onPump: v),
+                      onChanged: (v) => runOrSnack(
+                        context,
+                        () => session.setBuzzerSettings(onPump: v),
+                      ),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('On auto-off'),
                       subtitle: const Text('When the timer stops the pump'),
                       value: session.buzzOnAutoOff,
-                      onChanged: (v) => session.setBuzzerSettings(onAutoOff: v),
+                      onChanged: (v) => runOrSnack(
+                        context,
+                        () => session.setBuzzerSettings(onAutoOff: v),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Text(
@@ -92,10 +105,10 @@ class BuzzerSettingsSheet extends StatelessWidget {
                           borderRadius: BorderRadius.circular(14),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(14),
-                            onTap: () async {
+                            onTap: () => runOrSnack(context, () async {
                               await session.setBuzzerSettings(tone: t.$1);
                               await session.testBuzzer();
-                            },
+                            }),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -145,7 +158,7 @@ class BuzzerSettingsSheet extends StatelessWidget {
                       ),
                     const SizedBox(height: 4),
                     OutlinedButton.icon(
-                      onPressed: () => session.testBuzzer(),
+                      onPressed: () => runOrSnack(context, session.testBuzzer),
                       icon: const Icon(Icons.notifications_active_outlined),
                       label: const Text('Test buzzer'),
                     ),

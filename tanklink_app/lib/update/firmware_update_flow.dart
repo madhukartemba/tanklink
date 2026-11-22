@@ -13,6 +13,8 @@ import 'firmware_update.dart';
 import '../diag/report_builder.dart';
 import '../screens/report_problem_screen.dart';
 import '../util/nav.dart';
+import '../util/error_text.dart';
+import '../diag/app_log.dart';
 
 /// Ways to get a pump update onto the pump, best first.
 enum PumpUpdateMethod { pumpDownloads, phoneWifi, bluetooth }
@@ -463,7 +465,8 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
       fw.setDone();
       HapticFeedback.heavyImpact();
     } catch (e) {
-      fw.setError(e.toString().replaceFirst('Bad state: ', ''));
+      AppLog.w('update', 'Update failed: $e'); // the full text, for reports
+      fw.setError(errorMessage(e));
       HapticFeedback.heavyImpact();
     } finally {
       await WakelockPlus.disable();

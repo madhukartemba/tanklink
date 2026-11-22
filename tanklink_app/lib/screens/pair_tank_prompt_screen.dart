@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
+import '../util/error_text.dart';
 
 /// Shown after claiming a pump that has no tank bound yet.
 class PairTankPromptScreen extends StatefulWidget {
@@ -37,7 +38,7 @@ class _PairTankPromptScreenState extends State<PairTankPromptScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _error = '$e');
+        setState(() => _error = errorMessage(e));
       }
     } finally {
       if (mounted) setState(() => _starting = false);

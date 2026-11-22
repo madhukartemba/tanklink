@@ -82,9 +82,7 @@ Future<void> showRenamePumpDialog(BuildContext context, SavedPump pump) async {
     try {
       await context.read<PumpSession>().renamePump(pump, name);
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Bad state: ', ''))),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(errorMessage(e))));
     }
   }
 }
@@ -491,7 +489,11 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                         );
                       } catch (e) {
                         messenger.showSnackBar(
-                          SnackBar(content: Text('Couldn’t sign them out: $e')),
+                          SnackBar(
+                            content: Text(
+                              'Couldn’t sign them out: ${errorMessage(e)}',
+                            ),
+                          ),
                         );
                       }
                     },
@@ -564,7 +566,9 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('Factory reset failed: $e'),
+                                  content: Text(
+                                    'Factory reset failed: ${errorMessage(e)}',
+                                  ),
                                 ),
                               );
                             }

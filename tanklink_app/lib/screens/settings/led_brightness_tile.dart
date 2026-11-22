@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../ble/pump_session.dart';
+import '../../util/snack.dart';
 
 class LedBrightnessTile extends StatefulWidget {
   const LedBrightnessTile({super.key, required this.ready});
@@ -66,7 +67,10 @@ class _LedBrightnessTileState extends State<LedBrightnessTile> {
               value: _draft.toDouble(),
               label: '$_draft%',
               onChanged: (v) => setState(() => _draft = v.round()),
-              onChangeEnd: (v) => session.setLedBrightness(v.round()),
+              onChangeEnd: (v) => runOrSnack(
+                context,
+                () => session.setLedBrightness(v.round()),
+              ),
             ),
           ),
         ],

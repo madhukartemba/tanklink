@@ -5,6 +5,7 @@ import '../about_dialog.dart';
 import '../add_pump_screen.dart';
 import '../welcome_screen.dart';
 import '../report_problem_screen.dart';
+import '../../util/error_text.dart';
 
 class TopBar extends StatelessWidget {
   const TopBar({super.key, required this.onPumps, required this.onAdd});
@@ -284,7 +285,7 @@ class _TankChip extends StatelessWidget {
                 await session.selectTank(slot.index);
               } catch (e) {
                 if (!context.mounted) return;
-                final msg = e.toString().replaceFirst('StateError: ', '');
+                final msg = errorMessage(e);
                 ScaffoldMessenger.of(context)
                     .showSnackBar(SnackBar(content: Text(msg)));
               }

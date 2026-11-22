@@ -12,6 +12,7 @@ import 'github_release_util.dart';
 import 'firmware_update.dart' show FwUpdatePhase;
 import 'semver.dart';
 import '../diag/app_log.dart';
+import '../util/error_text.dart' as err;
 
 class AppReleaseInfo {
   AppReleaseInfo({
@@ -250,7 +251,7 @@ class AppSelfUpdate extends ChangeNotifier {
       return out.path;
     } catch (e) {
       AppLog.e('update', 'Download failed', e);
-      errorMessage = e.toString();
+      errorMessage = err.errorMessage(e);
       phase = FwUpdatePhase.error;
       notifyListeners();
       rethrow;

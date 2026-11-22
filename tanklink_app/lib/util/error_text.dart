@@ -1,3 +1,48 @@
+import 'dart:async';
+
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+
+import '../link/wifi_link.dart';
+
+/// Longest error text shown in a snackbar or the update sheet. Platform
+/// errors can run to a screenful; the full text stays in the app log, which
+/// "Report a problem" sends.
+const _errorMax = 140;
+
+/// An error as one plain sentence for a snackbar or a dialog: the first line,
+/// cut to [_errorMax] characters. The app's own errors are [StateError]s whose
+/// message is already written for the user.
+String errorMessage(Object e) {
+  final text = _plain(e).trim().split('\n').first.trim();
+  if (text.length <= _errorMax) return text;
+  return '${text.substring(0, _errorMax - 1).trimRight()}…';
+}
+
+String _plain(Object e) {
+  if (e is StateError) return e.message;
+  if (e is TimeoutException) {
+    return 'The pump didn’t answer in time. Try again.';
+  }
+  if (e is WifiRequestError) {
+    return switch (e.status) {
+      1 => 'This phone isn’t signed in to the pump. Reconnect and try again.',
+      4 => 'The pump is out of room for that.',
+      _ => 'The pump didn’t accept that right now. Try again.',
+    };
+  }
+  if (e is FlutterBluePlusException) {
+    final s = '$e';
+    if (s.contains('WRITE_NOT_PERMITTED') || s.contains('READ_NOT_PERMITTED')) {
+      return 'This phone isn’t signed in to the pump. Reconnect and try again.';
+    }
+    if (s.contains('INSUFFICIENT_RESOURCES')) {
+      return 'The pump is out of room for that.';
+    }
+    return 'The pump didn’t accept that, or the link dropped. Try again.';
+  }
+  return '$e'.replaceFirst(RegExp(r'^(Exception|Bad state): '), '');
+}
+
 /// Names for the pump and tank light codes. Keep in step with docs/ERROR_CODES.md.
 class WarnText {
   const WarnText(this.code, this.name, this.detail);

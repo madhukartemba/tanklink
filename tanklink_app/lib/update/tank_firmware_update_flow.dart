@@ -8,6 +8,8 @@ import 'firmware_update.dart';
 import '../diag/report_builder.dart';
 import '../screens/report_problem_screen.dart';
 import '../util/nav.dart';
+import '../util/error_text.dart';
+import '../diag/app_log.dart';
 
 String _fmtBytes(int n) {
   if (n < 1024) return '$n B';
@@ -266,7 +268,8 @@ class _TankOtaProgressDialogState extends State<_TankOtaProgressDialog> {
       fw.setDone();
       HapticFeedback.heavyImpact();
     } catch (e) {
-      fw.setError(e.toString().replaceFirst('Bad state: ', ''));
+      AppLog.w('update', 'Update failed: $e'); // the full text, for reports
+      fw.setError(errorMessage(e));
       HapticFeedback.heavyImpact();
     } finally {
       await WakelockPlus.disable();
