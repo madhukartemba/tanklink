@@ -45,7 +45,7 @@ CONFIG_TANK_BUTTON_HOLD_MS=3000
 CONFIG_TANK_BLE_OTA_WINDOW_MS=10000
 CONFIG_TANK_PAIR_WINDOW_MS=30000
 CONFIG_TANK_TX_RETRIES=5
-CONFIG_TANK_ACK_TIMEOUT_MS=800
+CONFIG_TANK_ACK_TIMEOUT_MS=1500
 
 # Signed firmware: OTA only takes an image signed with the TankLink release
 # key (Secure Boot V2 signature block, RSA-3072). No eFuses are burned and

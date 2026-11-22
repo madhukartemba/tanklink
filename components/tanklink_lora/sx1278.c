@@ -17,6 +17,7 @@
 #define REG_FRF_MID 0x07
 #define REG_FRF_LSB 0x08
 #define REG_PA_CONFIG 0x09
+#define REG_OCP 0x0B
 #define REG_LNA 0x0C
 #define REG_FIFO_ADDR_PTR 0x0D
 #define REG_FIFO_TX_BASE_ADDR 0x0E
@@ -258,15 +259,22 @@ static esp_err_t configure(void)
     set_mode(MODE_STDBY);
     set_frequency(s_freq_hz);
 
-    /* PA boost, ~14 dBm starting point */
+    /* +20 dBm on PA_BOOST: OutputPower 15 with the high-power DAC. It draws
+     * about 120 mA while sending, so the current limit goes up from the
+     * default 100 mA to 140 mA (OcpTrim 17). */
     write_reg(REG_PA_CONFIG, 0x8F);
-    write_reg(REG_PA_DAC, 0x84);
+    write_reg(REG_PA_DAC, 0x87);
+    write_reg(REG_OCP, 0x31);
+    /* LNA at maximum gain, boost on. */
     write_reg(REG_LNA, 0x23);
 
     /* BW 125 kHz, CR 4/5, explicit header */
     write_reg(REG_MODEM_CONFIG_1, 0x72);
-    /* SF7, CRC on */
-    write_reg(REG_MODEM_CONFIG_2, 0x74);
+    /* SF10, CRC on: -132 dBm sensitivity, ~410 ms on air for a STATUS or ACK.
+     * Both nodes must use the same SF or they can't hear each other. */
+    write_reg(REG_MODEM_CONFIG_2, 0xA4);
+    /* AGC on. Low-data-rate optimise stays off: SF10/125 kHz symbols are
+     * 8 ms, it is needed only above 16 ms (SF11 and up). */
     write_reg(REG_MODEM_CONFIG_3, 0x04);
     write_reg(REG_PREAMBLE_MSB, 0x00);
     write_reg(REG_PREAMBLE_LSB, 0x08);

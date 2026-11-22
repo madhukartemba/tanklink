@@ -143,6 +143,9 @@ menu "TankLink Tank Node"
     config TANK_ACK_TIMEOUT_MS
         int "LoRa ACK wait timeout per attempt (ms)"
         range 100 5000
-        default 800
+        default 1500
+        help
+            Covers the pump's ACK at SF10 (~410 ms on air) plus the pump's
+            turnaround, with room to spare.
 
 endmenu

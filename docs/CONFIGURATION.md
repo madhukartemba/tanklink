@@ -91,7 +91,7 @@ Menu: **TankLink Tank Node**. The values below are the ones in `sdkconfig.defaul
 | **Timing** | | |
 | `TANK_HEARTBEAT_SEC` | `300` | Deep-sleep wake interval when paired. Keep it well under the pump's `PUMP_TANK_STALE_SEC` (750, about 2.5×) |
 | `TANK_TX_RETRIES` | `5` | Send attempts until the pump ACKs |
-| `TANK_ACK_TIMEOUT_MS` | `800` | Wait per attempt |
+| `TANK_ACK_TIMEOUT_MS` | `1500` | Wait per attempt for the pump's ACK (~410 ms on air at SF10) |
 | `TANK_BUTTON_HOLD_MS` | `3000` | Hold = LoRa pairing. Starts at 3 s, without waiting for release |
 | `TANK_PAIR_WINDOW_MS` | `30000` | How long the tank keeps trying to pair |
 | `TANK_BLE_OTA_WINDOW_MS` | `10000` | BLE advertise window after a short press, for OTA |
@@ -149,6 +149,8 @@ The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, 
 | Value | Where | Current |
 | --- | --- | --- |
 | LoRa frequency | `PUMP_LORA_FREQ_HZ`, `TANK_LORA_FREQ_HZ` | 433 MHz |
+| LoRa radio settings | `sx1278_init` in `components/tanklink_lora/sx1278.c` (shared, so both nodes build the same) | SF10, 125 kHz, CR 4/5, +20 dBm |
+| Tank ACK wait vs LoRa air time | `TANK_ACK_TIMEOUT_MS` must cover the pump's ACK (~410 ms at SF10) plus its turnaround | 1500 ms |
 | Tank stale window | `PUMP_TANK_STALE_SEC`, app `TankLinkUuids.tankStaleSec` | 750 s |
 | Tank heartbeat vs stale window | `TANK_HEARTBEAT_SEC` must be well below `PUMP_TANK_STALE_SEC` | 300 s vs 750 s |
 | BLE UUIDs, opcodes, payloads | see [`AGENTS.md`](../AGENTS.md#shared-contracts--change-all-copies-together) | — |

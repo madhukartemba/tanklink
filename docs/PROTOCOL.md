@@ -355,7 +355,9 @@ The tank only runs BLE during a ~10 s window after a short button press, for OTA
 
 ## LoRa (tank ↔ pump)
 
-433 MHz, SX1278. Packed struct `tanklink_lora_status_t`, 21 bytes:
+433 MHz, SX1278: SF10, 125 kHz bandwidth, coding rate 4/5, explicit header, CRC on, 8-symbol preamble, +20 dBm on PA_BOOST. A STATUS or ACK (29 bytes sealed) takes about 410 ms on air, a PAIR (45 bytes) about 575 ms. Pump and tank must use the same settings or they can't hear each other; a change here is a breaking radio change even though the packet layout stays.
+
+Packed struct `tanklink_lora_status_t`, 21 bytes:
 
 | Offset | Size | Field |
 | --- | --- | --- |
