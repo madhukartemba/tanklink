@@ -34,10 +34,16 @@
 #define AWAKE_LIMIT_MS (10 * 60 * 1000)
 
 /* Unpaired, the tank only needs the button, but a timer wake is always set so
- * nothing can leave it asleep for good. Sooner while the button is down
- * (stuck), so a released button is armed again. */
+ * nothing can leave it asleep for good. */
 #define UNPAIRED_WAKE_SEC (24 * 3600)
-#define BUTTON_DOWN_WAKE_SEC (15 * 60)
+
+/* Held this long without a break, the button is stuck (or something presses
+ * it in the enclosure), not a gesture: stop handling it and sleep, waking
+ * again when it is let go. A pairing hold is 3 s. */
+#define BUTTON_STUCK_MS 20000
+/* A button that chatters (a failing switch) would otherwise keep one wake
+ * going with press after press. Far more than anyone presses in one go. */
+#define BUTTON_SESSION_MAX 30
 
 /* A float that flaps (waves, a loose wire) would wake the radio over and
  * over. Past this many float wakes in the window, floats sleep until the next
@@ -254,7 +260,7 @@ static void enter_deep_sleep(bool after_trouble)
     uint32_t timer_sec;
     bool floats = false;
     if (!paired) {
-        timer_sec = tank_board_button_down() ? BUTTON_DOWN_WAKE_SEC : UNPAIRED_WAKE_SEC;
+        timer_sec = UNPAIRED_WAKE_SEC;
     } else {
         timer_sec = (uint32_t)CONFIG_TANK_HEARTBEAT_SEC;
         floats = floats_may_wake();
@@ -350,12 +356,17 @@ static esp_err_t run_pairing_mode(uint8_t bat)
     return ESP_ERR_TIMEOUT;
 }
 
-static void handle_button_gesture(void)
+/** One press. [timed]: it is already over and was timed across a sleep (its
+ * release woke the tank), and [known_hold] says whether it was a hold.
+ * Otherwise the press is watched now. */
+static void run_gesture(bool timed, bool known_hold)
 {
-    bool is_hold = false;
+    bool is_hold = known_hold;
     uint32_t held = 0;
-    tank_board_classify_button(CONFIG_TANK_BUTTON_HOLD_MS, &is_hold, &held, hold_progress,
-                               NULL);
+    if (!timed) {
+        tank_board_classify_button(CONFIG_TANK_BUTTON_HOLD_MS, &is_hold, &held,
+                                   hold_progress, NULL);
+    }
     ESP_LOGI(TAG, "button held %u ms hold=%d", (unsigned)held, (int)is_hold);
 
     tank_inputs_t in;
@@ -428,6 +439,44 @@ static void handle_button_gesture(void)
     }
 }
 
+static void handle_button_gesture(void)
+{
+    run_gesture(false, false);
+}
+
+/** A press to handle: the button is down, and not still held from before
+ * the last sleep. */
+static bool button_waiting(void)
+{
+    return tank_board_button_pressed();
+}
+
+/**
+ * Handle the button until it rests: each gesture, then any press still down
+ * after it (a long press started during an error blink, say), so the tank
+ * never goes to sleep on a press. Stops for a button held without a break for
+ * BUTTON_STUCK_MS: that is not a gesture, and the tank wakes on its release.
+ */
+static void button_session(void)
+{
+    for (int n = 1;; n++) {
+        handle_button_gesture();
+        if (tank_board_button_held_ms() >= BUTTON_STUCK_MS) {
+            ESP_LOGW(TAG, "button held %u ms without a break: treating it as stuck",
+                     (unsigned)tank_board_button_held_ms());
+            return;
+        }
+        if (!button_waiting()) {
+            return;
+        }
+        if (n >= BUTTON_SESSION_MAX) {
+            ESP_LOGW(TAG, "%d presses in one wake: sleeping (the button wakes it again)", n);
+            return;
+        }
+        ESP_LOGI(TAG, "another press: handling it before sleeping");
+    }
+}
+
 void app_main(void)
 {
     /* Kill LED glow before NVS / radio init (GPIO6 can sit weakly high after reset). */
@@ -487,6 +536,7 @@ void app_main(void)
     /* Do not start NimBLE until an OTA window — BT left up was ~0.9 mA in "sleep". */
 
     esp_sleep_wakeup_cause_t cause = tank_board_wakeup_cause();
+    const tank_button_wake_t button_wake = tank_board_button_wake();
     ESP_LOGI(TAG, "wakeup cause=%d paired=%d", (int)cause, (int)load_paired());
 
     tank_inputs_t in;
@@ -512,8 +562,18 @@ void app_main(void)
             save_last_flags(now_flags);
         }
     } else if (cause == ESP_SLEEP_WAKEUP_GPIO) {
-        if (tank_board_woke_from_button()) {
-            handle_button_gesture();
+        if (button_wake == TANK_BTN_WAKE_PRESS) {
+            button_session();
+        } else if (button_wake == TANK_BTN_WAKE_RELEASE) {
+            /* The button went down just as the tank fell asleep: its release
+             * woke it, and the press still counts, a hold included. */
+            const uint32_t held = tank_board_release_held_ms();
+            if (held >= BUTTON_STUCK_MS) {
+                ESP_LOGI(TAG, "button let go after %u ms (stuck): armed again", (unsigned)held);
+            } else {
+                ESP_LOGI(TAG, "press over a sleep, %u ms", (unsigned)held);
+                run_gesture(true, held >= CONFIG_TANK_BUTTON_HOLD_MS);
+            }
         } else {
             note_float_wake();
             /* Float change */
@@ -538,11 +598,16 @@ void app_main(void)
     ESP_LOGW(TAG, "demo mode: no deep sleep");
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
-        if (tank_board_button_pressed()) {
-            handle_button_gesture();
+        if (button_waiting()) {
+            button_session();
         }
     }
 #else
+    /* Never sleep on a press: one started while the tank was busy (a send,
+     * the boot light) is handled now, like any other. */
+    if (button_waiting()) {
+        button_session();
+    }
     enter_deep_sleep(false);
 #endif
 }

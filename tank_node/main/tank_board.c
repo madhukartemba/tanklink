@@ -3,6 +3,7 @@
 #include "driver/gpio.h"
 #include "esp_attr.h"
 #include "esp_log.h"
+#include "esp_rtc_time.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -44,6 +45,27 @@ static void force_pullup(int gpio)
     gpio_set_pull_mode((gpio_num_t)gpio, GPIO_PULLUP_ONLY);
 }
 
+static int64_t s_down_since_us; /* 0 = seen up at the last look */
+
+bool tank_board_button_down(void)
+{
+    const bool down = gpio_get_level(pin_btn()) == 0;
+    if (!down) {
+        s_down_since_us = 0;
+    } else if (s_down_since_us == 0) {
+        s_down_since_us = esp_timer_get_time();
+    }
+    return down;
+}
+
+uint32_t tank_board_button_held_ms(void)
+{
+    if (!tank_board_button_down()) {
+        return 0;
+    }
+    return (uint32_t)((esp_timer_get_time() - s_down_since_us) / 1000);
+}
+
 esp_err_t tank_board_init(void)
 {
     release_hold(pin_full());
@@ -74,10 +96,6 @@ int tank_board_led_gpio(void)
     return pin_led();
 }
 
-bool tank_board_button_down(void)
-{
-    return gpio_get_level(pin_btn()) == 0;
-}
 
 void tank_board_read(tank_inputs_t *out)
 {
@@ -104,6 +122,17 @@ static void arm_level(uint64_t mask, esp_sleep_gpio_wake_up_mode_t mode, const c
  * the enclosure). Kept through deep sleep. While it stays down it is not a
  * press: a float or timer wake must not read it as a hold and start pairing. */
 static RTC_DATA_ATTR bool s_btn_stuck;
+/* With the button down at sleep: how long it had been down, and when the
+ * sleep began, so the press can be timed when its release wakes the tank. */
+static RTC_DATA_ATTR uint32_t s_held_at_sleep_ms;
+static RTC_DATA_ATTR uint64_t s_sleep_at_us;
+
+uint32_t tank_board_release_held_ms(void)
+{
+    const uint64_t slept_ms = (esp_rtc_get_time_us() - s_sleep_at_us) / 1000;
+    const uint64_t total = (uint64_t)s_held_at_sleep_ms + slept_ms;
+    return total > UINT32_MAX ? UINT32_MAX : (uint32_t)total;
+}
 
 bool tank_board_button_pressed(void)
 {
@@ -125,13 +154,19 @@ void tank_board_prepare_deep_sleep(uint32_t timer_sec, bool float_wake)
     force_pullup(pin_empty());
 
     /* Button wake (pair / update / manual send). A button that is down now
-     * can't be armed (it would wake at once); the timer below brings the
-     * tank back to look again. */
+     * (held for a long time, or stuck) can't wake on LOW, it would wake at
+     * once: wake on its release instead, and the next sleep arms the press
+     * again. So the button always works again as soon as it is let go. */
     s_btn_stuck = gpio_get_level(pin_btn()) == 0;
+    if (s_btn_stuck) {
+        s_held_at_sleep_ms = tank_board_button_held_ms();
+        s_sleep_at_us = esp_rtc_get_time_us();
+    }
     if (!s_btn_stuck) {
         arm_level(1ULL << pin_btn(), ESP_GPIO_WAKEUP_GPIO_LOW, "button");
     } else {
-        ESP_LOGW(TAG, "button down at sleep: not armed, checked again at the next timer wake");
+        arm_level(1ULL << pin_btn(), ESP_GPIO_WAKEUP_GPIO_HIGH, "button release");
+        ESP_LOGW(TAG, "button down at sleep: waking on its release");
     }
 
     if (float_wake) {
@@ -158,7 +193,7 @@ void tank_board_prepare_deep_sleep(uint32_t timer_sec, bool float_wake)
     }
     ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup((uint64_t)timer_sec * 1000000ULL));
     ESP_LOGI(TAG, "sleep: timer=%us, floats %s, button %s", (unsigned)timer_sec,
-             float_wake ? "armed" : "off", s_btn_stuck ? "off (down)" : "armed");
+             float_wake ? "armed" : "off", s_btn_stuck ? "on release" : "armed");
 }
 
 esp_sleep_wakeup_cause_t tank_board_wakeup_cause(void)
@@ -186,15 +221,23 @@ static bool wakeup_mask_has_button(void)
     return false;
 }
 
-bool tank_board_woke_from_button(void)
+tank_button_wake_t tank_board_button_wake(void)
 {
     if (!(esp_sleep_get_wakeup_causes() & BIT(ESP_SLEEP_WAKEUP_GPIO))) {
-        return false;
+        return TANK_BTN_WAKE_NONE;
+    }
+    const bool by_button = wakeup_mask_has_button();
+    if (s_btn_stuck) {
+        if (!by_button) {
+            return TANK_BTN_WAKE_NONE; /* a float, with the button still held */
+        }
+        /* Armed on release, so it was let go. Down again now is a new press. */
+        s_btn_stuck = false;
+        return tank_board_button_down() ? TANK_BTN_WAKE_PRESS : TANK_BTN_WAKE_RELEASE;
     }
     /* A short tap is already released by the time we read the pin. The wake
-     * mask still names the button, so it is not treated as a float change. A
-     * button still down from before the sleep is not a press. */
-    return tank_board_button_pressed() || wakeup_mask_has_button();
+     * mask still names the button, so it is not treated as a float change. */
+    return by_button || tank_board_button_pressed() ? TANK_BTN_WAKE_PRESS : TANK_BTN_WAKE_NONE;
 }
 
 bool tank_board_woke_from_timer(void)

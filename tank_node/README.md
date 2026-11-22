@@ -10,12 +10,13 @@ See `main/tank_version.h`. Paired: deep sleep **5 min** heartbeat. Unpaired: b
 
 **Always back to sleep, no reset needed.** The tank sits sealed in its enclosure, so only its own button can be pressed. Every wake ends in deep sleep, and every sleep has a timer wake, so no state leaves it asleep (or awake) for good:
 
-- **Button down when it goes to sleep** (held, or stuck): it is not armed as a wake source (it would wake the tank at once), and while it stays down it is not read as a press, so a float or timer wake can't take it for a hold and start pairing. Once released it works again; unpaired, the tank checks every 15 minutes while the button is down.
+- **The button always works, a pairing hold included.** The tank never goes to sleep while the button is down: a press that starts during anything else (an error blink, a send, the boot light) is handled next, and an error blink stops the moment the button goes down. A press that starts in the last moments before sleep wakes the tank when it is released and still counts: a short press as a press, 3 s or more as a pairing hold.
+- **Button stuck** (down 20 s without a break): it is not a gesture. The tank sleeps, wakes the moment the button is let go, and arms it again. While it stays down, a float or timer wake doesn't read it as a press, so it can't start pairing by itself.
 - **Unpaired, or the saved pairing unreadable:** button wake plus a daily timer wake.
 - **A float that keeps flapping:** after 12 float wakes in 10 minutes, floats stop waking the tank until that window has passed; the 5-minute heartbeat still reports them.
 - **Crash, hang or brownout:** the next start sleeps one heartbeat with the radio off, then tries again. Each one in a row doubles that sleep (up to 16 heartbeats, 80 minutes), so a fault that repeats can't keep it awake. A normal wake clears it. The count lives in RTC memory, so it survives deep sleep and restarts.
 - **A hang:** a wake still running after 10 minutes restarts (the longest real wake, an update, takes about 3), and counts as trouble above.
-- **No light for unattended sends:** a heartbeat or float change the pump didn't answer doesn't blink its error code (that kept the tank awake ~8 s). Codes show after a button press.
+- **Light:** a soft pulse every time the pump answers (heartbeats too). A heartbeat or float change the pump didn't answer doesn't blink its error code (that kept the tank awake ~8 s); codes show after a button press.
 
 **Sleep:** ~50 µA on BAT± (USB unplugged). BLE only for OTA; no digital-pin `gpio_deep_sleep_hold`.
 

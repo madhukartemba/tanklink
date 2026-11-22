@@ -19,6 +19,8 @@ esp_err_t tank_board_init(void);
 void tank_board_read(tank_inputs_t *out);
 int tank_board_led_gpio(void);
 bool tank_board_button_down(void);
+/** How long the button has been down without a break, 0 when up. */
+uint32_t tank_board_button_held_ms(void);
 
 /** The button is down and it is a real press: false while it is still down
  * from before the last sleep (held or stuck). */
@@ -32,7 +34,17 @@ bool tank_board_button_pressed(void);
 void tank_board_prepare_deep_sleep(uint32_t timer_sec, bool float_wake);
 
 esp_sleep_wakeup_cause_t tank_board_wakeup_cause(void);
-bool tank_board_woke_from_button(void);
+typedef enum {
+    TANK_BTN_WAKE_NONE = 0, /* not woken by the button (timer, a float) */
+    TANK_BTN_WAKE_PRESS,    /* a press: handle it */
+    TANK_BTN_WAKE_RELEASE,  /* a button held at sleep was let go: just sleep again */
+} tank_button_wake_t;
+
+/** What the button had to do with this wake. Call once, early. */
+tank_button_wake_t tank_board_button_wake(void);
+/** After TANK_BTN_WAKE_RELEASE: how long that press lasted, from its start
+ * before the sleep to the release that woke the tank. */
+uint32_t tank_board_release_held_ms(void);
 bool tank_board_woke_from_timer(void);
 
 /** Button-hold watcher. A gap shorter than the release debounce stays a hold. */

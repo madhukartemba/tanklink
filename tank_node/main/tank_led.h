@@ -29,7 +29,6 @@ void tank_led_tx_pulse(void); /* short soft pulse (optional mid-TX cue) */
 void tank_led_boot(void);
 /** One soft fade pulse — successful full TX / pair ACK. */
 void tank_led_success(void);
-void tank_led_failure(void);
 /**
  * Slow, smooth breathe while LoRa pairing is open. Runs in its own task on
  * the real clock, so radio work can't stall or speed it up. Stop it before

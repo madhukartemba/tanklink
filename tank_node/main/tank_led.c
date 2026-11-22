@@ -1,5 +1,7 @@
 #include "tank_led.h"
 
+#include "tank_board.h"
+
 #include <math.h>
 
 #include "driver/gpio.h"
@@ -191,17 +193,6 @@ void tank_led_success(void)
     tank_led_fade_in_out(100, 180, 220);
 }
 
-void tank_led_failure(void)
-{
-    /* Generic failure: short hard blinks (distinct from numbered error codes). */
-    for (int i = 0; i < 3; i++) {
-        tank_led_set_brightness(100);
-        vTaskDelay(pdMS_TO_TICKS(200));
-        tank_led_off();
-        vTaskDelay(pdMS_TO_TICKS(160));
-    }
-}
-
 /** Cosine breathe: dark to full and back over one period, eased at both
  * ends. The phase comes from the clock, so a busy radio loop can't make it
  * stall or race. */
@@ -268,6 +259,18 @@ void tank_led_ota_pulse_stop(void)
     anim_stop();
 }
 
+/** Wait [ms], or less if the button goes down. True when it did. */
+static bool pause_or_press(uint32_t ms)
+{
+    for (uint32_t t = 0; t < ms; t += 20) {
+        if (tank_board_button_down()) {
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    return tank_board_button_down();
+}
+
 void tank_led_show_error(uint8_t code)
 {
     if (code < 1) {
@@ -277,18 +280,24 @@ void tank_led_show_error(uint8_t code)
         code = 9;
     }
     /* Short flash, long dark gap, so each flash is easy to count.
-     * The same count is shown twice, with a longer gap between the two. */
+     * The same count is shown twice, with a longer gap between the two.
+     * A press ends it at once: the tank never ignores the button while it
+     * blinks (a long press to pair, started during the code, must work). */
     tank_led_off();
     for (int pass = 0; pass < 2; pass++) {
-        vTaskDelay(pdMS_TO_TICKS(800));
-        for (int i = 0; i < code; i++) {
-            tank_led_set_brightness(100);
-            vTaskDelay(pdMS_TO_TICKS(160));
-            tank_led_off();
-            vTaskDelay(pdMS_TO_TICKS(700));
+        if (pause_or_press(800)) {
+            break;
         }
-        if (pass == 0) {
-            vTaskDelay(pdMS_TO_TICKS(1400));
+        bool pressed = false;
+        for (int i = 0; i < code && !pressed; i++) {
+            tank_led_set_brightness(100);
+            pressed = pause_or_press(160);
+            tank_led_off();
+            pressed = pressed || pause_or_press(700);
+        }
+        if (pressed || (pass == 0 && pause_or_press(1400))) {
+            break;
         }
     }
+    tank_led_off();
 }
