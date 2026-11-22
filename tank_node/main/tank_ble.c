@@ -25,9 +25,6 @@
 #include "tank_ota.h"
 #include "tanklink_ble_uuid.h"
 
-#ifndef CONFIG_TANK_BUTTON_HOLD_MS
-#define CONFIG_TANK_BUTTON_HOLD_MS 3000
-#endif
 
 #define TAG "TANK_BLE"
 
@@ -240,11 +237,6 @@ esp_err_t tank_ble_init(void)
     return ESP_OK;
 }
 
-bool tank_ble_ota_busy(void)
-{
-    return tank_ota_is_active();
-}
-
 void tank_ble_stop(void)
 {
     s_window_active = false;
@@ -281,9 +273,6 @@ void tank_ble_deinit(void)
 
 esp_err_t tank_ble_start_ota_window(uint32_t timeout_ms)
 {
-    if (timeout_ms < 5000) {
-        timeout_ms = 120000;
-    }
     if (!s_stack_up) {
         esp_err_t err = tank_ble_init();
         if (err != ESP_OK) {
@@ -415,10 +404,3 @@ tank_ble_window_result_t tank_ble_wait_ota_window(tank_button_hold_t *carry)
     return TANK_BLE_WINDOW_DONE;
 }
 
-tank_ble_window_result_t tank_ble_run_ota_window(uint32_t timeout_ms)
-{
-    if (tank_ble_start_ota_window(timeout_ms) != ESP_OK) {
-        return TANK_BLE_WINDOW_DONE;
-    }
-    return tank_ble_wait_ota_window(NULL);
-}

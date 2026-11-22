@@ -165,7 +165,9 @@ uint8_t tank_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
         return TANKLINK_OTA_ERR_BAD_PARAM;
     }
 
-    esp_err_t err = esp_ota_begin(s_part, image_size, &s_handle);
+    /* Erase a sector at a time as the image arrives: erasing it all up front
+     * stalled the BLE host for seconds. */
+    esp_err_t err = esp_ota_begin(s_part, OTA_WITH_SEQUENTIAL_WRITES, &s_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin: %s", esp_err_to_name(err));
         set_err(TANKLINK_OTA_ERR_FLASH);

@@ -118,14 +118,6 @@ menu "TankLink Tank Node"
             It does not wait for the button to be released. A shorter press
             opens the BLE update window.
 
-    config TANK_BUTTON_AWAKE_MS
-        int "Stay awake after short button press (ms)"
-        range 0 60000
-        default 10000
-        help
-            After a short-press status TX, remain awake this long if BLE OTA window is not used
-            (hold-to-pair still works). Prefer TANK_BLE_OTA_WINDOW_MS when paired.
-
     config TANK_BLE_OTA_WINDOW_MS
         int "BLE OTA advertise window after short press (ms)"
         range 10000 600000

@@ -20,16 +20,19 @@ void tank_board_read(tank_inputs_t *out);
 int tank_board_led_gpio(void);
 bool tank_board_button_down(void);
 
+/** The button is down and it is a real press: false while it is still down
+ * from before the last sleep (held or stuck). */
+bool tank_board_button_pressed(void);
+
 /**
- * Configure deep-sleep wake sources.
- * heartbeat_sec > 0: timer + float state-change (opposite level) + button (paired).
- * heartbeat_sec == 0: button only (unpaired — no 10 min wakes).
+ * Configure deep-sleep wake sources: always a timer wake of [timer_sec], the
+ * button unless it is down right now, and with [float_wake] a change of
+ * either float (the opposite of the level sampled now).
  */
-void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec);
+void tank_board_prepare_deep_sleep(uint32_t timer_sec, bool float_wake);
 
 esp_sleep_wakeup_cause_t tank_board_wakeup_cause(void);
 bool tank_board_woke_from_button(void);
-bool tank_board_woke_from_float(void);
 bool tank_board_woke_from_timer(void);
 
 /** Button-hold watcher. A gap shorter than the release debounce stays a hold. */
@@ -66,9 +69,6 @@ void tank_board_classify_button(uint32_t hold_threshold_ms, bool *is_hold,
                                uint32_t *held_ms,
                                void (*on_progress)(uint8_t pct, void *ctx),
                                void *ctx);
-
-/** Wait for a short click (press+release). Returns false on timeout. */
-bool tank_board_wait_click(uint32_t timeout_ms);
 
 #ifdef __cplusplus
 }

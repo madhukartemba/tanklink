@@ -1,6 +1,8 @@
 #include <string.h>
 
+#include "esp_attr.h"
 #include "esp_log.h"
+#include "esp_rtc_time.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -26,26 +28,88 @@
 #define NVS_KEY_FLAGS "flags"
 #define NVS_KEY_PAIRED "paired"
 
-#ifndef CONFIG_TANK_BUTTON_AWAKE_MS
-#define CONFIG_TANK_BUTTON_AWAKE_MS 10000
-#endif
-#ifndef CONFIG_TANK_BLE_OTA_WINDOW_MS
-#define CONFIG_TANK_BLE_OTA_WINDOW_MS 10000
-#endif
-#ifndef CONFIG_TANK_PAIR_WINDOW_MS
-#define CONFIG_TANK_PAIR_WINDOW_MS 30000
-#endif
-
-/* Hard cap on one wake. The longest legitimate wake is an update (~3 min)
- * plus its window; anything past this is a hang that would drain the cell,
- * so restart (and from there sleep) instead. */
+/* Last-resort backstop, not a time limit: every path below ends in sleep by
+ * itself (pairing 30 s, the update window, retries). Only a hang reaches
+ * this, so it is well past the longest real wake (an update, ~3 min). */
 #define AWAKE_LIMIT_MS (10 * 60 * 1000)
+
+/* Unpaired, the tank only needs the button, but a timer wake is always set so
+ * nothing can leave it asleep for good. Sooner while the button is down
+ * (stuck), so a released button is armed again. */
+#define UNPAIRED_WAKE_SEC (24 * 3600)
+#define BUTTON_DOWN_WAKE_SEC (15 * 60)
+
+/* A float that flaps (waves, a loose wire) would wake the radio over and
+ * over. Past this many float wakes in the window, floats sleep until the next
+ * heartbeat, which still reports them. */
+#define FLOAT_WAKES_MAX 12
+#define FLOAT_WINDOW_US (10LL * 60 * 1000000)
+
+/* After a crash, hang or brownout the tank sleeps a heartbeat with the radio
+ * off before it tries again, and each one in a row doubles that (up to 16x),
+ * so a fault that repeats can't keep it awake and empty the cell. A wake that
+ * ends normally clears it. Kept through deep sleep and restarts. */
+#define TROUBLE_MAGIC 0x54524231u /* 'TRB1' */
+#define TROUBLE_BACKOFF_MAX_SHIFT 4
+typedef struct {
+    uint32_t magic;
+    uint8_t count; /* trouble wakes in a row */
+    uint8_t hung;  /* the awake backstop fired: the restart is a hang */
+} trouble_t;
+static RTC_NOINIT_ATTR trouble_t s_trouble; /* garbage after power-on: magic */
+
+static RTC_DATA_ATTR uint8_t s_float_wakes;
+static RTC_DATA_ATTR uint64_t s_float_window_start_us;
 
 static void awake_limit_hit(void *arg)
 {
     (void)arg;
-    ESP_LOGE(TAG, "awake for %d min — restarting", AWAKE_LIMIT_MS / 60000);
+    ESP_LOGE(TAG, "awake for %d min: a hang, restarting", AWAKE_LIMIT_MS / 60000);
+    s_trouble.hung = 1;
     esp_restart();
+}
+
+/** True when this start follows a crash, a hang or a brownout. */
+static bool started_after_trouble(esp_reset_reason_t reset)
+{
+    if (s_trouble.magic != TROUBLE_MAGIC) {
+        memset(&s_trouble, 0, sizeof(s_trouble));
+        s_trouble.magic = TROUBLE_MAGIC;
+    }
+    const bool hung = s_trouble.hung != 0;
+    s_trouble.hung = 0;
+    switch (reset) {
+    case ESP_RST_BROWNOUT:
+    case ESP_RST_PANIC:
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+        return true;
+    case ESP_RST_SW:
+        return hung;
+    default:
+        return false;
+    }
+}
+
+/** Count a float wake (see FLOAT_WAKES_MAX). */
+static void note_float_wake(void)
+{
+    const uint64_t now = esp_rtc_get_time_us();
+    if (now - s_float_window_start_us > (uint64_t)FLOAT_WINDOW_US) {
+        s_float_window_start_us = now;
+        s_float_wakes = 0;
+    }
+    if (s_float_wakes < 255) {
+        s_float_wakes++;
+    }
+}
+
+static bool floats_may_wake(void)
+{
+    const uint64_t now = esp_rtc_get_time_us();
+    return now - s_float_window_start_us > (uint64_t)FLOAT_WINDOW_US ||
+           s_float_wakes < FLOAT_WAKES_MAX;
 }
 
 static void arm_awake_limit(void)
@@ -179,19 +243,39 @@ static bool status_hold_cancel(void *ctx)
     return false;
 }
 
-static void enter_deep_sleep(void)
+/** Sleep. [after_trouble]: this start followed a crash, hang or brownout, so
+ * back off; otherwise the wake ended normally and the backoff is cleared. */
+static void enter_deep_sleep(bool after_trouble)
 {
     tank_ble_deinit();
     tank_link_deinit_radio();
     tank_led_prepare_deep_sleep();
     const bool paired = load_paired();
-    const uint32_t hb = paired ? (uint32_t)CONFIG_TANK_HEARTBEAT_SEC : 0;
-    tank_board_prepare_deep_sleep(hb);
-    if (paired) {
-        ESP_LOGI(TAG, "entering deep sleep (%us heartbeat)", (unsigned)hb);
+    uint32_t timer_sec;
+    bool floats = false;
+    if (!paired) {
+        timer_sec = tank_board_button_down() ? BUTTON_DOWN_WAKE_SEC : UNPAIRED_WAKE_SEC;
     } else {
-        ESP_LOGI(TAG, "entering deep sleep (unpaired — button wake only)");
+        timer_sec = (uint32_t)CONFIG_TANK_HEARTBEAT_SEC;
+        floats = floats_may_wake();
+        if (!floats) {
+            ESP_LOGW(TAG, "floats woke the tank %u times in 10 min: heartbeat only for now",
+                     (unsigned)s_float_wakes);
+        }
     }
+    if (after_trouble) {
+        const unsigned shift = s_trouble.count > 0 ? s_trouble.count - 1 : 0;
+        if (paired) {
+            timer_sec <<= shift > TROUBLE_BACKOFF_MAX_SHIFT ? TROUBLE_BACKOFF_MAX_SHIFT : shift;
+        }
+        floats = false;
+        ESP_LOGW(TAG, "trouble %u in a row: radio off, sleeping %us", (unsigned)s_trouble.count,
+                 (unsigned)timer_sec);
+    } else {
+        s_trouble.count = 0;
+    }
+    tank_board_prepare_deep_sleep(timer_sec, floats);
+    ESP_LOGI(TAG, "entering deep sleep (%s)", paired ? "paired" : "unpaired");
     esp_deep_sleep_start();
 }
 
@@ -369,15 +453,19 @@ void app_main(void)
         ESP_LOGE(TAG, "NVS unavailable: %s", esp_err_to_name(err));
     }
 
-    if (reset == ESP_RST_BROWNOUT) {
-        /* The cell sagged under load. Sending now (radio at full power)
-         * would brown out again and loop; wait for the next heartbeat. */
-        ESP_LOGW(TAG, "brownout reset — sleeping without radio");
+    if (started_after_trouble(reset)) {
+        /* A brownout (the cell sagged under radio load), a crash or a hang.
+         * Trying again at once would likely repeat it: sleep first, longer
+         * each time it happens in a row. */
+        if (s_trouble.count < 255) {
+            s_trouble.count++;
+        }
+        ESP_LOGW(TAG, "started after trouble (reset %d): sleeping without radio", (int)reset);
         (void)tank_board_init();
         /* The radio may still be in TX or standby: init resets it and
          * leaves it asleep without sending anything. */
         (void)tank_link_init();
-        enter_deep_sleep();
+        enter_deep_sleep(true);
     }
 
     if (tank_board_init() != ESP_OK) {
@@ -424,9 +512,10 @@ void app_main(void)
             save_last_flags(now_flags);
         }
     } else if (cause == ESP_SLEEP_WAKEUP_GPIO) {
-        if (in.button_down || tank_board_woke_from_button()) {
+        if (tank_board_woke_from_button()) {
             handle_button_gesture();
         } else {
+            note_float_wake();
             /* Float change */
             if (now_flags != last_flags) {
                 ESP_LOGI(TAG, "flags 0x%02x -> 0x%02x", last_flags, now_flags);
@@ -449,11 +538,11 @@ void app_main(void)
     ESP_LOGW(TAG, "demo mode: no deep sleep");
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
-        if (tank_board_button_down()) {
+        if (tank_board_button_pressed()) {
             handle_button_gesture();
         }
     }
 #else
-    enter_deep_sleep();
+    enter_deep_sleep(false);
 #endif
 }

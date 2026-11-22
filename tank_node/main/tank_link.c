@@ -242,10 +242,14 @@ esp_err_t tank_link_send_status(const tank_inputs_t *in, uint8_t battery_pct,
     if (err == ESP_ERR_INVALID_STATE && should_cancel) {
         return err;
     }
-    if (err == ESP_OK) {
-        tank_led_success();
-    } else {
-        tank_led_show_error(TANK_ERR_NO_ACK);
+    /* Light only for a send someone asked for with the button: a heartbeat
+     * or float change nobody watches would stay awake ~8 s blinking a code. */
+    if (button_event) {
+        if (err == ESP_OK) {
+            tank_led_success();
+        } else {
+            tank_led_show_error(TANK_ERR_NO_ACK);
+        }
     }
     return err;
 }

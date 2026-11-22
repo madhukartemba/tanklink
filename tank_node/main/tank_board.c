@@ -1,6 +1,7 @@
 #include "tank_board.h"
 
 #include "driver/gpio.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -99,7 +100,21 @@ static void arm_level(uint64_t mask, esp_sleep_gpio_wake_up_mode_t mode, const c
     }
 }
 
-void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
+/* The button was down when the tank last went to sleep (held, or stuck in
+ * the enclosure). Kept through deep sleep. While it stays down it is not a
+ * press: a float or timer wake must not read it as a hold and start pairing. */
+static RTC_DATA_ATTR bool s_btn_stuck;
+
+bool tank_board_button_pressed(void)
+{
+    const bool down = tank_board_button_down();
+    if (!down) {
+        s_btn_stuck = false; /* released: the next press is real */
+    }
+    return down && !s_btn_stuck;
+}
+
+void tank_board_prepare_deep_sleep(uint32_t timer_sec, bool float_wake)
 {
     /* Always pull-up. C3 deep-sleep wake is level-only, so "state change"
      * means arming the opposite of the level sampled here. IDF must not
@@ -109,46 +124,41 @@ void tank_board_prepare_deep_sleep(uint32_t heartbeat_sec)
     force_pullup(pin_full());
     force_pullup(pin_empty());
 
-    /* Button wake always (pair / OTA / manual TX). */
-    if (gpio_get_level(pin_btn()) != 0) {
+    /* Button wake (pair / update / manual send). A button that is down now
+     * can't be armed (it would wake at once); the timer below brings the
+     * tank back to look again. */
+    s_btn_stuck = gpio_get_level(pin_btn()) == 0;
+    if (!s_btn_stuck) {
         arm_level(1ULL << pin_btn(), ESP_GPIO_WAKEUP_GPIO_LOW, "button");
     } else {
-        ESP_LOGW(TAG, "button wake skipped (held or stuck LOW)");
+        ESP_LOGW(TAG, "button down at sleep: not armed, checked again at the next timer wake");
     }
 
-    if (heartbeat_sec == 0) {
-        /* Unpaired: no timer, no float wake — only the button. */
-        ESP_LOGI(TAG, "sleep: button-only (unpaired, no heartbeat)");
-        return;
+    if (float_wake) {
+        uint64_t wake_high = 0;
+        uint64_t wake_low = 0;
+        if (gpio_get_level(pin_full()) == 0) {
+            wake_high |= 1ULL << pin_full();
+        } else {
+            wake_low |= 1ULL << pin_full();
+        }
+        if (gpio_get_level(pin_empty()) == 0) {
+            wake_high |= 1ULL << pin_empty();
+        } else {
+            wake_low |= 1ULL << pin_empty();
+        }
+        arm_level(wake_high, ESP_GPIO_WAKEUP_GPIO_HIGH, "float-high");
+        arm_level(wake_low, ESP_GPIO_WAKEUP_GPIO_LOW, "float-low");
     }
 
-    /* C3 deep-sleep GPIO wake is level-only. Arm the opposite of the level
-     * sampled now so the next change (either way) wakes the chip. */
-    uint64_t wake_high = 0;
-    uint64_t wake_low = 0;
-    if (gpio_get_level(pin_full()) == 0) {
-        wake_high |= 1ULL << pin_full();
-    } else {
-        wake_low |= 1ULL << pin_full();
+    /* A timer wake is always set, whatever else failed: no state can leave
+     * the tank asleep for good with only the (unreachable) reset button. */
+    if (timer_sec < 5) {
+        timer_sec = 5;
     }
-    if (gpio_get_level(pin_empty()) == 0) {
-        wake_high |= 1ULL << pin_empty();
-    } else {
-        wake_low |= 1ULL << pin_empty();
-    }
-    arm_level(wake_high, ESP_GPIO_WAKEUP_GPIO_HIGH, "float-high");
-    arm_level(wake_low, ESP_GPIO_WAKEUP_GPIO_LOW, "float-low");
-    ESP_LOGI(TAG, "float wake opposite: high_mask=0x%llx low_mask=0x%llx",
-             (unsigned long long)wake_high, (unsigned long long)wake_low);
-
-    if (heartbeat_sec < 5) {
-        heartbeat_sec = 5;
-    }
-    esp_err_t err = esp_sleep_enable_timer_wakeup((uint64_t)heartbeat_sec * 1000000ULL);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "timer wake: %s", esp_err_to_name(err));
-    }
-    ESP_LOGI(TAG, "sleep: timer=%us + floats + button", (unsigned)heartbeat_sec);
+    ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup((uint64_t)timer_sec * 1000000ULL));
+    ESP_LOGI(TAG, "sleep: timer=%us, floats %s, button %s", (unsigned)timer_sec,
+             float_wake ? "armed" : "off", s_btn_stuck ? "off (down)" : "armed");
 }
 
 esp_sleep_wakeup_cause_t tank_board_wakeup_cause(void)
@@ -182,19 +192,9 @@ bool tank_board_woke_from_button(void)
         return false;
     }
     /* A short tap is already released by the time we read the pin. The wake
-     * mask still names the button, so it is not treated as a float change. */
-    if (gpio_get_level(pin_btn()) == 0) {
-        return true;
-    }
-    return wakeup_mask_has_button();
-}
-
-bool tank_board_woke_from_float(void)
-{
-    if (!(esp_sleep_get_wakeup_causes() & BIT(ESP_SLEEP_WAKEUP_GPIO))) {
-        return false;
-    }
-    return !tank_board_woke_from_button();
+     * mask still names the button, so it is not treated as a float change. A
+     * button still down from before the sleep is not a press. */
+    return tank_board_button_pressed() || wakeup_mask_has_button();
 }
 
 bool tank_board_woke_from_timer(void)
@@ -312,24 +312,3 @@ void tank_board_classify_button(uint32_t hold_threshold_ms, bool *is_hold,
     }
 }
 
-bool tank_board_wait_click(uint32_t timeout_ms)
-{
-    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
-    /* Wait for press */
-    while (xTaskGetTickCount() < deadline) {
-        if (gpio_get_level(pin_btn()) == 0) {
-            /* Debounce + wait release */
-            vTaskDelay(pdMS_TO_TICKS(30));
-            while (gpio_get_level(pin_btn()) == 0) {
-                if (xTaskGetTickCount() >= deadline) {
-                    return false;
-                }
-                vTaskDelay(pdMS_TO_TICKS(20));
-            }
-            vTaskDelay(pdMS_TO_TICKS(30));
-            return true;
-        }
-        vTaskDelay(pdMS_TO_TICKS(20));
-    }
-    return false;
-}

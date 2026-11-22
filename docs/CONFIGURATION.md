@@ -95,7 +95,6 @@ Menu: **TankLink Tank Node**. The values below are the ones in `sdkconfig.defaul
 | `TANK_BUTTON_HOLD_MS` | `3000` | Hold = LoRa pairing. Starts at 3 s, without waiting for release |
 | `TANK_PAIR_WINDOW_MS` | `30000` | How long the tank keeps trying to pair |
 | `TANK_BLE_OTA_WINDOW_MS` | `10000` | BLE advertise window after a short press, for OTA |
-| `TANK_BUTTON_AWAKE_MS` | `10000` | Stay awake after a short press |
 | `TANK_DEMO_NO_SLEEP` | `n` | `y` keeps the tank awake so the USB serial log stays connected. Debugging only: it drains the battery |
 
 Also set: `CONFIG_ESP_SLEEP_GPIO_ENABLE_INTERNAL_RESISTORS=n`, so the float and button pins keep their pull-ups in deep sleep and can wake the chip. Plus the same console, flash, partition, and NimBLE settings as the pump, with 1 connection.
