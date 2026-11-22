@@ -249,9 +249,11 @@ class TankLinkUuids {
   static const buzzOnPump = 1 << 2;
   static const buzzOnAutoOff = 1 << 3;
 
-  /// Starter / contactor profile (settings byte).
+  /// Starter profile (settings byte). Single-phase holds relay 1 closed while
+  /// the pump runs (pump protocol minor 9).
   static const starterNone = 0;
   static const starterTwoButton = 1;
+  static const starterSinglePhase = 2;
 
   static const relayPulseMsDefault = 1000;
   static const relayPulseMsMin = 50;

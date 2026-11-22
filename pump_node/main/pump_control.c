@@ -53,23 +53,18 @@ static SemaphoreHandle_t s_lock;
 
 static void lock(void)
 {
-    if (s_lock) {
-        xSemaphoreTakeRecursive(s_lock, portMAX_DELAY);
-    }
+    xSemaphoreTakeRecursive(s_lock, portMAX_DELAY);
 }
 
 static void unlock(void)
 {
-    if (s_lock) {
-        xSemaphoreGiveRecursive(s_lock);
-    }
+    xSemaphoreGiveRecursive(s_lock);
 }
 
 void pump_control_init(void)
 {
-    if (!s_lock) {
-        s_lock = xSemaphoreCreateRecursiveMutex();
-    }
+    s_lock = xSemaphoreCreateRecursiveMutex();
+    configASSERT(s_lock);
 }
 
 static uint8_t s_af_slot = 0xFF;
@@ -183,6 +178,11 @@ static void set_state(bool on, bool beep, pump_cause_t cause)
             deny_start(blocker);
             return;
         }
+        /* The relay layer has the last word (a block set from another task). */
+        if (!relay_control_start()) {
+            deny_start(PUMP_ERR_BLOCKED);
+            return;
+        }
     }
     const bool changed = on != s_on;
     if (on && !s_on) {
@@ -221,11 +221,9 @@ static void set_state(bool on, bool beep, pump_cause_t cause)
     }
     s_on = on;
     board_set_pump_on(on);
-    if (on) {
-        relay_control_set_running(true);
-    } else {
-        /* Always pulse Stop, even if we thought the pump was already off. */
-        relay_control_force_off();
+    if (!on) {
+        /* Always act on the starter, even if we thought it was already off. */
+        relay_control_stop();
     }
     ESP_LOGI(TAG, "Pump %s", on ? "on" : "off");
     if (changed && beep && pump_config_buzzer_on_pump()) {
@@ -248,22 +246,6 @@ void pump_control_set_silent(bool on, pump_cause_t cause)
 {
     lock();
     set_state(on, false, cause);
-    unlock();
-}
-
-void pump_control_toggle(void)
-{
-    if (pump_ota_is_active()) {
-        ESP_LOGW(TAG, "Toggle ignored: update in progress");
-        return;
-    }
-    if (!pump_pair_is_paired()) {
-        ESP_LOGW(TAG, "Toggle ignored: not paired");
-        return;
-    }
-    /* The button handler already clicked. */
-    lock();
-    set_state(!s_on, false, PUMP_CAUSE_BUTTON);
     unlock();
 }
 

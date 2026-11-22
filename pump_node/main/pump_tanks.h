@@ -59,7 +59,6 @@ typedef struct {
 
 /** Load saved sensors and tanks. Call after pump_sched_init. */
 esp_err_t pump_tanks_init(void);
-esp_err_t pump_tanks_clear(void);
 
 /* ---- Sensor nodes ---- */
 

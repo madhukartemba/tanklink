@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
+import '../util/format.dart';
 import '../util/nav.dart';
 
 class StarterSettingsScreen extends StatefulWidget {
@@ -43,11 +44,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            _draftType == TankLinkUuids.starterTwoButton
-                ? 'Saved · Start and Stop · $_draftPulseMs ms'
-                : 'Saved · starter not configured',
-          ),
+          content: Text('Saved · ${starterLabel(_draftType, _draftPulseMs)}'),
         ),
       );
       popSelf(context);
@@ -69,6 +66,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
         _draftType != session.starterType ||
         _draftPulseMs != session.relayPulseMs;
     final twoButton = _draftType == TankLinkUuids.starterTwoButton;
+    final singlePhase = _draftType == TankLinkUuids.starterSinglePhase;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Starter')),
@@ -99,6 +97,45 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
                     () => _draftType = TankLinkUuids.starterTwoButton,
                   ),
           ),
+          _StarterOption(
+            selected: singlePhase,
+            title: 'Single-phase MCB starter',
+            subtitle: 'Relay 1 stays on while the pump runs',
+            onTap: _saving
+                ? null
+                : () => setState(
+                    () => _draftType = TankLinkUuids.starterSinglePhase,
+                  ),
+          ),
+          if (singlePhase) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Wiring help',
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            _WiringCard(
+              title: 'Relay 1',
+              body:
+                  'Relay 1 is closed while the pump runs and open when it is off. '
+                  'Relay 2 is not used.\n\n'
+                  'Use relay 1 (COM and NO) to switch the coil of a contactor placed '
+                  'after the MCB. The contactor carries the motor current.',
+            ),
+            const SizedBox(height: 10),
+            _WiringCard(
+              title: 'How it works',
+              body:
+                  'Turn on → relay 1 closes and stays closed.\n'
+                  'Turn off → relay 1 opens.\n'
+                  'Power cut or restart → relay 1 opens, and the pump stays off '
+                  'until it is started again.\n'
+                  'During an update or setup → the pump stops and will not start.',
+            ),
+            const SizedBox(height: 10),
+            const _DangerNote(),
+          ],
           if (twoButton) ...[
             const SizedBox(height: 12),
             Text(
@@ -182,7 +219,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
             ),
             const SizedBox(height: 12),
             _WiringCard(
-              title: 'Start connection',
+              title: 'Start connection (relay 1)',
               body:
                   'Use a switch that is open when the app is not pressing it.\n\n'
                   'Wire it across the same two terminals as the panel’s Start button.\n\n'
@@ -192,7 +229,7 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
             ),
             const SizedBox(height: 10),
             _WiringCard(
-              title: 'Stop connection',
+              title: 'Stop connection (relay 2)',
               body:
                   'Use a switch that is closed when the app is not pressing it. '
                   'Some two-way switches work this way; a switch that is only open '
@@ -209,31 +246,13 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
             _WiringCard(
               title: 'How it works',
               body:
-                  'Turn on → the app presses Start.\n'
-                  'Turn off → the app presses Stop.\n'
+                  'Turn on → the app presses Start (relay 1).\n'
+                  'Turn off → the app presses Stop (relay 2).\n'
                   'When the pump restarts → it presses Stop first, for safety.\n'
-                  'During an update or setup → the pump stops and will not start.\n\n'
-                  'The pump pins for these connections are not set up in this version yet. '
-                  'Choosing this option saves it on the pump for later.',
+                  'During an update or setup → the pump stops and will not start.',
             ),
             const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: scheme.errorContainer.withValues(alpha: 0.45),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Text(
-                'Working with motor power is dangerous. Turn off the power before '
-                'wiring. Only connect the low-voltage control side, and never run '
-                'the motor’s power through the TankLink board.',
-                style: TextStyle(
-                  color: scheme.onErrorContainer,
-                  fontSize: 13,
-                  height: 1.35,
-                ),
-              ),
-            ),
+            const _DangerNote(),
           ],
         ],
       ),
@@ -248,6 +267,32 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : Text(dirty ? 'Confirm & save' : 'Done'),
+        ),
+      ),
+    );
+  }
+}
+
+class _DangerNote extends StatelessWidget {
+  const _DangerNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Text(
+        'Working with motor power is dangerous. Turn off the power before '
+        'wiring. Only connect the low-voltage control side, and never run '
+        'the motor’s power through the TankLink board.',
+        style: TextStyle(
+          color: scheme.onErrorContainer,
+          fontSize: 13,
+          height: 1.35,
         ),
       ),
     );

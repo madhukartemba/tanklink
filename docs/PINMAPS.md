@@ -51,7 +51,10 @@ SuperMini header pins: GPIO 0–10, 20, 21 — all 13 used.
 
 Firmware: `CONFIG_PUMP_RELAY_ACTIVE_HIGH` **off** (IN LOW = relay ON).
 
-Contacts: START relay **COM+NO** in parallel with starter Start button; STOP relay **COM+NC** in series with starter Stop button.
+Contacts depend on the app's **Starter** setting:
+
+- **Two-button**: relay 1 (START) **COM+NO** in parallel with the starter's Start button; relay 2 (STOP) **COM+NC** in series with its Stop button.
+- **Single-phase MCB**: relay 1 **COM+NO** switches the contactor coil behind the MCB; it is closed for as long as the pump runs. Relay 2 is not used. The relay module must never carry the motor current.
 
 ---
 

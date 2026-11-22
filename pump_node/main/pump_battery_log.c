@@ -111,18 +111,6 @@ void pump_battery_log_clear(uint8_t node)
     gatt_svr_notify_battery();
 }
 
-void pump_battery_log_clear_all(void)
-{
-    memset(s_log, 0, sizeof(s_log));
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_erase_all(h);
-        (void)nvs_commit(h);
-        nvs_close(h);
-    }
-    gatt_svr_notify_battery();
-}
-
 unsigned pump_battery_log_get(uint8_t node, pump_batlog_day_t out[PUMP_BATLOG_DAYS])
 {
     if (node >= PUMP_NODE_MAX) {

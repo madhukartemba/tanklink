@@ -266,14 +266,6 @@ esp_err_t pump_tanks_init(void)
     return save_blob();
 }
 
-esp_err_t pump_tanks_clear(void)
-{
-    memset(&s_blob, 0, sizeof(s_blob));
-    s_auto_fill = 0;
-    normalize();
-    return save_blob();
-}
-
 /* ---- Sensor nodes ---- */
 
 unsigned pump_tanks_node_count(void)

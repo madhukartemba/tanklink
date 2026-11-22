@@ -271,12 +271,23 @@ static void job_task(void *arg)
     vTaskDelete(NULL);
 }
 
+static portMUX_TYPE s_busy_lock = portMUX_INITIALIZER_UNLOCKED;
+
 static esp_err_t start_job(job_t job)
 {
-    if (s_busy != JOB_NONE || pump_wifi_state() != PUMP_WIFI_CONNECTED) {
+    if (pump_wifi_state() != PUMP_WIFI_CONNECTED) {
         return ESP_ERR_INVALID_STATE;
     }
-    s_busy = job;
+    /* The app (BLE or Wi-Fi task) and the poll task may both ask at once. */
+    portENTER_CRITICAL(&s_busy_lock);
+    const bool idle = s_busy == JOB_NONE;
+    if (idle) {
+        s_busy = job;
+    }
+    portEXIT_CRITICAL(&s_busy_lock);
+    if (!idle) {
+        return ESP_ERR_INVALID_STATE;
+    }
     if (xTaskCreate(job_task, "pump_update", JOB_STACK, (void *)(uintptr_t)job, 3, NULL) != pdPASS) {
         s_busy = JOB_NONE;
         return ESP_ERR_NO_MEM;

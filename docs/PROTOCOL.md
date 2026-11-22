@@ -138,12 +138,14 @@ Read, 50 bytes (read and notify; the pump notifies whenever a setting or its nam
 
 - Usage, for the app's Water and power screen (set with Cmd `0xA9`): `flow_dlpm` pump flow in tenths of a litre a minute (0 = not set), `watts` pump power (default 750), `price_centi` price of a kWh in hundredths (0 = not set), `currency` UTF-8, NUL-padded (default ₹). Saved on the pump so every phone shows the same figures.
 
-Write, at least 6 bytes (extra bytes from a newer app are ignored):
+Write, at least 7 bytes (extra bytes from a newer app are ignored):
 
-`buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16)`
+`buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16) auto_update(1)`
+
+The pump checks every field before it saves any of them, and saves them with one flash write. A value out of range refuses the whole write: `buzzer_tone` 0–3, `led_brightness` 1–100, `starter_type` 0–2, `relay_pulse_ms` 50–2000.
 
 - `buzzer_flags`: bit 0 enabled, bit 1 on button, bit 2 on pump start/stop, bit 3 on auto-off.
-- `starter_type`: 0 = none (logical on/off only), 1 = two-button starter (Start/Stop momentary relays).
+- `starter_type`: 0 = none (on/off tracked, relays untouched), 1 = two-button starter (relay 1 pulses Start, relay 2 pulses Stop, each for `relay_pulse_ms`), 2 = single-phase MCB starter (minor 9: relay 1 held closed while the pump runs, relay 2 unused; `relay_pulse_ms` is kept but not used).
 Auto-off is per tank (Cmd `0xA6`, Tanks) and the float mode per sensor (Cmd `0xA7`, Sensors).
 
 ### Tank (read + notify, authed)

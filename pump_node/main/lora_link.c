@@ -62,10 +62,6 @@ esp_err_t lora_link_unpair_node(uint8_t node)
 {
     return pump_tanks_node_remove(node, pump_control_is_on());
 }
-esp_err_t lora_link_unpair_all(void)
-{
-    return ESP_OK;
-}
 void lora_link_on_active_changed(void) {}
 bool lora_link_node_status(uint8_t node, lora_node_status_t *out)
 {
@@ -888,32 +884,6 @@ esp_err_t lora_link_unpair_node(uint8_t node)
     gatt_svr_notify_nodes();
     gatt_svr_notify_sched();
     return ESP_OK;
-}
-
-esp_err_t lora_link_unpair_all(void)
-{
-    for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
-        if (pump_tanks_node_get(n, NULL)) {
-            (void)pump_tanks_node_remove(n, false);
-        }
-        rt_reset(n);
-    }
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
-    if (err == ESP_OK) {
-        err = nvs_erase_all(h);
-        if (err == ESP_OK) {
-            err = nvs_commit(h);
-        }
-        nvs_close(h);
-    }
-    pump_battery_log_clear_all();
-    status_led_set_tank_full(false);
-    ESP_LOGI(TAG, "all sensors unpaired");
-    gatt_svr_notify_tank();
-    gatt_svr_notify_tanks();
-    gatt_svr_notify_nodes();
-    return err;
 }
 
 bool lora_link_node_status(uint8_t node, lora_node_status_t *out)

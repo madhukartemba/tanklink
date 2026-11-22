@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "esp_check.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -222,55 +223,50 @@ static void retry_cb(void *arg)
 
 static void schedule_retry(void)
 {
-    if (!s_retry_timer) {
-        return;
-    }
     esp_timer_stop(s_retry_timer);
     esp_timer_start_once(s_retry_timer, (uint64_t)s_backoff_ms * 1000);
     s_backoff_ms = s_backoff_ms * 2 > BACKOFF_MAX_MS ? BACKOFF_MAX_MS : s_backoff_ms * 2;
 }
 
+static uint8_t auth_kind(wifi_auth_mode_t mode)
+{
+    switch (mode) {
+    case WIFI_AUTH_OPEN:
+        return PUMP_WIFI_AUTH_OPEN;
+    case WIFI_AUTH_WPA2_ENTERPRISE:
+    case WIFI_AUTH_WPA3_ENTERPRISE:
+        return PUMP_WIFI_AUTH_UNSUPPORTED;
+    default:
+        return PUMP_WIFI_AUTH_SECURED;
+    }
+}
+
+/* Runs in the event task. Records are taken one at a time (each is freed as it
+ * is read), so no buffer for the whole list is kept around: that was 3.8 KB of
+ * RAM held for good, Wi-Fi or not. */
 static void collect_scan(void)
 {
-    uint16_t n = 0;
-    esp_wifi_scan_get_ap_num(&n);
     s_scan_n = 0;
-    if (n > 0) {
-        static wifi_ap_record_t recs[PUMP_WIFI_SCAN_MAX * 2];
-        uint16_t got = n > PUMP_WIFI_SCAN_MAX * 2 ? PUMP_WIFI_SCAN_MAX * 2 : n;
-        if (esp_wifi_scan_get_ap_records(&got, recs) == ESP_OK) {
-            /* Records come strongest first. Skip hidden and repeated names. */
-            for (int i = 0; i < got && s_scan_n < PUMP_WIFI_SCAN_MAX; i++) {
-                const char *name = (const char *)recs[i].ssid;
-                if (name[0] == '\0') {
-                    continue;
-                }
-                bool dup = false;
-                for (int j = 0; j < s_scan_n; j++) {
-                    dup = dup || strcmp(s_scan[j].ssid, name) == 0;
-                }
-                if (dup) {
-                    continue;
-                }
-                pump_wifi_net_t *e = &s_scan[s_scan_n++];
-                strlcpy(e->ssid, name, sizeof(e->ssid));
-                e->rssi = recs[i].rssi;
-                switch (recs[i].authmode) {
-                case WIFI_AUTH_OPEN:
-                    e->auth = PUMP_WIFI_AUTH_OPEN;
-                    break;
-                case WIFI_AUTH_WPA2_ENTERPRISE:
-                case WIFI_AUTH_WPA3_ENTERPRISE:
-                    e->auth = PUMP_WIFI_AUTH_UNSUPPORTED;
-                    break;
-                default:
-                    e->auth = PUMP_WIFI_AUTH_SECURED;
-                    break;
-                }
-            }
+    wifi_ap_record_t rec;
+    /* Records come strongest first. Skip hidden and repeated names. */
+    while (s_scan_n < PUMP_WIFI_SCAN_MAX && esp_wifi_scan_get_ap_record(&rec) == ESP_OK) {
+        const char *name = (const char *)rec.ssid;
+        if (name[0] == '\0') {
+            continue;
         }
+        bool dup = false;
+        for (int j = 0; j < s_scan_n && !dup; j++) {
+            dup = strcmp(s_scan[j].ssid, name) == 0;
+        }
+        if (dup) {
+            continue;
+        }
+        pump_wifi_net_t *e = &s_scan[s_scan_n++];
+        strlcpy(e->ssid, name, sizeof(e->ssid));
+        e->rssi = rec.rssi;
+        e->auth = auth_kind(rec.authmode);
     }
-    esp_wifi_clear_ap_list();
+    esp_wifi_clear_ap_list(); /* whatever was not read */
     s_scanning = false;
     notify_change();
 }
@@ -353,37 +349,33 @@ static void on_ip_event(void *arg, esp_event_base_t base, int32_t id, void *data
     }
 }
 
-/** Create the netif and Wi-Fi driver once, and start station mode. */
+/** Create the netif and Wi-Fi driver once, and start station mode. A failed
+ * try can be made again: each part is only created once. */
 static esp_err_t ensure_started(void)
 {
     if (s_started) {
         return ESP_OK;
     }
     if (!s_inited) {
-        esp_err_t err = esp_netif_init();
-        if (err != ESP_OK) {
+        ESP_RETURN_ON_ERROR(esp_netif_init(), TAG, "netif init");
+        esp_err_t err = esp_event_loop_create_default();
+        if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) { /* INVALID_STATE: already there */
             return err;
         }
-        err = esp_event_loop_create_default();
-        if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-            return err;
-        }
-        s_netif = esp_netif_create_default_wifi_sta();
         if (!s_netif) {
-            return ESP_FAIL;
+            s_netif = esp_netif_create_default_wifi_sta();
+            ESP_RETURN_ON_FALSE(s_netif, ESP_FAIL, TAG, "netif create");
         }
-        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-        err = esp_wifi_init(&cfg);
-        if (err != ESP_OK) {
-            return err;
-        }
-        esp_wifi_set_storage(WIFI_STORAGE_RAM); /* we keep our own credentials */
-        esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, on_wifi_event, NULL);
-        esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event, NULL);
-        const esp_timer_create_args_t args = {.callback = retry_cb, .name = "wifi_retry"};
-        esp_timer_create(&args, &s_retry_timer);
+        const wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        ESP_RETURN_ON_ERROR(esp_wifi_init(&cfg), TAG, "wifi init");
+        ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM)); /* we keep our own credentials */
         /* Modem sleep: BLE coexistence needs the gaps. */
-        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+        ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
+        const esp_timer_create_args_t args = {.callback = retry_cb, .name = "wifi_retry"};
+        ESP_ERROR_CHECK(esp_timer_create(&args, &s_retry_timer));
+        ESP_ERROR_CHECK(
+            esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, on_wifi_event, NULL));
+        ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event, NULL));
         s_inited = true;
     }
     esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
@@ -396,7 +388,7 @@ static esp_err_t ensure_started(void)
          * supply make the router miss the pump's first frames: every attempt
          * ended in "auth expired" (reason 2) and it never joined. Measured:
          * joins at once at 8.5 dBm, never at 20 dBm, 30 cm from the router. */
-        esp_wifi_set_max_tx_power(PUMP_WIFI_TX_POWER);
+        ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(PUMP_WIFI_TX_POWER));
     }
     return err;
 }
@@ -456,9 +448,7 @@ esp_err_t pump_wifi_set(const char *ssid, const char *pass)
     }
     set_state(PUMP_WIFI_CONNECTING);
     s_ip = 0;
-    if (s_retry_timer) {
-        esp_timer_stop(s_retry_timer);
-    }
+    esp_timer_stop(s_retry_timer);
     esp_wifi_disconnect();
     apply_creds();
     esp_wifi_connect();
@@ -472,10 +462,8 @@ esp_err_t pump_wifi_forget(void)
     s_have_creds = false;
     s_ssid[0] = '\0';
     memset(s_pass, 0, sizeof(s_pass));
-    if (s_retry_timer) {
-        esp_timer_stop(s_retry_timer);
-    }
     if (s_started) {
+        esp_timer_stop(s_retry_timer);
         esp_wifi_disconnect();
     }
     s_ip = 0;

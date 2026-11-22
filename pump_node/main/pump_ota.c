@@ -7,6 +7,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "host/ble_hs.h"
 #include "tinycrypt/sha256.h"
@@ -35,6 +36,12 @@ static uint16_t s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
 /* Milliseconds since boot, 32-bit so the poll task can't read half a write. */
 static volatile uint32_t s_last_activity_ms;
 static volatile uint32_t s_rebooting_since_ms;
+/* The BLE host, the Wi-Fi API task, the update job and the poll task all call
+ * in here. Recursive: an error path calls cleanup and notify under it. */
+static SemaphoreHandle_t s_lock;
+
+#define LOCK() xSemaphoreTakeRecursive(s_lock, portMAX_DELAY)
+#define UNLOCK() xSemaphoreGiveRecursive(s_lock)
 
 static uint32_t now_ms(void)
 {
@@ -47,7 +54,8 @@ static uint32_t now_ms(void)
 /* Still stuck after that: restart. The pump is off during an update and the
  * boot partition only changes after a verified image, so this is safe. */
 #define OTA_STALL_RESTART_MS 60000u
-#define OTA_REBOOT_FALLBACK_MS 10000u
+/* The restart after a good image normally happens 1.5 s later. */
+#define OTA_REBOOT_DEADLINE_MS 10000u
 
 static void notify_status(void)
 {
@@ -84,18 +92,8 @@ static void err_led_restore(void *arg)
 static void show_ota_err_led(void)
 {
     status_led_set_mode(STATUS_LED_UPDATE_ERR);
-    if (!s_err_led_timer) {
-        const esp_timer_create_args_t args = {
-            .callback = err_led_restore,
-            .name = "ota_led_err",
-        };
-        if (esp_timer_create(&args, &s_err_led_timer) != ESP_OK) {
-            s_err_led_timer = NULL;
-            return;
-        }
-    }
     esp_timer_stop(s_err_led_timer); /* restart the 2 s if already running */
-    esp_timer_start_once(s_err_led_timer, 2000 * 1000);
+    ESP_ERROR_CHECK(esp_timer_start_once(s_err_led_timer, 2000 * 1000));
 }
 
 static void set_err(uint8_t err)
@@ -131,7 +129,7 @@ static void cleanup_session(bool keep_err)
         }
     }
     /* keep_err: caller shows UPDATE_ERR via set_err(); leave strip red. */
-    relay_control_set_blocked(false);
+    relay_control_block(RELAY_BLOCK_OTA, false);
 }
 
 static bool is_owner(uint16_t conn_handle)
@@ -141,6 +139,18 @@ static bool is_owner(uint16_t conn_handle)
 
 esp_err_t pump_ota_init(void)
 {
+    s_lock = xSemaphoreCreateRecursiveMutex();
+    if (!s_lock) {
+        return ESP_ERR_NO_MEM;
+    }
+    const esp_timer_create_args_t args = {
+        .callback = err_led_restore,
+        .name = "ota_led_err",
+    };
+    const esp_err_t err = esp_timer_create(&args, &s_err_led_timer);
+    if (err != ESP_OK) {
+        return err;
+    }
     s_state = TANKLINK_OTA_ST_IDLE;
     s_err = TANKLINK_OTA_ERR_OK;
     s_owner_conn = BLE_HS_CONN_HANDLE_NONE;
@@ -182,15 +192,22 @@ uint32_t pump_ota_offset(void)
 
 void pump_ota_on_disconnect(uint16_t conn_handle)
 {
-    if (is_owner(conn_handle) && pump_ota_is_active()) {
+    LOCK();
+    if (is_owner(conn_handle) && s_active) {
         ESP_LOGW(TAG, "OTA owner disconnected — abort");
         cleanup_session(false);
         notify_status();
     }
+    UNLOCK();
 }
 
-uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t sha256[32])
+/* Every public entry below takes the lock and calls one of these. */
+
+static uint8_t start_locked(uint16_t conn_handle, uint32_t image_size, const uint8_t sha256[32])
 {
+    if (s_active || s_state == TANKLINK_OTA_ST_REBOOTING) {
+        return TANKLINK_OTA_ERR_BUSY; /* someone else's update: leave its state alone */
+    }
     if (!pump_api_id_authed(conn_handle)) {
         set_err(TANKLINK_OTA_ERR_NOT_AUTH);
         return TANKLINK_OTA_ERR_NOT_AUTH;
@@ -201,17 +218,12 @@ uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
         set_err(TANKLINK_OTA_ERR_PUMP_ON);
         return TANKLINK_OTA_ERR_PUMP_ON;
     }
-    if (s_active || s_state == TANKLINK_OTA_ST_REBOOTING) {
-        set_err(TANKLINK_OTA_ERR_BUSY);
-        return TANKLINK_OTA_ERR_BUSY;
-    }
     if (image_size < 1024 || image_size > (0x1C0000u - 0x20u) || sha256 == NULL) {
         set_err(TANKLINK_OTA_ERR_BAD_PARAM);
         return TANKLINK_OTA_ERR_BAD_PARAM;
     }
 
     cleanup_session(false);
-    relay_control_force_off();
 
     s_part = esp_ota_get_next_update_partition(NULL);
     if (!s_part) {
@@ -224,7 +236,9 @@ uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
         return TANKLINK_OTA_ERR_BAD_PARAM;
     }
 
-    esp_err_t err = esp_ota_begin(s_part, image_size, &s_handle);
+    /* Erase as the image arrives, a sector at a time, instead of the whole
+     * image up front: that took seconds with the BLE host (or Wi-Fi task) stuck. */
+    esp_err_t err = esp_ota_begin(s_part, OTA_WITH_SEQUENTIAL_WRITES, &s_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin: %s", esp_err_to_name(err));
         set_err(TANKLINK_OTA_ERR_FLASH);
@@ -240,7 +254,7 @@ uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
     s_last_activity_ms = now_ms();
     s_err = TANKLINK_OTA_ERR_OK;
     s_state = TANKLINK_OTA_ST_READY;
-    relay_control_set_blocked(true);
+    relay_control_block(RELAY_BLOCK_OTA, true); /* also stops the motor */
     s_led_before = status_led_get_mode();
     status_led_set_mode(STATUS_LED_UPDATING);
     ESP_LOGI(TAG, "OTA start size=%lu part=%s owner=%u",
@@ -249,13 +263,20 @@ uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t 
     return TANKLINK_OTA_ERR_OK;
 }
 
-uint8_t pump_ota_write(uint16_t conn_handle, uint32_t offset, const uint8_t *data, uint16_t len)
+static uint8_t write_locked(uint16_t conn_handle, uint32_t offset, const uint8_t *data,
+                            uint16_t len)
 {
+    if (s_state == TANKLINK_OTA_ST_REBOOTING) {
+        return TANKLINK_OTA_ERR_BUSY;
+    }
     if (!s_active) {
         set_err(TANKLINK_OTA_ERR_STATE);
         return TANKLINK_OTA_ERR_STATE;
     }
-    if (!is_owner(conn_handle) || !pump_api_id_authed(conn_handle)) {
+    if (!is_owner(conn_handle)) {
+        return TANKLINK_OTA_ERR_BUSY; /* not this session's update */
+    }
+    if (!pump_api_id_authed(conn_handle)) {
         cleanup_session(true);
         set_err(TANKLINK_OTA_ERR_NOT_AUTH);
         return TANKLINK_OTA_ERR_NOT_AUTH;
@@ -298,8 +319,11 @@ uint8_t pump_ota_write(uint16_t conn_handle, uint32_t offset, const uint8_t *dat
     return TANKLINK_OTA_ERR_OK;
 }
 
-uint8_t pump_ota_abort(void)
+static uint8_t abort_locked(void)
 {
+    if (s_state == TANKLINK_OTA_ST_REBOOTING) {
+        return TANKLINK_OTA_ERR_BUSY; /* the new image is already set to boot */
+    }
     if (!s_active && s_state == TANKLINK_OTA_ST_IDLE) {
         return TANKLINK_OTA_ERR_OK;
     }
@@ -309,7 +333,7 @@ uint8_t pump_ota_abort(void)
     return TANKLINK_OTA_ERR_OK;
 }
 
-uint8_t pump_ota_abort_from(uint16_t conn_handle)
+static uint8_t abort_from_locked(uint16_t conn_handle)
 {
     if (!s_active && s_state == TANKLINK_OTA_ST_IDLE) {
         return TANKLINK_OTA_ERR_OK;
@@ -317,7 +341,7 @@ uint8_t pump_ota_abort_from(uint16_t conn_handle)
     if (s_owner_conn != BLE_HS_CONN_HANDLE_NONE && !is_owner(conn_handle)) {
         return TANKLINK_OTA_ERR_NOT_AUTH;
     }
-    return pump_ota_abort();
+    return abort_locked();
 }
 
 static void reboot_task(void *arg)
@@ -328,13 +352,19 @@ static void reboot_task(void *arg)
     esp_restart();
 }
 
-uint8_t pump_ota_finish(uint16_t conn_handle)
+static uint8_t finish_locked(uint16_t conn_handle)
 {
+    if (s_state == TANKLINK_OTA_ST_REBOOTING) {
+        return TANKLINK_OTA_ERR_BUSY;
+    }
     if (!s_active) {
         set_err(TANKLINK_OTA_ERR_STATE);
         return TANKLINK_OTA_ERR_STATE;
     }
-    if (!is_owner(conn_handle) || !pump_api_id_authed(conn_handle)) {
+    if (!is_owner(conn_handle)) {
+        return TANKLINK_OTA_ERR_BUSY;
+    }
+    if (!pump_api_id_authed(conn_handle)) {
         cleanup_session(true);
         set_err(TANKLINK_OTA_ERR_NOT_AUTH);
         return TANKLINK_OTA_ERR_NOT_AUTH;
@@ -387,11 +417,11 @@ uint8_t pump_ota_finish(uint16_t conn_handle)
     return TANKLINK_OTA_ERR_OK;
 }
 
-void pump_ota_poll(void)
+static void poll_locked(void)
 {
     const uint32_t now = now_ms();
     if (s_state == TANKLINK_OTA_ST_REBOOTING) {
-        if (now - s_rebooting_since_ms > OTA_REBOOT_FALLBACK_MS) {
+        if (now - s_rebooting_since_ms > OTA_REBOOT_DEADLINE_MS) {
             ESP_LOGE(TAG, "restart after update did not happen — restarting");
             esp_restart();
         }
@@ -412,4 +442,55 @@ void pump_ota_poll(void)
             pump_api_drop_id(conn);
         }
     }
+}
+
+uint8_t pump_ota_start(uint16_t conn_handle, uint32_t image_size, const uint8_t sha256[32])
+{
+    LOCK();
+    const uint8_t r = start_locked(conn_handle, image_size, sha256);
+    UNLOCK();
+    return r;
+}
+
+uint8_t pump_ota_write(uint16_t conn_handle, uint32_t offset, const uint8_t *data, uint16_t len)
+{
+    LOCK();
+    const uint8_t r = write_locked(conn_handle, offset, data, len);
+    UNLOCK();
+    return r;
+}
+
+uint8_t pump_ota_abort(void)
+{
+    LOCK();
+    const uint8_t r = abort_locked();
+    UNLOCK();
+    return r;
+}
+
+uint8_t pump_ota_abort_from(uint16_t conn_handle)
+{
+    LOCK();
+    const uint8_t r = abort_from_locked(conn_handle);
+    UNLOCK();
+    return r;
+}
+
+uint8_t pump_ota_finish(uint16_t conn_handle)
+{
+    LOCK();
+    const uint8_t r = finish_locked(conn_handle);
+    UNLOCK();
+    return r;
+}
+
+void pump_ota_poll(void)
+{
+    /* Never wait here: this runs on the watched poll task, and a flash write
+     * may hold the lock for a while. The next poll comes in 500 ms. */
+    if (xSemaphoreTakeRecursive(s_lock, 0) != pdTRUE) {
+        return;
+    }
+    poll_locked();
+    UNLOCK();
 }

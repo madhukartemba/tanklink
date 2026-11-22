@@ -13,6 +13,7 @@ import '../link/pump_link.dart';
 import '../link/pump_finder.dart';
 import '../link/wifi_link.dart';
 import '../util/error_text.dart';
+import '../util/format.dart';
 import '../util/water_use.dart';
 import 'battery_trend.dart';
 import 'models.dart';
@@ -1192,7 +1193,7 @@ class PumpSession extends ChangeNotifier {
       buzzerFlags: flags ?? buzzerFlags,
       buzzerTone: (tone ?? buzzerTone).clamp(0, 3),
       ledBrightness: (brightness ?? ledBrightness).clamp(1, 100),
-      starterType: (starter ?? starterType).clamp(0, 1),
+      starterType: starter ?? starterType,
       relayPulseMs: (pulseMs ?? relayPulseMs).clamp(
         TankLinkUuids.relayPulseMsMin,
         TankLinkUuids.relayPulseMsMax,
@@ -1331,28 +1332,18 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setStarterType(int type) async {
-    await _writeSettings(starter: type.clamp(0, 1));
-    status = type == TankLinkUuids.starterTwoButton
-        ? 'Two-button starter'
-        : 'Starter: none';
-    notifyListeners();
-  }
-
   Future<void> setStarterConfig({
     required int type,
     required int pulseMs,
   }) async {
     await _writeSettings(
-      starter: type.clamp(0, 1),
+      starter: type,
       pulseMs: pulseMs.clamp(
         TankLinkUuids.relayPulseMsMin,
         TankLinkUuids.relayPulseMsMax,
       ),
     );
-    status = type == TankLinkUuids.starterTwoButton
-        ? 'Start and Stop · $relayPulseMs ms'
-        : 'Starter: none';
+    status = starterLabel(type, relayPulseMs);
     notifyListeners();
   }
 

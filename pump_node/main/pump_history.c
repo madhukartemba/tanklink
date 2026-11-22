@@ -57,13 +57,6 @@ esp_err_t pump_history_init(void)
     return ESP_OK;
 }
 
-esp_err_t pump_history_clear(void)
-{
-    memset(&s_blob, 0, sizeof(s_blob));
-    gatt_svr_notify_history();
-    return save();
-}
-
 void pump_history_add(const pump_fill_t *fill)
 {
     if (!fill) {

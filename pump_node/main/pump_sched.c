@@ -75,14 +75,6 @@ esp_err_t pump_sched_init(void)
     return ESP_OK;
 }
 
-esp_err_t pump_sched_clear(void)
-{
-    memset(&s_blob, 0, sizeof(s_blob));
-    s_blob.magic = SCHED_MAGIC;
-    pump_sched_clear_fired();
-    return save_blob();
-}
-
 unsigned pump_sched_count(void)
 {
     return s_blob.count;

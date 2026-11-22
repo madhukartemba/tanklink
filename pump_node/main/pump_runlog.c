@@ -50,16 +50,12 @@ static uint32_t local_now(void)
 
 static void lock(void)
 {
-    if (s_mu) {
-        xSemaphoreTake(s_mu, portMAX_DELAY);
-    }
+    xSemaphoreTake(s_mu, portMAX_DELAY);
 }
 
 static void unlock(void)
 {
-    if (s_mu) {
-        xSemaphoreGive(s_mu);
-    }
+    xSemaphoreGive(s_mu);
 }
 
 static void nvs_put(const char *key, const void *data, size_t len)
@@ -110,6 +106,7 @@ static uint8_t reason_from_reset(void)
 void pump_runlog_init(void)
 {
     s_mu = xSemaphoreCreateMutex();
+    configASSERT(s_mu);
 
     event_rec_t ev_rec;
     if (nvs_get(NVS_KEY_EVENT, &ev_rec, sizeof(ev_rec)) && ev_rec.ver == REC_VER &&

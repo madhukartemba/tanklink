@@ -22,6 +22,13 @@ String formatRunTime(int seconds) {
   return '${m ~/ 60}h ${(m % 60).toString().padLeft(2, '0')}m';
 }
 
+/// The pump's starter setting, as a short phrase.
+String starterLabel(int type, int pulseMs) => switch (type) {
+  TankLinkUuids.starterTwoButton => 'Start and Stop · $pulseMs ms',
+  TankLinkUuids.starterSinglePhase => 'Single-phase MCB',
+  _ => 'Not configured',
+};
+
 /// Why a fill stopped, as a short phrase.
 String stopReasonLabel(int cause) => switch (cause) {
   TankLinkUuids.causeApp => 'Stopped in the app',

@@ -30,7 +30,6 @@ void pump_battery_log_note(uint8_t node, uint8_t pct);
 
 /** Forget [node]'s log (unpaired, or a new sensor in that slot). */
 void pump_battery_log_clear(uint8_t node);
-void pump_battery_log_clear_all(void);
 
 /** Copy [node]'s days, oldest first. Returns how many. */
 unsigned pump_battery_log_get(uint8_t node, pump_batlog_day_t out[PUMP_BATLOG_DAYS]);

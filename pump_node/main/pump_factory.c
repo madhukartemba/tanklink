@@ -4,16 +4,8 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "gatt_svr.h"
+#include "nvs_flash.h"
 #include "pump_control.h"
-#include "lora_link.h"
-#include "pump_config.h"
-#include "pump_pair.h"
-#include "pump_runlog.h"
-#include "pump_sched.h"
-#include "pump_tanks.h"
-#include "pump_wifi.h"
-#include "pump_history.h"
 #include "relay_control.h"
 #include "status_led.h"
 
@@ -22,53 +14,28 @@
 static void factory_reboot_task(void *arg)
 {
     (void)arg;
-    vTaskDelay(pdMS_TO_TICKS(1200));
+    vTaskDelay(pdMS_TO_TICKS(1200)); /* the green cue, and the BLE reply */
     esp_restart();
 }
 
 esp_err_t pump_factory_reset(void)
 {
-    ESP_LOGW(TAG, "Factory reset — clearing pair, tank, config");
+    ESP_LOGW(TAG, "Factory reset: erasing every saved setting, then restarting");
     pump_control_set_silent(false, PUMP_CAUSE_SYSTEM);
-    relay_control_set_blocked(true);
+    relay_control_block(RELAY_BLOCK_RESET, true); /* until the restart */
 
-    esp_err_t err = pump_pair_unpair();
+    /* One erase of the whole NVS partition clears everything (phones, tanks,
+     * schedules, history, Wi-Fi, alert key, settings) and is cheaper on the
+     * flash than clearing each item. Every module starts from its defaults
+     * after the restart, and a new pump identity is made from the MAC. */
+    const esp_err_t err = nvs_flash_erase();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "pair clear failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "NVS erase failed: %s", esp_err_to_name(err));
     }
-    err = lora_link_unpair_all();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "tank clear failed: %s", esp_err_to_name(err));
-    }
-    err = pump_sched_clear();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "schedule clear failed: %s", esp_err_to_name(err));
-    }
-    err = pump_history_clear();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "history clear failed: %s", esp_err_to_name(err));
-    }
-    err = pump_tanks_clear();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "tank slot clear failed: %s", esp_err_to_name(err));
-    }
-    err = pump_config_reset_defaults();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "config reset failed: %s", esp_err_to_name(err));
-    }
-    err = pump_wifi_forget();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "wifi clear failed: %s", esp_err_to_name(err));
-    }
-    pump_config_apply_buzzer();
-    pump_config_apply_led();
-    pump_control_clear_error();
-    pump_runlog_clear_event();
-
-    status_led_set_mode(STATUS_LED_UPDATE_OK);
+    status_led_set_mode(err == ESP_OK ? STATUS_LED_UPDATE_OK : STATUS_LED_UPDATE_ERR);
+    /* Restart either way: NVS is no longer usable until it is set up again. */
     if (xTaskCreate(factory_reboot_task, "fac_rst", 2048, NULL, 5, NULL) != pdPASS) {
-        vTaskDelay(pdMS_TO_TICKS(1200));
         esp_restart();
     }
-    return ESP_OK;
+    return err;
 }

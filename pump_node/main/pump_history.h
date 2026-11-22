@@ -38,7 +38,6 @@ typedef struct {
 } pump_fill_t;
 
 esp_err_t pump_history_init(void);
-esp_err_t pump_history_clear(void);
 
 /** Save a finished fill and notify phones. */
 void pump_history_add(const pump_fill_t *fill);

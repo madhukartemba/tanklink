@@ -23,8 +23,8 @@ Match tank frequency **433 MHz**. Tank wiring: see [`../tank_node/WIRING.md`](
 
 | Function | GPIO |
 | --- | --- |
-| Relay START (IN1) | 0 |
-| Relay STOP (IN2) | 1 |
+| Relay 1: START, or held while running for a single-phase MCB starter (IN1) | 0 |
+| Relay 2: STOP, two-button starter only (IN2) | 1 |
 | I2C SCL (DS3231) | 6 |
 | I2C SDA (DS3231) | 7 |
 | Button (single; running: press = OFF · off: hold ~1 s + release = ON · ~5 s = BLE pair) | 9 |

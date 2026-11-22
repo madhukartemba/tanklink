@@ -96,14 +96,8 @@ String _buzzerSummary(PumpSession session) {
   return 'On · $tone';
 }
 
-String _starterSummary(PumpSession session) {
-  switch (session.starterType) {
-    case TankLinkUuids.starterTwoButton:
-      return 'Start and Stop · ${session.relayPulseMs} ms';
-    default:
-      return 'Not configured';
-  }
-}
+String _starterSummary(PumpSession session) =>
+    starterLabel(session.starterType, session.relayPulseMs);
 
 class _PumpSettingsSheet extends StatefulWidget {
   const _PumpSettingsSheet();

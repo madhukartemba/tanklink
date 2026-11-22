@@ -54,7 +54,7 @@ Menu: **Pump Board**. The values below are the ones in `sdkconfig.defaults`.
 | `PUMP_RELAY_START_GPIO` | `0` | `-1` = not wired |
 | `PUMP_RELAY_STOP_GPIO` | `1` | `-1` = not wired |
 | `PUMP_RELAY_ACTIVE_HIGH` | `n` | `n` suits 2-ch opto modules (IN LOW = relay on) |
-| `PUMP_RELAY_PULSE_MS` | `1000` | Only used until saved settings load. The app's **Starter** setting is the one that counts |
+| `PUMP_RELAY_PULSE_MS` | `1000` | Two-button press length on a new or factory-reset pump. After that the app's **Starter** setting counts |
 | **DS3231 clock** | | |
 | `PUMP_ENABLE_RTC` | `y` | Soft-fails if the chip isn't wired |
 | `PUMP_RTC_SDA_GPIO` | `7` | |
@@ -113,13 +113,18 @@ Stored on the pump in NVS namespace `pump`, key `cfg`. Defaults apply after a fi
 | Buzzer | on for button, pump start/stop, auto-off | per-event switches | Pump settings |
 | Buzzer tone | click | click, soft, sharp, double | Pump settings |
 | LED brightness | 70 % | 1 – 100 % | Pump settings |
-| **Starter type** | **none** | none, two-button | **Starter** |
-| Relay pulse | 1000 ms | 50 – 2000 ms | Starter |
+| **Starter type** | **none** | none, two-button, single-phase MCB | **Starter** |
+| Relay pulse | 1000 ms | 50 – 2000 ms (two-button only) | Starter |
 | Second float (per sensor) | off | off, almost-empty, two tanks | Tank sensors → a sensor. Stored with the sensor in `tl_tanks` |
 
-> **The starter type defaults to "none".** In that mode the pump tracks on/off and the LED, but never pulses the relays. A new or factory-reset pump needs **Starter → two-button** set in the app before it will actually run a motor.
+> **The starter type defaults to "none".** In that mode the pump tracks on/off and the LED, but never touches the relays. A new or factory-reset pump needs **Starter → two-button** or **Starter → single-phase MCB** set in the app before it will actually run a motor.
+>
+> - **Two-button**: relay 1 pulses the starter's Start button, relay 2 its Stop button.
+> - **Single-phase MCB**: relay 1 is held closed for as long as the pump runs (it switches the contactor coil behind the MCB); relay 2 is not used. A restart, power cut or crash opens relay 1, so the motor stops and stays off until started again.
+>
+> All settings in this table are checked together and saved in one write; a saved blob with a value out of range loads the defaults.
 
-Other data the pump saves (all cleared by factory reset or `erase-flash`):
+Other data the pump saves (all cleared by factory reset, which erases the whole NVS partition, or by `erase-flash`):
 
 | NVS namespace | Holds |
 | --- | --- |
@@ -167,8 +172,25 @@ The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, 
 
 ## Memory (pump)
 
-The ESP32-C3 has about 320 KB of RAM. With Bluetooth and Wi-Fi up and no phone busy, about **80 KB** of heap is free. The tightest moment is the pump downloading its own update over HTTPS (TLS buffers, the certificate check and the Wi-Fi packets at once): measured with a dry run of the real 725 KB GitHub download, the lowest free heap was **about 39 KB**, with the largest free block about 32 KB. The pump logs this (`UPDATE: heap ...`, and `DIAG: heap ...` every 30 s) so it can be checked after any change.
+The ESP32-C3 has about 320 KB of RAM. With Bluetooth and Wi-Fi up and no phone busy, about **80 KB** of heap is free. The tightest moment is the pump downloading its own update over HTTPS (TLS buffers, the certificate check and the Wi-Fi packets at once): measured with a dry run of the real 725 KB GitHub download, the lowest free heap was **about 39 KB**, with the largest free block about 32 KB. The pump logs this (`UPDATE: heap ...`, and `DIAG: heap ...` 30 s after boot, then every 10 minutes and after every fill and phone disconnect) so it can be checked after any change.
 
-What keeps it that way (`pump_node/sdkconfig.defaults`, each with a comment): Wi-Fi code in flash, not IRAM; station mode only; fewer Wi-Fi and lwIP buffers and sockets; no receive aggregation; TLS buffers allocated when needed; and the certificate bundle with cross-signed roots (without it every HTTPS connection fails). In code: the Wi-Fi API receive buffer starts at 0.5 KB per client and grows only for an OTA chunk (2 KB); the update runs on a short-lived 6 KB task.
+**Checking for a leak.** Leave the pump running with the serial log open for a day or more, with phones connecting, fills, and (if set up) Wi-Fi. In the `DIAG:` lines, `heap free` moves up and down with what is going on, but after the first hour `lowest` should stop falling and `free` should come back to about the same value each time the pump is idle. A `lowest` that keeps falling day after day is a leak. The same lines show each task's unused stack (`never used`); keep at least ~500 B on each.
+
+Static RAM (`idf.py size`, `.bss` + `.data`) is about 47 KB; the biggest items in the pump's own code are the fill history (2.4 KB, kept in RAM for paging) and the BLE and Wi-Fi API buffers. The Wi-Fi scan list is read one record at a time instead of into a 3.8 KB buffer that used to stay allocated even with Wi-Fi off.
+
+What keeps it that way (`pump_node/sdkconfig.defaults`, each with a comment): Wi-Fi code in flash, not IRAM; station mode only; fewer Wi-Fi and lwIP buffers and sockets; no receive aggregation; TLS buffers allocated when needed; and the certificate bundle with cross-signed roots (without it every HTTPS connection fails). In code: the Wi-Fi API receive buffer starts at 0.5 KB per client and grows only for an OTA chunk (2 KB); the update runs on a short-lived 6 KB task; an update erases the OTA slot a sector at a time as the image arrives (`OTA_WITH_SEQUENTIAL_WRITES`), not all at once before the first byte.
+
+## Flash wear (pump)
+
+NVS is 24 KB (6 pages of 4 KB, 126 entries of 32 bytes each). NVS skips a write whose value is unchanged, so saving the same settings again costs nothing. What does write:
+
+| What | When | Entries |
+| --- | --- | --- |
+| Tank packet: last seq (`seq<N>`) and last packet (`last<N>`) | each new packet: heartbeat every 5 min, plus float changes | 4 |
+| Running record (`tl_run`) | fill start, every minute while running, stop | 2 each |
+| Fill history (`tl_hist`) | each fill (the whole 200-fill ring, 2.4 KB) | ~80 |
+| Battery log, alert seq, settings, schedules | when they change | few |
+
+With one sensor that is about 1,300 entries a day, so each page is erased roughly 3 times a day; with four sensors about 10 times a day. At the 100,000 erase cycles the flash is rated for, that is over 25 years even with four sensors. The tank writes its packet counter once per packet into its own 24 KB NVS (a few hundred entries a day), which is lighter still. If the `DIAG: nvs entries` line shows `free` under ~150 for long, the partition is too full and wear rises; look at what grew.
 
 Free flash in the OTA slot: about 18% (the image is about 1.5 MB of 1.75 MB). A change that adds more than ~200 KB needs a smaller feature set or a bigger partition table (which needs an `erase-flash` over USB).

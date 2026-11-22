@@ -133,6 +133,18 @@ void main() {
       expect(s.encode(), [0x0f, 2, 70, 1, 0xe8, 0x03, 1]);
     });
 
+    test('single-phase starter is byte 3 = 2 (pump relay_control.h)', () {
+      final s = PumpSettings(
+        buzzerFlags: 0,
+        buzzerTone: 0,
+        ledBrightness: 70,
+        starterType: TankLinkUuids.starterSinglePhase,
+        relayPulseMs: 1000,
+        autoUpdate: false,
+      );
+      expect(s.encode(), [0, 0, 70, 2, 0xe8, 0x03, 0]);
+    });
+
     test('returns null when too short', () {
       expect(PumpSettings.parse(List.filled(10, 0)), isNull);
       expect(PumpSettings.parse(List.filled(49, 0)), isNull);

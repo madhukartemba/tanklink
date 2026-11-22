@@ -44,12 +44,12 @@ Pump (`pump_node/main/`):
 | `pump_history.c`, `pump_battery_log.c` | Last 200 fills with stop reason (read in pages); each sensor's daily battery low/high |
 | `gatt_svr.c` | BLE service table, connections, Pair, notifications (also forwarded to Wi-Fi clients) |
 | `gatt_payloads.c` | Byte layout of every characteristic read |
-| `relay_control.c`, `board.c` | Starter relays; button and LED wiring |
+| `relay_control.c`, `board.c` | Starter relays (none, two-button pulses, single-phase MCB: relay 1 held while running; starts blocked per reason: OTA, pairing, reset); button and LED wiring |
 | `lora_link.c` | Tank link: pairing, STATUS/ACK, UNPAIR (a tank that goes into pairing mode tells its old pump it left), per-sensor token and last-seen record |
 | `pump_tanks.c` | Paired sensors (up to 4, each with its float mode), tank slots (up to 8), the selected tank. Keeps the invariants in `pump_tanks.h` |
 | `pump_sched.c`, `pump_config.c`, `pump_pair.c` | Saved state in NVS: schedules, settings (including the pump's name and the auto-update switch), phone pairing |
 | `pump_clock.c`, `pump_rtc.c`, `pump_runlog.c` | Local time, DS3231, interrupted-fill detection |
-| `pump_ota.c` | Firmware update, from either transport or from the pump itself (owner = a session id) |
+| `pump_ota.c` | Firmware update, from either transport or from the pump itself (owner = a session id; one lock, another session's writes get BUSY) |
 | `pump_api.c` | The app API, shared by both transports: one `pump_api_read` / `pump_api_write` per characteristic, sessions, sign-in. Pair stays in `gatt_svr.c` (BLE only) |
 | `pump_wifi.c` | Optional Wi-Fi: saved network (`tl_wifi`), reconnect, scan, mDNS, SNTP time |
 | `pump_wifi_api.c` | TCP server on port 7580: the same API over Wi-Fi (framing, tags) |

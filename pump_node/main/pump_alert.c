@@ -109,6 +109,7 @@ static void new_key(void)
 void pump_alert_init(void)
 {
     s_lock = xSemaphoreCreateMutex();
+    configASSERT(s_lock);
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
         size_t n = sizeof(s_key);
@@ -152,9 +153,6 @@ void pump_alert_phones_removed(bool some_remain)
 
 void pump_alert_raise(tl_alert_type_t type, uint8_t arg)
 {
-    if (!s_lock) {
-        return;
-    }
     xSemaphoreTake(s_lock, portMAX_DELAY);
     if (!s_have_key) {
         xSemaphoreGive(s_lock);
@@ -210,7 +208,7 @@ void pump_alert_note_battery(uint8_t sensor, uint8_t pct)
 
 void pump_alert_poll(void)
 {
-    if (!s_lock || !s_current_valid) {
+    if (!s_current_valid) {
         return;
     }
     bool ended = false;
@@ -231,9 +229,6 @@ void pump_alert_poll(void)
 bool pump_alert_adv_bytes(uint8_t out[7])
 {
     memset(out, 0, 7);
-    if (!s_lock) {
-        return false;
-    }
     xSemaphoreTake(s_lock, portMAX_DELAY);
     const bool ok = s_have_key && s_current_valid;
     if (ok) {

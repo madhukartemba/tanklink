@@ -195,7 +195,7 @@ esp_err_t pump_pair_enter_pairing_mode(void)
 {
     /* Diverting activity — pump must be off and stay off. */
     pump_control_set(false, PUMP_CAUSE_SYSTEM);
-    relay_control_set_blocked(true);
+    relay_control_block(RELAY_BLOCK_PAIRING, true);
     s_pairing_active = true;
     s_pairing_deadline_us = esp_timer_get_time() + (int64_t)CONFIG_PUMP_PAIRING_TIMEOUT_MS * 1000;
     ESP_LOGI(TAG, "Pairing window open (%d ms)", CONFIG_PUMP_PAIRING_TIMEOUT_MS);
@@ -210,7 +210,7 @@ void pump_pair_exit_pairing_mode(void)
         return;
     }
     s_pairing_active = false;
-    relay_control_set_blocked(false);
+    relay_control_block(RELAY_BLOCK_PAIRING, false);
     ESP_LOGI(TAG, "Pairing window closed");
     refresh_led_for_pair_state();
     notify_change();
@@ -312,12 +312,12 @@ esp_err_t pump_pair_forget_others(int keep_phone)
 esp_err_t pump_pair_unpair(void)
 {
     pump_control_set(false, PUMP_CAUSE_SYSTEM);
-    relay_control_set_blocked(true);
+    relay_control_block(RELAY_BLOCK_PAIRING, true);
     s_pair.phones = 0;
     memset(s_pair.tokens, 0, sizeof(s_pair.tokens));
     esp_err_t err = save_blob();
     if (err != ESP_OK) {
-        relay_control_set_blocked(false);
+        relay_control_block(RELAY_BLOCK_PAIRING, false);
         return err;
     }
     s_pairing_active = true;

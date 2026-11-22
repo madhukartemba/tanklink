@@ -312,6 +312,9 @@ static void server_task(void *arg)
         bind(listener, (struct sockaddr *)&addr, sizeof(addr)) != 0 ||
         listen(listener, PUMP_WIFI_API_MAX_CLIENTS) != 0) {
         ESP_LOGE(TAG, "listen failed errno=%d", errno);
+        if (listener >= 0) {
+            close(listener); /* the next IP event starts the server again */
+        }
         s_started = false;
         vTaskDelete(NULL);
         return;
@@ -372,12 +375,20 @@ void pump_wifi_api_start(void)
     }
     if (!s_tx_lock) {
         s_tx_lock = xSemaphoreCreateMutex();
+        configASSERT(s_tx_lock);
         for (int i = 0; i < PUMP_WIFI_API_MAX_CLIENTS; i++) {
             s_clients[i].fd = -1;
         }
     }
     s_started = xTaskCreate(server_task, "wifi_api", 6144, NULL, 4, NULL) == pdPASS;
+    if (!s_started) {
+        ESP_LOGE(TAG, "no memory for the server task; tried again on the next IP event");
+    }
 }
+
+/* The calls below come from other tasks (BLE host, OTA, poll). They hold the
+ * tx lock so a client the server task is closing can't have its fd reused
+ * under them. */
 
 void pump_wifi_api_notify(uint8_t chr, const uint8_t *buf, size_t len)
 {
@@ -400,30 +411,41 @@ bool pump_wifi_api_is_authed(uint16_t id)
 
 void pump_wifi_api_drop(uint16_t id)
 {
-    client_t *c = s_started ? client_by_id(id) : NULL;
+    if (!s_tx_lock) {
+        return; /* never started */
+    }
+    xSemaphoreTake(s_tx_lock, portMAX_DELAY);
+    client_t *c = client_by_id(id);
     if (c) {
-        shutdown(c->fd, SHUT_RDWR);
+        shutdown(c->fd, SHUT_RDWR); /* the server task closes it */
     }
+    xSemaphoreGive(s_tx_lock);
 }
 
-void pump_wifi_api_sign_out_all(void)
+/** Sign out and cut every client except [keep_id] (0 = keep none). */
+static void cut_clients(uint16_t keep_id)
 {
-    /* The key is useless without the session: cut every client. */
-    for (int i = 0; s_started && i < PUMP_WIFI_API_MAX_CLIENTS; i++) {
-        if (s_clients[i].fd >= 0) {
-            pump_api_session_sign_out(&s_clients[i].api);
-            shutdown(s_clients[i].fd, SHUT_RDWR);
-        }
+    if (!s_tx_lock) {
+        return;
     }
-}
-
-void pump_wifi_api_drop_others(uint16_t keep_id)
-{
-    for (int i = 0; s_started && i < PUMP_WIFI_API_MAX_CLIENTS; i++) {
+    xSemaphoreTake(s_tx_lock, portMAX_DELAY);
+    for (int i = 0; i < PUMP_WIFI_API_MAX_CLIENTS; i++) {
         client_t *c = &s_clients[i];
         if (c->fd >= 0 && c->api.id != keep_id) {
             pump_api_session_sign_out(&c->api);
             shutdown(c->fd, SHUT_RDWR);
         }
     }
+    xSemaphoreGive(s_tx_lock);
+}
+
+void pump_wifi_api_sign_out_all(void)
+{
+    /* The key is useless without the session: cut every client. */
+    cut_clients(0);
+}
+
+void pump_wifi_api_drop_others(uint16_t keep_id)
+{
+    cut_clients(keep_id);
 }

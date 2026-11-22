@@ -48,6 +48,7 @@ void pump_api_init(void)
 {
     if (!s_lock) {
         s_lock = xSemaphoreCreateMutex();
+        configASSERT(s_lock);
     }
 }
 
@@ -394,24 +395,22 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
 
 static pump_api_err_t write_settings(const uint8_t *buf, size_t len)
 {
-    /* buzzer_flags tone led starter pulse_ms(u16). A newer app may append
-     * fields (protocol minor); they are ignored. */
+    /* buzzer_flags tone led starter pulse_ms(u16) auto_update. A newer app may
+     * append fields (protocol minor); they are ignored. */
     if (len < TANKLINK_SETTINGS_WRITE_LEN) {
         return PUMP_API_ERR_LEN;
     }
-    const uint16_t pulse = (uint16_t)buf[4] | ((uint16_t)buf[5] << 8);
-    if (pump_config_set_buzzer(buf[0], buf[1]) != ESP_OK ||
-        pump_config_set_led_brightness(buf[2]) != ESP_OK ||
-        pump_config_set_starter_type(buf[3]) != ESP_OK ||
-        pump_config_set_relay_pulse_ms(pulse) != ESP_OK) {
+    const pump_settings_t set = {
+        .buzzer_flags = buf[0],
+        .buzzer_tone = buf[1],
+        .led_brightness = buf[2],
+        .starter_type = buf[3],
+        .relay_pulse_ms = (uint16_t)(buf[4] | (buf[5] << 8)),
+        .auto_update = buf[6] != 0,
+    };
+    if (pump_config_set_settings(&set) != ESP_OK) {
         return PUMP_API_ERR_REFUSED;
     }
-    if (len > TANKLINK_SETTINGS_WRITE_LEN &&
-        pump_config_set_auto_update(buf[TANKLINK_SETTINGS_WRITE_LEN] != 0) != ESP_OK) {
-        return PUMP_API_ERR_REFUSED;
-    }
-    ESP_LOGI(TAG, "settings buzz=0x%02x tone=%u led=%u starter=%u pulse=%ums", buf[0], buf[1],
-             buf[2], buf[3], (unsigned)pulse);
     gatt_svr_notify_settings();
     return PUMP_API_OK;
 }

@@ -19,7 +19,6 @@ typedef struct {
 } pump_sched_entry_t;
 
 esp_err_t pump_sched_init(void);
-esp_err_t pump_sched_clear(void);
 
 unsigned pump_sched_count(void);
 const pump_sched_entry_t *pump_sched_entries(void);

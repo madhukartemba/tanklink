@@ -29,8 +29,6 @@ bool lora_link_tank_pairing_active(void);
 
 /** Forget one sensor. Refused while the pump runs into one of its tanks. */
 esp_err_t lora_link_unpair_node(uint8_t node);
-/** Forget every sensor (factory reset). */
-esp_err_t lora_link_unpair_all(void);
 
 /** Call after the selected tank changes: refreshes the tank-full LED and error. */
 void lora_link_on_active_changed(void);

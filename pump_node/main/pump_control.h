@@ -31,9 +31,6 @@ void pump_control_set(bool on, pump_cause_t cause);
 /** Same, without the beep (the caller already gave feedback). */
 void pump_control_set_silent(bool on, pump_cause_t cause);
 
-/** Button press: flip the pump, ignored while updating or unpaired. */
-void pump_control_toggle(void);
-
 /** Seconds since the pump started, 0 when off. */
 uint32_t pump_control_run_seconds(void);
 

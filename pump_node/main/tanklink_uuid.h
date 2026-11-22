@@ -79,7 +79,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 8
+#define TANKLINK_PROTO_MINOR 9 /* 9: starter type 2 (single-phase MCB) */
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -233,10 +233,10 @@ extern "C" {
 /* Info read length for this protocol version. */
 #define TANKLINK_INFO_LEN 18
 
-/* Settings write: buzzer_flags tone led starter pulse_ms(u16) [auto_update(1)]
- * (the last byte is minor 5: install pump updates by itself when idle). Float
- * modes are per sensor (Cmd 0xA7). */
-#define TANKLINK_SETTINGS_WRITE_LEN 6
+/* Settings write: buzzer_flags tone led starter pulse_ms(u16) auto_update(1)
+ * (auto_update: install pump updates by itself when idle). Float modes are per
+ * sensor (Cmd 0xA7). */
+#define TANKLINK_SETTINGS_WRITE_LEN 7
 
 /* Tanks: active_slot(1) count(1), then count x entry:
  * slot_index(1) sensor_pin(1) sensor_index(1, 0xFF = none) auto_off_min(1)

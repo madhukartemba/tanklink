@@ -1,9 +1,11 @@
 /*
- * TankLink pump controller (ESP32-C3).
- * BLE GATT claim/pair + OnOff. Hold Start+Stop ~5s → BLE pairing window.
- * Short Start = ON, short Stop = OFF. Adv name TankLink-XXXX from MAC.
+ * TankLink pump controller (ESP32-C3): boot order, the NimBLE host and GAP
+ * events, advertising. One button: press while running = off, hold 1 s and
+ * release = on, hold 5 s = phone pairing, keep holding = factory reset.
+ * Advertised name TankLink-XXXX from the MAC.
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -122,7 +124,7 @@ static void on_stop(void)
 static void pair_poll_task(void *arg)
 {
     (void)arg;
-    const bool watched = esp_task_wdt_add(NULL) == ESP_OK;
+    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
     while (1) {
         pump_pair_poll();
         pump_clock_poll();
@@ -132,20 +134,18 @@ static void pair_poll_task(void *arg)
         pump_control_poll();
         pump_ota_poll();
         pump_diag_poll();
-        if (watched) {
-            esp_task_wdt_reset();
-        }
+        esp_task_wdt_reset();
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
 
-/** Log a failed init and carry on: an abort here would only restart into the
- * same failure, over and over. Each module falls back to its defaults. */
+/** A module whose saved data could not be read: it runs on its defaults (and
+ * does not save over the data), and the log says so. Restarting would only
+ * meet the same flash again. Core pieces (NVS, the poll task, BLE) abort. */
 static void soft(esp_err_t err, const char *what)
 {
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "%s init failed: %s — continuing with defaults", what,
-                 esp_err_to_name(err));
+        ESP_LOGE(TAG, "%s init failed: %s — running on defaults", what, esp_err_to_name(err));
     }
 }
 
@@ -154,10 +154,7 @@ static bool s_adv_ready;
 
 static void advertise(void)
 {
-    const char *name = pump_pair_adv_name();
-    if (!name || name[0] == '\0') {
-        name = TANKLINK_DEVICE_NAME;
-    }
+    const char *name = pump_pair_adv_name(); /* set by pump_pair_init */
 
     /* Advertising (31 bytes max): flags (3) + name (2 + 13) + manufacturer
      * data (2 + 2 + 1): company ID, then the state byte the app reads to
@@ -336,13 +333,16 @@ void app_main(void)
 
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        if (nvs_flash_erase() == ESP_OK) {
-            err = nvs_flash_init();
-        }
+        /* Full or written by a newer NVS format: start over (as a factory reset). */
+        ESP_LOGW(TAG, "NVS unusable (%s): erasing", esp_err_to_name(err));
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
     }
-    soft(err, "NVS");
+    ESP_ERROR_CHECK(err);
+    /* Early: anything below may raise an alert. */
+    pump_alert_init();
 
-    /* Peripherals soft-fail so LoRa-only / partial wiring still boots. */
+    /* A buzzer that is not wired is not fatal. */
     if (buzzer_init() != ESP_OK) {
         ESP_LOGW(TAG, "buzzer init failed — continuing");
     }
@@ -373,16 +373,13 @@ void app_main(void)
         };
         pump_history_add(&fill);
     }
-    if (relay_control_init() != ESP_OK) {
-        ESP_LOGW(TAG, "relay init failed — continuing");
-    }
+    ESP_ERROR_CHECK(relay_control_init());
     if (board_init() != ESP_OK) {
         ESP_LOGW(TAG, "board/LED/button init failed — continuing");
     }
     pump_config_apply_led();
     soft(pump_pair_init(), "pairing");
     pump_pair_set_change_callback(on_pair_state_changed);
-    pump_alert_init();
     pump_alert_set_change_callback(on_pair_state_changed); /* restarts advertising */
     if (pump_runlog_interrupted_this_boot()) {
         pump_alert_raise(TL_ALERT_POWER_CUT,
@@ -399,25 +396,22 @@ void app_main(void)
     }
     /* Clock-chip faults were recorded at boot, before the LED existed. */
     pump_clock_arm_faults();
-    if (pump_ota_init() != ESP_OK) {
-        ESP_LOGW(TAG, "OTA init failed — continuing");
-    }
+    ESP_ERROR_CHECK(pump_ota_init());
     pump_update_init();
 
     if (buzzer_enabled()) {
         buzzer_play(BUZZER_TONE_CLICK, true);
     }
 
-    /* Room for a fill stopping here: the 2.4 KB history save and a notify. */
+    /* Schedules, auto-fill and auto-off: without it a running pump would never
+     * stop by itself, so no task means no boot. 5 KB: room for a fill stopping
+     * here (the 2.4 KB history save and a notify). */
     if (xTaskCreate(pair_poll_task, "pair_poll", 5120, NULL, 3, NULL) != pdPASS) {
-        ESP_LOGW(TAG, "pair_poll task failed");
+        ESP_LOGE(TAG, "no memory for the poll task");
+        abort();
     }
 
-    err = nimble_port_init();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "nimble_port_init failed: %s", esp_err_to_name(err));
-        return;
-    }
+    ESP_ERROR_CHECK(nimble_port_init());
 
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.reset_cb = on_reset;
@@ -426,13 +420,12 @@ void app_main(void)
     int rc = gatt_svr_init();
     if (rc != 0) {
         ESP_LOGE(TAG, "gatt_svr_init rc=%d", rc);
-        return;
+        abort();
     }
-
-    rc = ble_svc_gap_device_name_set(TANKLINK_DEVICE_NAME);
+    rc = ble_svc_gap_device_name_set(pump_pair_adv_name());
     if (rc != 0) {
         ESP_LOGE(TAG, "device_name_set rc=%d", rc);
-        return;
+        abort();
     }
 
     nimble_port_freertos_init(host_task);

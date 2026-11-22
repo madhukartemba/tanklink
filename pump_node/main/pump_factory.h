@@ -7,8 +7,8 @@ extern "C" {
 #endif
 
 /**
- * Factory reset: stop pump, clear BLE pairing + tank bind, restore config
- * defaults, show LED cue, then reboot. Safe to call from button or BLE cmd.
+ * Factory reset: stop the pump, erase all saved data (the whole NVS
+ * partition), show the LED cue, then restart. Safe from the button or a command.
  */
 esp_err_t pump_factory_reset(void);
 
