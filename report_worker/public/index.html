@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TankLink</title>
+<meta name="description" content="A water-tank pump controller that runs on your own network. No cloud, no subscription.">
+<meta name="theme-color" content="#07090d">
+<style>
+:root{--bg:#07090d;--card:#0e121a;--line:#1c2331;--txt:#eef2f8;--mut:#8f9bb0;--acc:#3DDC97;--acc2:#1FA97A;--cyan:#38bdf8}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--txt);background:var(--bg);overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;z-index:-1;background:
+radial-gradient(700px 420px at 15% -5%,#0f4a3a88 0,transparent 70%),
+radial-gradient(640px 420px at 95% 5%,#0b3b5c77 0,transparent 70%),
+linear-gradient(#ffffff06 1px,transparent 1px) 0 0/48px 48px,
+linear-gradient(90deg,#ffffff06 1px,transparent 1px) 0 0/48px 48px}
+.wrap{max-width:880px;margin:0 auto;padding:0 24px}
+nav{display:flex;align-items:center;gap:10px;padding:28px 0;font-weight:600;letter-spacing:.3px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--acc);box-shadow:0 0 14px var(--acc)}
+.hero{padding:72px 0 56px;text-align:center}
+.pill{display:inline-block;padding:6px 14px;border:1px solid var(--line);border-radius:999px;background:#ffffff08;color:var(--mut);font-size:13px;letter-spacing:.4px}
+h1{font-size:clamp(40px,8vw,72px);line-height:1.04;margin:24px 0 20px;letter-spacing:-1.5px;font-weight:700}
+h1 span{background:linear-gradient(120deg,var(--acc),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{max-width:520px;margin:0 auto 36px;color:var(--mut);font-size:19px}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:16px 32px;border-radius:14px;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04251a;font-weight:600;text-decoration:none;box-shadow:0 10px 40px #3ddc9740;transition:transform .15s,box-shadow .15s}
+.btn:hover{transform:translateY(-2px);box-shadow:0 14px 50px #3ddc9760}
+.note{margin-top:16px;color:var(--mut);font-size:14px}
+.tank{position:relative;width:96px;height:132px;margin:56px auto 0;border:2px solid #ffffff30;border-radius:14px;overflow:hidden;background:#ffffff05}
+.tank i{position:absolute;left:-50%;width:200%;bottom:0;height:62%;background:linear-gradient(var(--cyan),#0b5f86);opacity:.85;border-radius:42%;animation:wave 6s linear infinite}
+.tank i+i{opacity:.4;height:66%;animation-duration:9s;animation-direction:reverse}
+@keyframes wave{to{transform:translateX(25%) rotate(1deg)}}
+.flow{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;margin:56px 0 0}
+.node{padding:14px 20px;border:1px solid var(--line);border-radius:14px;background:var(--card);text-align:center;min-width:128px}
+.node b{display:block;font-weight:600}
+.node small{color:var(--mut);font-size:13px}
+.link{color:var(--mut);font-size:12px;letter-spacing:1.5px;text-transform:uppercase}
+.link::before,.link::after{content:"";display:inline-block;width:16px;height:1px;background:var(--acc);vertical-align:middle;margin:0 6px;opacity:.7}
+h2{font-size:13px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:var(--acc);margin:88px 0 20px;text-align:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{padding:24px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,#ffffff07,#ffffff02),var(--card);transition:border-color .2s,transform .2s}
+.card:hover{border-color:#3ddc9755;transform:translateY(-3px)}
+.card h3{margin:0 0 8px;font-size:17px;font-weight:600}
+.card p{margin:0;color:var(--mut);font-size:15px}
+.cta{margin:96px 0 0;padding:48px 24px;border:1px solid var(--line);border-radius:20px;text-align:center;background:radial-gradient(500px 220px at 50% 0,#3ddc9718,transparent 70%),var(--card)}
+.cta h2{margin:0 0 20px;color:var(--txt);font-size:28px;letter-spacing:-.5px;text-transform:none;font-weight:600}
+footer{padding:48px 0;text-align:center;color:var(--mut);font-size:14px}
+footer a{color:var(--mut)}
+@media(prefers-reduced-motion:reduce){.tank i{animation:none}html{scroll-behavior:auto}.btn,.card{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav><span class="dot"></span>TankLink</nav>
+
+<header class="hero">
+<span class="pill">Local first. No cloud control.</span>
+<h1>Your water tank,<br><span>under control.</span></h1>
+<p class="lead">A pump controller that talks straight to your tank sensor and your phone. No subscription, no account.</p>
+<a class="btn" href="/app">Download for Android</a>
+<p class="note">Android may ask you to allow installs from your browser the first time.</p>
+<div class="tank" aria-hidden="true"><i></i><i></i></div>
+</header>
+
+<div class="flow" aria-label="How the parts connect">
+<div class="node"><b>Tank sensor</b><small>Battery, float switch</small></div>
+<span class="link">LoRa</span>
+<div class="node"><b>Pump node</b><small>Starter relays</small></div>
+<span class="link">Bluetooth / Wi-Fi</span>
+<div class="node"><b>Your phone</b><small>The TankLink app</small></div>
+</div>
+
+<h2>What you get</h2>
+<div class="grid">
+<div class="card"><h3>Stops when full</h3><p>The pump stops by itself when the tank reports full, and starts are blocked while it is.</p></div>
+<div class="card"><h3>Up to 8 tanks</h3><p>Pair several sensors and pick which tank the pump fills.</p></div>
+<div class="card"><h3>Schedules and auto-off</h3><p>Set fill times and a safety limit for each tank.</p></div>
+<div class="card"><h3>Alerts that find you</h3><p>Tank full, power cut, tank offline and low battery show on your phone even with the app closed.</p></div>
+<div class="card"><h3>Water and power use</h3><p>See litres, energy and cost worked out from pump run time.</p></div>
+<div class="card"><h3>Updates itself</h3><p>On home Wi-Fi the pump checks for new firmware and installs it when idle.</p></div>
+</div>
+
+<section class="cta">
+<h2>Get the app</h2>
+<a class="btn" href="/app">Download for Android</a>
+</section>
+
+<footer>Open source on <a href="https://github.com/madhukartemba/tanklink">GitHub</a></footer>
+</div>
+</body>
+</html>

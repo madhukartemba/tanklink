@@ -167,7 +167,7 @@ Notes: `scripts/release.sh` needs a clean `main` that is pushed, and the signing
 
 ## The report service (Cloudflare Worker)
 
-`report_worker/` is deployed with `cd report_worker && npx wrangler deploy` (needs a logged-in `wrangler`; changes go live for everyone). Secrets: `GITHUB_TOKEN`, `APP_KEY`, `REFRESH_KEY` (`wrangler secret put`). Routes: `POST /v1/report`, `GET /v1/releases` (10-minute cache), `GET /v1/firmware/pump/latest?hw=&proto=` and `GET /v1/firmware/pump/download/<ver>.bin` (the pump fetches firmware **through** the Worker because GitHub's download host isn't reachable from every network), `GET /app` (install QR redirect), `POST /v1/refresh` (refresh the cache now; needs the `x-refresh-key` header; `scripts/refresh_worker.sh` reads the key from the gitignored `report_worker/.refresh_key`). See `report_worker/README.md`.
+`report_worker/` is deployed with `cd report_worker && npx wrangler deploy` (needs a logged-in `wrangler`; changes go live for everyone). Secrets: `GITHUB_TOKEN`, `APP_KEY`, `REFRESH_KEY` (`wrangler secret put`). Routes: `POST /v1/report`, `GET /v1/releases` (10-minute cache), `GET /v1/firmware/pump/latest?hw=&proto=` and `GET /v1/firmware/pump/download/<ver>.bin` (the pump fetches firmware **through** the Worker because GitHub's download host isn't reachable from every network), `GET /` (landing page, `report_worker/public/index.html`), `GET /app` (install QR redirect), `POST /v1/refresh` (refresh the cache now; needs the `x-refresh-key` header; `scripts/refresh_worker.sh` reads the key from the gitignored `report_worker/.refresh_key`). See `report_worker/README.md`.
 
 ## The pump's Wi-Fi, updates and alerts: things that bit us
 

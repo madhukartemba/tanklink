@@ -13,6 +13,11 @@ routes = [
 ]
 workers_dev = false
 
+# The landing page at /. Routes the Worker handles itself (/app, /v1/*,
+# /health) have no file here, so they still reach src/index.js.
+[assets]
+directory = "./public"
+
 [vars]
 GITHUB_REPO = "madhukartemba/tanklink-reports"
 # Public repo whose release list GET /v1/releases serves (cached).

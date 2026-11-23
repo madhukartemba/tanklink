@@ -74,3 +74,7 @@ Check: a new issue the first time, a comment on the same issue the second time, 
 ## Refresh the release list now (`POST /v1/refresh`)
 
 The release list is cached for 10 minutes, and the pump's "latest firmware" answer follows it. After publishing or deleting a release, `scripts/refresh_worker.sh` makes the Worker forget the list and fetch it again straight away, and prints the newest app, pump and tank release it sees. The endpoint needs the `x-refresh-key` header to match the `REFRESH_KEY` secret (`npx wrangler secret put REFRESH_KEY`); without that secret it does not exist (404), and a wrong key gets 401. The script reads the key from `report_worker/.refresh_key` (gitignored) or `TANKLINK_REFRESH_KEY`. Phones re-check on their own every 14 minutes; the app's "Check for updates" button forces it.
+
+## Landing page (`GET /`)
+
+`public/index.html` is a static page (what TankLink is, plus a Download button that links to `/app`). `[assets]` in `wrangler.toml` serves it; paths with no file in `public/` (`/app`, `/v1/*`, `/health`) still reach `src/index.js`. It goes live with `npx wrangler deploy`.
