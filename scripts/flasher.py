@@ -55,54 +55,80 @@ def run_job(target, action, port):
         state.update(running=False, proc=None, status="done" if code == 0 else "failed (exit %d)" % code)
 
 
-PAGE = """<!doctype html><meta charset=utf-8><title>TankLink flasher</title>
+PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>TankLink flasher</title>
 <style>
-body{font:15px -apple-system,sans-serif;max-width:880px;margin:30px auto;padding:0 16px;color:#222}
-h1{font-size:22px;margin-bottom:4px} .sub{color:#666;margin-bottom:10px}
-label{display:block;margin:14px 0 4px;font-weight:600}
-select,button{font-size:15px;padding:9px 14px} select{min-width:340px}
-button{cursor:pointer;margin:14px 8px 0 0;border-radius:6px}
-.go{background:#0a7d3b;color:#fff;border:0}.alt{border:1px solid #999;background:#f4f4f4}
-.stop{background:#b3261e;color:#fff;border:0}
-button:disabled{opacity:.35;cursor:not-allowed}
-#banner{margin:18px 0 8px;padding:14px 16px;border-radius:8px;font-size:16px;font-weight:600;display:flex;align-items:center;gap:12px;background:#eef1f4}
-#banner.run{background:#e6f0ff;color:#0b4fb3}#banner.ok{background:#e3f6ea;color:#0a7d3b}#banner.bad{background:#fdeaea;color:#b3261e}
-#banner small{font-weight:400;display:block;color:#444;margin-top:2px}
-.spin{width:18px;height:18px;border:3px solid #9bbcf0;border-top-color:#0b4fb3;border-radius:50%;animation:s 0.8s linear infinite;display:none}
-.run .spin{display:block}@keyframes s{to{transform:rotate(360deg)}}
-#bar{height:8px;background:#dde3ea;border-radius:4px;overflow:hidden;display:none}#bar div{height:100%;width:0;background:#0b4fb3;transition:width .3s}
-pre{background:#111;color:#ddd;padding:12px;border-radius:6px;height:360px;overflow:auto;font-size:12px;white-space:pre-wrap}
-.hint{color:#666;font-size:13px;margin-top:6px}
+:root{--bg:#0b0d12;--card:#141821;--line:#232a38;--txt:#e7ecf4;--mut:#8b96a9;--acc:#3b82f6;--acc2:#8b5cf6;--ok:#22c55e;--bad:#ef4444}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--txt);font:15px/1.45 Inter,-apple-system,"SF Pro Text",system-ui,sans-serif;
+background:radial-gradient(900px 500px at 10% -10%,#1b2a55 0,transparent 60%),radial-gradient(800px 500px at 100% 0,#2a1b55 0,transparent 55%),var(--bg)}
+main{max-width:900px;margin:0 auto;padding:36px 20px 60px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:26px}
+.logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:grid;place-items:center;font-size:22px;box-shadow:0 8px 30px #3b82f655}
+h1{font-size:24px;margin:0;letter-spacing:-.02em}.sub{color:var(--mut);font-size:13px}
+.card{background:color-mix(in srgb,var(--card) 85%,transparent);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}
+.step{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin-bottom:10px;font-weight:600}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg button{all:unset;cursor:pointer;text-align:center;padding:16px;border-radius:12px;border:1px solid var(--line);background:#0f131b;transition:.15s}
+.seg button:hover{border-color:#34406a}
+.seg button.on{border-color:var(--acc);background:linear-gradient(180deg,#16244a,#101a36);box-shadow:0 0 0 3px #3b82f622}
+.seg b{display:block;font-size:16px}.seg span{color:var(--mut);font-size:12px}
+.row{display:flex;gap:10px}
+select{flex:1;appearance:none;background:#0f131b;color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:14px;font-family:ui-monospace,Menlo,monospace}
+select:focus{outline:none;border-color:var(--acc)}
+.btn{cursor:pointer;border:1px solid var(--line);background:#1a2030;color:var(--txt);border-radius:10px;padding:12px 18px;font-size:14px;font-weight:600;transition:.15s}
+.btn:hover:not(:disabled){background:#222a3e;transform:translateY(-1px)}
+.btn.pri{border:0;background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 8px 24px #6d5cf644}
+.btn.pri:hover:not(:disabled){background:linear-gradient(135deg,#4f90ff,#9b6dff)}
+.btn.stop{background:#3a1519;border-color:#6b1f26;color:#ff8d95}
+.btn.danger{color:#ff8d95}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.actions{display:flex;flex-wrap:wrap;gap:10px}
+.hint{color:var(--mut);font-size:13px;margin-top:8px}
+#banner{display:flex;align-items:center;gap:14px;border-radius:16px;padding:16px 20px;margin-bottom:16px;border:1px solid var(--line);background:var(--card)}
+#banner .ic{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:18px;background:#1c2333;flex:none}
+#banner.run{border-color:#2b4fa0;background:#101a36}#banner.run .ic{background:none;border:3px solid #2b4fa0;border-top-color:var(--acc);animation:s .8s linear infinite;font-size:0}
+#banner.ok{border-color:#1c6b3a;background:#0e2218}#banner.ok .ic{background:var(--ok);color:#04210f}
+#banner.bad{border-color:#7a2630;background:#25101a}#banner.bad .ic{background:var(--bad);color:#fff}
+#banner b{font-size:16px;display:block}#banner small{color:var(--mut)}
+@keyframes s{to{transform:rotate(360deg)}}
+#bar{height:6px;background:#1c2333;border-radius:3px;overflow:hidden;margin:-6px 0 16px;display:none}
+#bar div{height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--acc2));transition:width .3s}
+pre{margin:0;background:#07090d;border:1px solid var(--line);border-radius:12px;padding:14px;height:340px;overflow:auto;font:12px/1.5 ui-monospace,Menlo,monospace;color:#b9c4d8;white-space:pre-wrap}
 </style>
-<h1>TankLink flasher</h1><div class=sub>Pick what to flash and where, then press a green button.</div>
-<label>1. Firmware</label>
-<select id=target><option value=pump>Pump node</option><option value=tank>Tank node</option></select>
-<label>2. USB port <button class=alt style="margin:0 0 0 8px;padding:3px 8px" onclick=loadPorts()>Refresh</button></label>
-<select id=port></select>
-<div class=hint id=phint></div>
-<label>3. Action</label>
-<button class=go id=bf onclick="start('build_flash','Building and flashing')">Build + Flash</button>
-<button class=alt id=f onclick="start('flash','Flashing')">Flash only</button>
-<button class=alt id=b onclick="start('build','Building')">Build only</button>
-<button class=alt id=e onclick="if(confirm('Erase the whole flash? This clears pairing.'))start('erase_flash','Erasing flash')">Erase flash</button>
-<button class=stop id=s onclick="fetch('/stop',{method:'POST'})" disabled>Stop</button>
-<div id=banner><div class=spin></div><div><span id=bt>Ready</span><small id=bs>Nothing running yet.</small></div></div>
+<main>
+<header><div class=logo>⚡</div><div><h1>TankLink flasher</h1><div class=sub>Build and flash pump or tank firmware</div></div></header>
+<div class=card><div class=step>1 · Firmware</div>
+<div class=seg id=seg><button class=on data-v=pump><b>Pump node</b><span>ESP32-C3 SuperMini</span></button><button data-v=tank><b>Tank node</b><span>XIAO ESP32-C3</span></button></div></div>
+<div class=card><div class=step>2 · USB port</div>
+<div class=row><select id=port></select><button class=btn onclick=loadPorts()>Refresh</button></div>
+<div class=hint id=phint></div></div>
+<div class=card><div class=step>3 · Action</div>
+<div class=actions>
+<button class="btn pri" id=bf onclick="start('build_flash','Building and flashing')">Build + Flash</button>
+<button class=btn id=f onclick="start('flash','Flashing')">Flash only</button>
+<button class=btn id=b onclick="start('build','Building')">Build only</button>
+<button class="btn danger" id=e onclick="if(confirm('Erase the whole flash? This clears pairing.'))start('erase_flash','Erasing flash')">Erase flash</button>
+<button class="btn stop" id=s onclick="fetch('/stop',{method:'POST'})" disabled>Stop</button></div></div>
+<div id=banner><div class=ic id=ic></div><div><b id=bt>Ready</b><small id=bs>Nothing running yet.</small></div></div>
 <div id=bar><div></div></div>
 <pre id=log>The build and flash output will show up here.</pre>
+</main>
 <script>
-const $=id=>document.getElementById(id);let what='';
+const $=id=>document.getElementById(id);let what='',target='pump';
+document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{target=b.dataset.v;
+ document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x==b))});
 async function loadPorts(){const p=await (await fetch('/ports')).json();
  $('port').innerHTML=p.length?p.map(x=>`<option>${x}</option>`).join(''):'<option value="">(no USB board found)</option>';
  $('phint').textContent=p.length?'':'Plug the board in with a data USB cable, then press Refresh.'}
 async function start(action,label){
- what=label;const need=action!='build';
- if(need&&!$('port').value){banner('bad','No USB port selected','Plug in the board and press Refresh.');return}
+ what=label;
+ if(action!='build'&&!$('port').value){banner('bad','No USB port selected','Plug in the board and press Refresh.');return}
  banner('run',label+'...','Starting. The first output can take a few seconds.');
  $('log').textContent='Starting...';
- const r=await fetch('/start',{method:'POST',body:JSON.stringify({action,target:$('target').value,port:$('port').value})});
+ const r=await fetch('/start',{method:'POST',body:JSON.stringify({action,target,port:$('port').value})});
  if(!r.ok)banner('bad','Could not start',await r.text())}
-function banner(cls,t,s){$('banner').className=cls;$('bt').textContent=t;$('bs').textContent=s}
-let t0=0;
+function banner(cls,t,s){$('banner').className=cls;$('bt').textContent=t;$('bs').textContent=s;
+ $('ic').textContent=cls=='ok'?'✓':cls=='bad'?'✕':''}
 async function poll(){
  const s=await (await fetch('/state')).json();const l=$('log');
  const bottom=l.scrollTop+l.clientHeight>=l.scrollHeight-20;
