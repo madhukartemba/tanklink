@@ -57,28 +57,28 @@ def run_job(target, action, port):
 
 PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>TankLink flasher</title>
 <style>
-:root{--bg:#0b0d12;--card:#141821;--line:#232a38;--txt:#e7ecf4;--mut:#8b96a9;--acc:#3b82f6;--acc2:#8b5cf6;--ok:#22c55e;--bad:#ef4444}
+:root{--bg:#0b0d12;--card:#141821;--line:#232a38;--txt:#e7ecf4;--mut:#8b96a9;--acc:#3DDC97;--acc2:#1FA97A;--ok:#3DDC97;--bad:#ef4444}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;color:var(--txt);font:15px/1.45 Inter,-apple-system,"SF Pro Text",system-ui,sans-serif;
-background:radial-gradient(900px 500px at 10% -10%,#1b2a55 0,transparent 60%),radial-gradient(800px 500px at 100% 0,#2a1b55 0,transparent 55%),var(--bg)}
+background:radial-gradient(900px 500px at 10% -10%,#0f3d33 0,transparent 60%),radial-gradient(800px 500px at 100% 0,#0c3a3f 0,transparent 55%),var(--bg)}
 main{max-width:900px;margin:0 auto;padding:36px 20px 60px}
 header{display:flex;align-items:center;gap:14px;margin-bottom:26px}
-.logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:grid;place-items:center;font-size:22px;box-shadow:0 8px 30px #3b82f655}
+.logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:grid;place-items:center;font-size:22px;box-shadow:0 8px 30px #3ddc9744}
 h1{font-size:24px;margin:0;letter-spacing:-.02em}.sub{color:var(--mut);font-size:13px}
 .card{background:color-mix(in srgb,var(--card) 85%,transparent);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}
 .step{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin-bottom:10px;font-weight:600}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .seg button{all:unset;cursor:pointer;text-align:center;padding:16px;border-radius:12px;border:1px solid var(--line);background:#0f131b;transition:.15s}
-.seg button:hover{border-color:#34406a}
-.seg button.on{border-color:var(--acc);background:linear-gradient(180deg,#16244a,#101a36);box-shadow:0 0 0 3px #3b82f622}
+.seg button:hover{border-color:#2a5a4c}
+.seg button.on{border-color:var(--acc);background:linear-gradient(180deg,#123a2f,#0d2a23);box-shadow:0 0 0 3px #3ddc9722}
 .seg b{display:block;font-size:16px}.seg span{color:var(--mut);font-size:12px}
 .row{display:flex;gap:10px}
 select{flex:1;appearance:none;background:#0f131b;color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:14px;font-family:ui-monospace,Menlo,monospace}
 select:focus{outline:none;border-color:var(--acc)}
 .btn{cursor:pointer;border:1px solid var(--line);background:#1a2030;color:var(--txt);border-radius:10px;padding:12px 18px;font-size:14px;font-weight:600;transition:.15s}
 .btn:hover:not(:disabled){background:#222a3e;transform:translateY(-1px)}
-.btn.pri{border:0;background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 8px 24px #6d5cf644}
-.btn.pri:hover:not(:disabled){background:linear-gradient(135deg,#4f90ff,#9b6dff)}
+.btn.pri{border:0;color:#04251a;background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 8px 24px #1fa97a44}
+.btn.pri:hover:not(:disabled){background:linear-gradient(135deg,#5af0b0,#2cc08f)}
 .btn.stop{background:#3a1519;border-color:#6b1f26;color:#ff8d95}
 .btn.danger{color:#ff8d95}
 .btn:disabled{opacity:.35;cursor:not-allowed}
@@ -86,8 +86,8 @@ select:focus{outline:none;border-color:var(--acc)}
 .hint{color:var(--mut);font-size:13px;margin-top:8px}
 #banner{display:flex;align-items:center;gap:14px;border-radius:16px;padding:16px 20px;margin-bottom:16px;border:1px solid var(--line);background:var(--card)}
 #banner .ic{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:18px;background:#1c2333;flex:none}
-#banner.run{border-color:#2b4fa0;background:#101a36}#banner.run .ic{background:none;border:3px solid #2b4fa0;border-top-color:var(--acc);animation:s .8s linear infinite;font-size:0}
-#banner.ok{border-color:#1c6b3a;background:#0e2218}#banner.ok .ic{background:var(--ok);color:#04210f}
+#banner.run{border-color:#1f8a64;background:#0d2a23}#banner.run .ic{background:none;border:3px solid #1f8a64;border-top-color:var(--acc);animation:s .8s linear infinite;font-size:0}
+#banner.ok{border-color:#1c6b3a;background:#0e2a1e}#banner.ok .ic{background:var(--ok);color:#04210f}
 #banner.bad{border-color:#7a2630;background:#25101a}#banner.bad .ic{background:var(--bad);color:#fff}
 #banner b{font-size:16px;display:block}#banner small{color:var(--mut)}
 @keyframes s{to{transform:rotate(360deg)}}
