@@ -16838,6 +16838,6 @@ M104 S0
 ;SETTING_3 n\\n[metadata]\\ntype = quality_changes\\nquality_type = standard\\ni
 ;SETTING_3 ntent_category = default\\nposition = 0\\nsetting_version = 27\\n\\n[
 ;SETTING_3 values]\\ninfill_pattern = honeycomb\\nmaterial_print_temperature = 2
-;SETTING_3 40.0\\nspeed_print = 100\\nz_seam_corner = z_seam_corner_inner\\nz_se
-;SETTING_3 am_position = back\\nz_seam_relative = True\\nz_seam_type = sharpest_
-;SETTING_3 corner\\n\\n"]}
+;SETTING_3 40.0\\nminimum_support_area = 100.0\\nspeed_print = 100\\nz_seam_corn
+;SETTING_3 er = z_seam_corner_inner\\nz_seam_position = back\\nz_seam_relative =
+;SETTING_3  True\\nz_seam_type = sharpest_corner\\n\\n"]}
