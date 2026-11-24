@@ -76,3 +76,4 @@ keys/
 
 # Key for the report service refresh endpoint (scripts/refresh_worker.sh)
 report_worker/.refresh_key
+.claude/settings.local.json

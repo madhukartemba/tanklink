@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "landing-page",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "const fs=require('fs'),http=require('http');const f='/Users/madhukartemba/Desktop/tanklink/report_worker/public/index.html';http.createServer((q,r)=>{if(q.url==='/'||q.url==='/index.html'){r.writeHead(200,{'content-type':'text/html'});r.end(fs.readFileSync(f))}else{r.writeHead(302,{location:'https://tanklink.madhukartemba.in'+q.url});r.end()}}).listen(process.env.PORT||8788)"],
+      "port": 8788
+    }
+  ]
+}
