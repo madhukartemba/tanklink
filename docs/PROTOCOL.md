@@ -56,6 +56,8 @@ All UUIDs are `7f1a00XX-ac01-4c8c-9b2e-74616e6b6c6e`.
 | 11 | Wifi (network setup and status, minor 4) | ✓ | |
 | 12 | Alert key (minor 6) | ✓ | |
 | 13 | Alert log (minor 6) | ✓ | |
+| 14 | Buzzer (minor 10) | ✓ | |
+| 15 | AutoFill (minor 10) | ✓ | |
 
 Advertised names: pump `TankLink-XXXX` (last 4 hex of MAC), tank `TL-Tank-XXXX`. The tank also puts its `tank_id` in manufacturer data under company ID `0xFFFF`.
 
@@ -115,7 +117,7 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xAC` | Forget the "updated automatically" notice | none |
 | `0xAD` | Raise a test alert (see Alerts) | none |
 | `0xAE` | Name the pump (minor 8). Refused if empty, longer than 24 bytes, not valid UTF-8 or containing control characters; leading and trailing spaces are dropped | `name` (UTF-8, 1–24 bytes) |
-| `0xB1` | Test beep | — |
+| `0xB1` | Play a buzzer sound now, whatever the buzzer settings (the app's preview). Refused for an unknown sound | `sound(1)` (see Buzzer) |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |
 | `0xF0` | Unpair every phone: clears every phone's token, so all phones must add the pump again. The app no longer sends it (Remove only forgets the pump on that phone); factory reset does the same and more | — |
@@ -130,23 +132,48 @@ Maximum write length is 18 bytes.
 
 Minor 5 appends `auto_update(1)` to both the read and the write: 1 = the pump installs an update it found by itself, but only when it is unlikely to get in the way: the pump has been off for 10 minutes, it has been up for 10 minutes, no fill schedule is due in the next 60 minutes (with schedules set, the clock must be known), and a tank that fills by itself is not low. A failed try waits 6 hours. On by default (from pump 0.28.1); it does nothing until the pump has Wi-Fi.
 
-Read, 50 bytes (read and notify; the pump notifies whenever a setting or its name changes, to signed-in phones):
+Read, 48 bytes (read and notify; the pump notifies whenever a setting or its name changes, to signed-in phones):
 
-`run_secs(u32) serial(4 chars + NUL) buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16) flow_dlpm(u16) watts(u16) price_centi(u16) currency(4) auto_update(1) name(24)`
+`run_secs(u32) serial(4 chars + NUL) led_brightness(1) starter_type(1) relay_pulse_ms(u16) flow_dlpm(u16) watts(u16) price_centi(u16) currency(4) auto_update(1) name(24)`
 
 - **Name** (minor 8): the pump's own name, UTF-8, NUL-padded, empty until someone names it. Set with Cmd `0xAE` (below). Stored on the pump, so every phone that has the pump shows the same name; the app takes the pump's name when it connects and whenever it changes. The Bluetooth advertising name stays `TankLink-XXXX`.
 
 - Usage, for the app's Water and power screen (set with Cmd `0xA9`): `flow_dlpm` pump flow in tenths of a litre a minute (0 = not set), `watts` pump power (default 750), `price_centi` price of a kWh in hundredths (0 = not set), `currency` UTF-8, NUL-padded (default ₹). Saved on the pump so every phone shows the same figures.
 
-Write, at least 7 bytes (extra bytes from a newer app are ignored):
+Write, exactly 5 bytes:
 
-`buzzer_flags(1) buzzer_tone(1) led_brightness(1) starter_type(1) relay_pulse_ms(u16) auto_update(1)`
+`led_brightness(1) starter_type(1) relay_pulse_ms(u16) auto_update(1)`
 
-The pump checks every field before it saves any of them, and saves them with one flash write. A value out of range refuses the whole write: `buzzer_tone` 0–3, `led_brightness` 1–100, `starter_type` 0–2, `relay_pulse_ms` 50–2000. A different `starter_type` is also refused while the pump runs (changing it stops the motor).
-
-- `buzzer_flags`: bit 0 enabled, bit 1 on button, bit 2 on pump start/stop, bit 3 on auto-off.
+The pump checks every field before it saves any of them, and saves them with one flash write. A value out of range refuses the whole write: `led_brightness` 1–100, `starter_type` 0–2, `relay_pulse_ms` 50–2000. A different `starter_type` is also refused while the pump runs (changing it stops the motor). The buzzer has its own characteristic (Buzzer).
 - `starter_type`: 0 = none (on/off tracked, relays untouched), 1 = two-button starter (relay 1 pulses Start, relay 2 pulses Stop, each for `relay_pulse_ms`), 2 = single-phase MCB starter (minor 9: relay 1 held closed while the pump runs, relay 2 unused; `relay_pulse_ms` is kept but not used).
 Auto-off is per tank (Cmd `0xA6`, Tanks) and the float mode per sensor (Cmd `0xA7`, Sensors).
+
+### Buzzer (read, write, notify, authed)
+
+The same 19 bytes are read, notified (when any phone changes them) and written: `flags(1) events(u16) sounds(12) quiet_start_h(1) quiet_start_m(1) quiet_end_h(1) quiet_end_m(1)`. Saved in NVS `tl_buzz/cfg`. A write of another length, or with any field out of range, is refused whole.
+
+- `flags`: bit 0 = buzzer on (off silences every event), bit 1 = quiet hours on, bit 2 = the button and "start refused" still sound in quiet hours.
+- `events`: bit *i* = event *i* sounds. `sounds[i]` = the sound for event *i*, 0–8.
+- Events: 0 button (a press, and the 1 s mark when the pump can start), 1 started from the app, 2 stopped from the app (and by pairing, an update or unpair), 3 tank full, 4 auto-off, 5 auto-fill (it started a fill, or stopped one at the end of its allowed time), 6 a schedule started a fill, 7 start refused (from the button, or from the app; automatic starts that are refused stay quiet), 8 alerts (power cut, tank offline, battery low, sensor removed), 9 pairing (a phone or tank pairing window opened, or a phone or tank paired), 10 a phone signed in, 11 the pump started up.
+- Sounds (an active buzzer: only timing differs): 0 click (70 ms), 1 tick (20 ms), 2 long (280 ms), 3 double, 4 triple, 5 rising (short, short, long), 6 falling (long, short), 7 chirp (four fast ticks), 8 alarm (six beeps, about 1.5 s).
+- Quiet hours run from start to end in pump-local time (past midnight when the end is earlier); start and end must differ, even when quiet hours are off. Without a known time they don't apply.
+- Defaults: on, every event but 10, quiet hours off (22:00–07:00), button sounds in quiet hours on. Sounds: click, long, click, rising, double, triple, long, double, alarm, chirp, tick, click.
+
+Sounds play on their own task, so nothing waits for one; at most three wait their turn and more are dropped.
+
+### AutoFill (read, write, notify, authed)
+
+Read and notify: `state(1) slot(1) wait_min(u16) flags(1) gap_min(1) count(1)`, then `count` × `enabled(1) days(1) start_h(1) start_m(1) end_h(1) end_m(1)`. Notified when the settings change or when `state`, `slot` or `wait_min` changes (checked every second; `wait_min` moves once a minute).
+
+- `state` is about the selected tank (`slot`): 0 off for that tank, 1 its sensor is offline, 2 watching (fills when it runs low; also while waiting for the sensor's first reading since the pump started), 3 already low when it started watching (waits to see it above its low mark, or for Arm), 4 low but outside the allowed times (`wait_min` = minutes to the next, `0xFFFF` = no time is on), 5 allowed times are on but the pump doesn't know the time, 6 low but within `gap_min` of the last stop (`wait_min` = minutes left), 7 paused (below), 8 filling, 9 low but pairing or an update is under way, 10 low but the pump is already running another fill.
+- `flags`: bit 0 = only start within the allowed times, bit 1 = stop an auto-fill when its allowed time ends (it carries on in the next one, not paused).
+- `gap_min`: 5–180, the least time between any stop and the next automatic start (default 15).
+- Up to 4 windows. `days`: bit 0 = Monday … bit 6 = Sunday, at least one. Start and end must differ; an end before the start runs past midnight, and its days are the days it starts on. A start is allowed when any enabled window is open.
+
+Write:
+
+- `0x01 flags gap_min count` then `count` × the 6-byte window: replace the settings. Its length must match `count`; every field is checked before anything is saved (NVS `tl_afill/cfg`).
+- `0x02`: arm. Watch the selected tank from now: fill if it is low (within the times and the gap), and clear a pause.
 
 ### Tank (read + notify, authed)
 
@@ -197,7 +224,7 @@ Write:
 
 After the entries: `auto_fill_mask(1)`, bit *i* set = slot *i* fills itself when low.
 
-**Auto-fill** (selected tank only, so the valve or lever must already point at it): the pump starts when that tank runs low, and stops when it is full or on auto-off. "Low" is the almost-empty float dropping when the tank has one (the pin-1 tank of a sensor in almost-empty mode); a tank with only its full float is low as soon as that float drops, so it is kept topped up. It starts once per drop: it is armed when the tank is seen above that float and fires on the next drop, so a tank that is already low (after a restart, a manual stop or turning the setting on) waits for the next one. At least 15 minutes after any stop. Only on a reading the tank sent since boot, never on one restored from flash. An automatic fill that stops any way other than "tank full" (auto-off, the app, the button) pauses auto-fill until the tank is next seen full, so a dry source or a stuck float can't keep starting the pump. The tank must be online, and nothing starts during pairing or an update.
+**Auto-fill** (selected tank only, so the valve or lever must already point at it): the pump starts when that tank runs low, and stops when it is full or on auto-off (or when its allowed time ends, if set; see AutoFill). "Low" is the almost-empty float dropping when the tank has one (the pin-1 tank of a sensor in almost-empty mode); a tank with only its full float is low as soon as that float drops, so it is kept topped up. It starts once per drop: it is armed when the tank is seen above that float (on a reading sent since the pump started, never one restored from flash) and fires on the next drop, so a tank that is already low after a restart, a manual stop or switching tanks waits for the next one, or for Arm. Turning auto-fill on for the selected tank arms it at once. At least `gap_min` (default 15 minutes) after any stop. An automatic fill that stops any way other than "tank full", the end of its allowed time or a stop for pairing or an update (so auto-off, the app, the button) pauses auto-fill until the tank is next seen full or Arm is sent, so a dry source or a stuck float can't keep starting the pump. The tank must be online, and nothing starts during pairing or an update.
 
 Up to 8 slots. With no sensor paired there is exactly one slot (`sensor_index` `0xFF`), holding the name and auto-off for running without a sensor. Otherwise every slot has a sensor, each sensor has a pin-1 slot, and a pin-2 slot only in two-tank mode. A new sensor adds one slot; the first one takes over the sensorless slot.
 
@@ -241,7 +268,7 @@ Each fill:
 | 10 | 1 | stopped by (cause) |
 | 11 | 1 | reserved, 0 |
 
-Causes: 0 unknown, 1 app, 2 pump button, 3 schedule, 4 tank full, 5 auto-off, 6 power cut or restart, 7 update / pairing / unpair / factory reset, 8 auto-fill (start only). A fill cut by a power cut is added at the next boot with start cause 0 and stop cause 6. Notified when a fill is added. Cleared by factory reset.
+Causes: 0 unknown, 1 app, 2 pump button, 3 schedule, 4 tank full, 5 auto-off, 6 power cut or restart, 7 update / pairing / unpair / factory reset, 8 auto-fill (start only), 9 auto-fill's allowed time ended (stop only). A fill cut by a power cut is added at the next boot with start cause 0 and stop cause 6. Notified when a fill is added. Cleared by factory reset.
 
 ### Battery (read + notify, authed)
 

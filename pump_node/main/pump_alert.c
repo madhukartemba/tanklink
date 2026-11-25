@@ -1,3 +1,4 @@
+#include "pump_buzz.h"
 #include "pump_alert.h"
 
 #include <string.h>
@@ -153,6 +154,11 @@ void pump_alert_phones_removed(bool some_remain)
 
 void pump_alert_raise(tl_alert_type_t type, uint8_t arg)
 {
+    /* Tank full and auto-off have their own sounds (pump_control). */
+    if (type == TL_ALERT_POWER_CUT || type == TL_ALERT_TANK_OFFLINE ||
+        type == TL_ALERT_BATTERY_LOW || type == TL_ALERT_SENSOR_REMOVED) {
+        pump_buzz(PUMP_BUZZ_ALERT);
+    }
     xSemaphoreTake(s_lock, portMAX_DELAY);
     if (!s_have_key) {
         xSemaphoreGive(s_lock);

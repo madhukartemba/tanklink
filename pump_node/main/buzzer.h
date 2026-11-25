@@ -1,6 +1,5 @@
 #pragma once
 
-#include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"
 
@@ -8,27 +7,31 @@
 extern "C" {
 #endif
 
+/*
+ * Low-level buzzer: an active buzzer on one GPIO, so a sound is only a
+ * pattern of on/off times (no pitch, no volume). Sounds play on their own
+ * task, so a caller never waits for one. Which events sound, and with which
+ * sound, is in pump_buzz.c.
+ */
+
+/* Sent to the app as one byte (Buzzer characteristic): append only. */
 typedef enum {
-    BUZZER_TONE_CLICK = 0, /* short tick (~60 ms) — kitchen button click */
-    BUZZER_TONE_SOFT = 1,  /* quieter short (~35 ms) */
-    BUZZER_TONE_SHARP = 2, /* longer attention (~120 ms) */
-    BUZZER_TONE_DOUBLE = 3, /* two ticks */
-    BUZZER_TONE_COUNT
-} buzzer_tone_t;
+    BUZZER_SOUND_CLICK = 0,  /* 70 ms */
+    BUZZER_SOUND_TICK = 1,   /* 20 ms, quietest */
+    BUZZER_SOUND_LONG = 2,   /* 280 ms */
+    BUZZER_SOUND_DOUBLE = 3, /* two short */
+    BUZZER_SOUND_TRIPLE = 4, /* three short */
+    BUZZER_SOUND_RISING = 5, /* short, short, long */
+    BUZZER_SOUND_FALLING = 6, /* long, short */
+    BUZZER_SOUND_CHIRP = 7,  /* four very fast ticks */
+    BUZZER_SOUND_ALARM = 8,  /* six urgent beeps, about 1.5 s */
+    BUZZER_SOUND_COUNT
+} buzzer_sound_t;
 
 esp_err_t buzzer_init(void);
-void buzzer_set_enabled(bool enabled);
-bool buzzer_enabled(void);
-void buzzer_set_user_tone(buzzer_tone_t tone);
-buzzer_tone_t buzzer_user_tone(void);
 
-/** Play selected tone if master enable is on (or force=true for test). */
-void buzzer_play(buzzer_tone_t tone, bool force);
-
-/** Play the configured user tone. */
-void buzzer_play_user(bool force);
-
-void buzzer_off(void);
+/** Queue [sound]; returns at once. Dropped if several are already waiting. */
+void buzzer_play(buzzer_sound_t sound);
 
 #ifdef __cplusplus
 }

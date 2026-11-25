@@ -13,6 +13,7 @@
 #include "relay_control.h"
 #include "sdkconfig.h"
 #include "pump_alert.h"
+#include "pump_buzz.h"
 #include "status_led.h"
 #include "tanklink_crypto.h"
 
@@ -199,6 +200,7 @@ esp_err_t pump_pair_enter_pairing_mode(void)
     s_pairing_active = true;
     s_pairing_deadline_us = esp_timer_get_time() + (int64_t)CONFIG_PUMP_PAIRING_TIMEOUT_MS * 1000;
     ESP_LOGI(TAG, "Pairing window open (%d ms)", CONFIG_PUMP_PAIRING_TIMEOUT_MS);
+    pump_buzz(PUMP_BUZZ_PAIRING);
     refresh_led_for_pair_state();
     notify_change();
     return ESP_OK;
@@ -254,6 +256,7 @@ esp_err_t pump_pair_claim(uint8_t out_token[TANKLINK_TOKEN_LEN], int *out_phone)
         return err;
     }
     ESP_LOGI(TAG, "CLAIMED phone %d serial=%s", phone, s_serial);
+    pump_buzz(PUMP_BUZZ_PAIRING);
     memcpy(out_token, s_pair.tokens[phone], TANKLINK_TOKEN_LEN);
     *out_phone = phone;
     /* One phone per window: the next one needs the window opened again. */

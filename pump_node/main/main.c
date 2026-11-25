@@ -23,6 +23,8 @@
 
 #include "board.h"
 #include "buzzer.h"
+#include "pump_autofill.h"
+#include "pump_buzz.h"
 #include "gatt_svr.h"
 #include "pump_control.h"
 #include "pump_diag.h"
@@ -74,9 +76,7 @@ static void maybe_exit_ble_pairing(void)
     if (!pump_pair_pairing_active()) {
         return;
     }
-    if (pump_config_buzzer_on_button()) {
-        buzzer_play_user(false);
-    }
+    pump_buzz(PUMP_BUZZ_BUTTON);
     pump_pair_exit_pairing_mode();
 }
 
@@ -99,8 +99,8 @@ static void on_start(void)
     pump_control_set_silent(true, PUMP_CAUSE_BUTTON);
 }
 
-/* Held 1 s with the pump off: green and a beep if releasing would start it,
- * red and a double beep if not. During phone pairing release only ends
+/* Held 1 s with the pump off: green and the button sound if releasing would
+ * start it, red and the "start refused" sound if not. During phone pairing release only ends
  * pairing, so the bloom stays blue and that beep comes on release. */
 static void on_start_armed(void)
 {
@@ -109,13 +109,7 @@ static void on_start_armed(void)
     }
     const bool ok = pump_pair_is_paired() && pump_control_start_blocker() == PUMP_ERR_NONE;
     status_led_set_hold_color(ok ? STATUS_LED_HOLD_GREEN : STATUS_LED_HOLD_RED);
-    if (pump_config_buzzer_on_button()) {
-        if (ok) {
-            buzzer_play_user(false);
-        } else {
-            buzzer_play(BUZZER_TONE_DOUBLE, false);
-        }
-    }
+    pump_buzz(ok ? PUMP_BUZZ_BUTTON : PUMP_BUZZ_DENIED);
 }
 
 static void on_stop(void)
@@ -130,9 +124,7 @@ static void on_stop(void)
         maybe_exit_ble_pairing();
         return;
     }
-    if (pump_config_buzzer_on_button()) {
-        buzzer_play_user(false);
-    }
+    pump_buzz(PUMP_BUZZ_BUTTON);
     pump_control_set_silent(false, PUMP_CAUSE_BUTTON);
 }
 
@@ -363,6 +355,7 @@ void app_main(void)
     if (buzzer_init() != ESP_OK) {
         ESP_LOGW(TAG, "buzzer init failed — continuing");
     }
+    soft(pump_buzz_init(), "buzzer settings");
     soft(pump_config_init(), "config");
     /* Clock before schedules and LoRa: both need the time from the RTC. */
     pump_clock_init();
@@ -376,6 +369,7 @@ void app_main(void)
         }
     }
     soft(pump_tanks_init(), "tanks");
+    soft(pump_autofill_init(), "auto-fill");
     soft(pump_history_init(), "history");
     soft(pump_battery_log_init(), "battery log");
     if (pump_runlog_interrupted_this_boot()) {
@@ -417,9 +411,7 @@ void app_main(void)
     ESP_ERROR_CHECK(pump_ota_init());
     pump_update_init();
 
-    if (buzzer_enabled()) {
-        buzzer_play(BUZZER_TONE_CLICK, true);
-    }
+    pump_buzz(PUMP_BUZZ_POWER_UP);
 
     /* Schedules, auto-fill and auto-off: without it a running pump would never
      * stop by itself, so no task means no boot. 5 KB: room for a fill stopping

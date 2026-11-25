@@ -104,11 +104,9 @@ void main() {
       final read = [
         ...u32(30), // run seconds
         ...'E5FE'.codeUnits, 0, // serial
-        0x0f,
-        2,
         70,
         1,
-        ...[0xe8, 0x03], // flags tone led starter 1000ms
+        ...[0xe8, 0x03], // led starter 1000ms
         ...[0x7c, 0x01], // flow 38.0 L/min
         ...[0xee, 0x02], // 750 W
         ...[0x20, 0x03], // 8.00 per kWh
@@ -125,34 +123,31 @@ void main() {
       expect(s.usage.pricePerKwh, 8);
       expect(s.usage.currency, '₹');
       expect(s.runSeconds, 30);
-      expect(s.buzzerFlags, 0x0f);
-      expect(s.buzzerTone, 2);
       expect(s.ledBrightness, 70);
       expect(s.starterType, 1);
       expect(s.relayPulseMs, 1000);
-      expect(s.encode(), [0x0f, 2, 70, 1, 0xe8, 0x03, 1]);
+      expect(s.encode(), [70, 1, 0xe8, 0x03, 1]);
+      expect(read.length, PumpSettings.readLen);
     });
 
-    test('single-phase starter is byte 3 = 2 (pump relay_control.h)', () {
+    test('single-phase starter is byte 1 = 2 (pump relay_control.h)', () {
       final s = PumpSettings(
-        buzzerFlags: 0,
-        buzzerTone: 0,
         ledBrightness: 70,
         starterType: TankLinkUuids.starterSinglePhase,
         relayPulseMs: 1000,
         autoUpdate: false,
       );
-      expect(s.encode(), [0, 0, 70, 2, 0xe8, 0x03, 0]);
+      expect(s.encode(), [70, 2, 0xe8, 0x03, 0]);
     });
 
     test('returns null when too short', () {
       expect(PumpSettings.parse(List.filled(10, 0)), isNull);
-      expect(PumpSettings.parse(List.filled(49, 0)), isNull);
+      expect(PumpSettings.parse(List.filled(47, 0)), isNull);
     });
 
     test('unset flow and price read as null', () {
       final s = PumpSettings.parse([
-        ...List.filled(15, 0),
+        ...List.filled(13, 0),
         0, 0, 0xee, 0x02, 0, 0, // flow unset, 750 W, price unset
         0, 0, 0, 0,
         0, // auto_update
@@ -678,5 +673,103 @@ void releaseNotesTests() {
     );
     expect(releaseChanges('no headings here'), isEmpty);
     expect(releaseChanges('## Notes\n- x'), isEmpty);
+  });
+
+  group('BuzzerConfig (pump_buzz.c)', () {
+    test('parses a read and encodes the same bytes back', () {
+      final read = [
+        0x05, // enabled, button sounds in quiet hours
+        0xff, 0x0b, // events: all but phone
+        0, 2, 0, 5, 3, 4, 2, 3, 8, 7, 1, 0, // sounds per event
+        22, 0, 7, 30, // quiet 22:00-07:30
+      ];
+      expect(read.length, BuzzerConfig.len);
+      final b = BuzzerConfig.parse(read)!;
+      expect(b.enabled, isTrue);
+      expect(b.quiet, isFalse);
+      expect(b.quietButton, isTrue);
+      expect(b.on(TankLinkUuids.buzzEventPowerUp), isTrue);
+      expect(b.on(TankLinkUuids.buzzEventPhone), isFalse);
+      expect(
+        b.soundFor(TankLinkUuids.buzzEventAlert),
+        TankLinkUuids.buzzSoundAlarm,
+      );
+      expect(b.quietStart, 22 * 60);
+      expect(b.quietEnd, 7 * 60 + 30);
+      expect(b.encode(), read);
+    });
+
+    test('withEvent and withSound change one event', () {
+      final b = BuzzerConfig.parse([
+        1,
+        0,
+        0,
+        ...List.filled(TankLinkUuids.buzzEventCount, 0),
+        22,
+        0,
+        7,
+        0,
+      ])!;
+      final c = b
+          .withEvent(TankLinkUuids.buzzEventTankFull, true)
+          .withSound(TankLinkUuids.buzzEventTankFull, 5);
+      expect(c.events, 1 << TankLinkUuids.buzzEventTankFull);
+      expect(c.sounds[TankLinkUuids.buzzEventTankFull], 5);
+      expect(b.sounds[TankLinkUuids.buzzEventTankFull], 0);
+    });
+
+    test('a payload of another length does not parse', () {
+      expect(BuzzerConfig.parse(List.filled(BuzzerConfig.len - 1, 0)), isNull);
+    });
+  });
+
+  group('AutoFillInfo (pump_autofill.c)', () {
+    test('parses state, settings and windows', () {
+      final a = AutoFillInfo.parse([
+        TankLinkUuids.afStateWaitTime, 2, 0x5a, 0x00, // slot 2, 90 min
+        0x03, 30, 2, // limit + stop at end, gap 30, two windows
+        1, 0x1f, 6, 0, 9, 30, // Mon-Fri 06:00-09:30
+        0, 0x60, 22, 0, 5, 0, // off, weekends 22:00-05:00
+      ])!;
+      expect(a.state, TankLinkUuids.afStateWaitTime);
+      expect(a.slot, 2);
+      expect(a.waitMin, 90);
+      expect(a.limitTimes, isTrue);
+      expect(a.stopAtEnd, isTrue);
+      expect(a.gapMin, 30);
+      expect(a.windows, [
+        const DayWindow(start: 360, end: 570, days: 0x1f),
+        const DayWindow(start: 1320, end: 300, days: 0x60, enabled: false),
+      ]);
+      expect(a.windows[1].crossesMidnight, isTrue);
+    });
+
+    test('0xFFFF wait is no wait', () {
+      final a = AutoFillInfo.parse([2, 0, 0xff, 0xff, 0, 15, 0])!;
+      expect(a.waitMin, isNull);
+      expect(a.windows, isEmpty);
+    });
+
+    test('a count that does not match the length does not parse', () {
+      expect(AutoFillInfo.parse([2, 0, 0, 0, 0, 15, 1]), isNull);
+      expect(
+        AutoFillInfo.parse([2, 0, 0, 0, 0, 15, 5, ...List.filled(30, 0)]),
+        isNull,
+      );
+    });
+
+    test('encodes the settings write', () {
+      expect(
+        AutoFillInfo.encodeConfig(
+          limitTimes: true,
+          stopAtEnd: false,
+          gapMin: 15,
+          windows: const [
+            DayWindow(start: 22 * 60, end: 6 * 60 + 15, days: 0x7f),
+          ],
+        ),
+        [0x01, 0x01, 15, 1, 1, 0x7f, 22, 0, 6, 15],
+      );
+    });
   });
 }

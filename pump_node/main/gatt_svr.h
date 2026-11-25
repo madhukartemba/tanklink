@@ -41,6 +41,8 @@ void gatt_svr_notify_sched(void);
 void gatt_svr_notify_wifi(void);
 void gatt_svr_notify_settings(void);
 void gatt_svr_notify_alerts(void);
+void gatt_svr_notify_buzzer(void);
+void gatt_svr_notify_autofill(void);
 void gatt_svr_notify_ota_status(void);
 
 /* For pump_api: sign out, or end, BLE connections. */

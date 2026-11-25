@@ -42,6 +42,8 @@ class TankLinkUuids {
   /// last alerts the pump raised (read + notify, signed in).
   static final alertKey = Guid('7f1a0012-ac01-4c8c-9b2e-74616e6b6c6e');
   static final alertLog = Guid('7f1a0013-ac01-4c8c-9b2e-74616e6b6c6e');
+  static final buzzer = Guid('7f1a0014-ac01-4c8c-9b2e-74616e6b6c6e');
+  static final autoFill = Guid('7f1a0015-ac01-4c8c-9b2e-74616e6b6c6e');
 
   /// Pump advertising state bit: an alert is in the 7 bytes after the state
   /// byte (seq type arg tag[4]).
@@ -97,6 +99,7 @@ class TankLinkUuids {
   static const causePower = 6;
   static const causeSystem = 7;
   static const causeAutoFill = 8;
+  static const causeAutoFillTime = 9;
 
   static const tokenLen = 16;
 
@@ -245,10 +248,52 @@ class TankLinkUuids {
   static const otaStRebooting = 4;
   static const otaStErr = 5;
 
-  static const buzzEnabled = 1 << 0;
-  static const buzzOnButton = 1 << 1;
-  static const buzzOnPump = 1 << 2;
-  static const buzzOnAutoOff = 1 << 3;
+  /// Buzzer events: bit in the events mask and index in the sounds list
+  /// (pump_buzz.h).
+  static const buzzEventButton = 0;
+  static const buzzEventPumpStart = 1;
+  static const buzzEventPumpStop = 2;
+  static const buzzEventTankFull = 3;
+  static const buzzEventAutoOff = 4;
+  static const buzzEventAutoFill = 5;
+  static const buzzEventSchedule = 6;
+  static const buzzEventDenied = 7;
+  static const buzzEventAlert = 8;
+  static const buzzEventPairing = 9;
+  static const buzzEventPhone = 10;
+  static const buzzEventPowerUp = 11;
+  static const buzzEventCount = 12;
+
+  /// Buzzer sounds (buzzer.h). An active buzzer: timing only.
+  static const buzzSoundClick = 0;
+  static const buzzSoundTick = 1;
+  static const buzzSoundLong = 2;
+  static const buzzSoundDouble = 3;
+  static const buzzSoundTriple = 4;
+  static const buzzSoundRising = 5;
+  static const buzzSoundFalling = 6;
+  static const buzzSoundChirp = 7;
+  static const buzzSoundAlarm = 8;
+  static const buzzSoundCount = 9;
+
+  /// AutoFill characteristic (pump_autofill.h).
+  static const autoFillOpConfig = 0x01;
+  static const autoFillOpArm = 0x02;
+  static const autoFillWindowMax = 4;
+  static const autoFillGapMin = 5;
+  static const autoFillGapMax = 180;
+
+  static const afStateOff = 0;
+  static const afStateOffline = 1;
+  static const afStateWatching = 2;
+  static const afStateWaitArm = 3;
+  static const afStateWaitTime = 4;
+  static const afStateNoClock = 5;
+  static const afStateCooldown = 6;
+  static const afStatePaused = 7;
+  static const afStateFilling = 8;
+  static const afStateBusy = 9;
+  static const afStatePumpOn = 10;
 
   /// Starter profile (settings byte). Single-phase holds relay 1 closed while
   /// the pump runs (pump protocol minor 9).

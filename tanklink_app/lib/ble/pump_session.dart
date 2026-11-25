@@ -58,12 +58,12 @@ class PumpSession extends ChangeNotifier {
   /// Tank board revision, relayed by the pump. 0 = unknown.
   int tankHwRev = 0;
   int runSeconds = 0;
-  int buzzerFlags =
-      TankLinkUuids.buzzEnabled |
-      TankLinkUuids.buzzOnButton |
-      TankLinkUuids.buzzOnPump |
-      TankLinkUuids.buzzOnAutoOff;
-  int buzzerTone = 0; // click / soft / sharp / double
+
+  /// The pump's buzzer settings; null until read.
+  BuzzerConfig? buzzer;
+
+  /// Auto-fill settings and what it is doing now; null until read.
+  AutoFillInfo? autoFill;
   int ledBrightness = 70; // 1-100
   int starterType = TankLinkUuids.starterNone;
   int relayPulseMs = TankLinkUuids.relayPulseMsDefault;
@@ -171,6 +171,8 @@ class PumpSession extends ChangeNotifier {
   StreamSubscription<List<int>>? _alertNotifySub;
   StreamSubscription<List<int>>? _otaNotifySub;
   StreamSubscription<List<int>>? _settingsNotifySub;
+  StreamSubscription<List<int>>? _buzzerNotifySub;
+  StreamSubscription<List<int>>? _autoFillNotifySub;
 
   /// The pump's own update status (OtaStatus): state and bytes written. Lets the
   /// app see an update it didn't start: the pump downloading one itself, or
@@ -645,7 +647,10 @@ class PumpSession extends ChangeNotifier {
     // same time, so being away from home costs no extra wait.
     final tryWifi = _wifiAllowed(pump);
     final stopScan = Completer<void>();
-    final deviceFuture = _resolveDeviceForConnect(pump, cancel: stopScan.future);
+    final deviceFuture = _resolveDeviceForConnect(
+      pump,
+      cancel: stopScan.future,
+    );
     Future<String?>? lookup; // mDNS, only if the saved address didn't answer
     try {
       if (tryWifi) {
@@ -1258,8 +1263,6 @@ class PumpSession extends ChangeNotifier {
   void _applySettings(PumpSettings? s) {
     if (s == null) return;
     runSeconds = s.runSeconds;
-    buzzerFlags = s.buzzerFlags;
-    buzzerTone = s.buzzerTone;
     ledBrightness = s.ledBrightness;
     starterType = s.starterType;
     relayPulseMs = s.relayPulseMs;
@@ -1277,14 +1280,7 @@ class PumpSession extends ChangeNotifier {
     }
   }
 
-  bool get buzzerEnabled => (buzzerFlags & TankLinkUuids.buzzEnabled) != 0;
-  bool get buzzOnButton => (buzzerFlags & TankLinkUuids.buzzOnButton) != 0;
-  bool get buzzOnPump => (buzzerFlags & TankLinkUuids.buzzOnPump) != 0;
-  bool get buzzOnAutoOff => (buzzerFlags & TankLinkUuids.buzzOnAutoOff) != 0;
-
   Future<void> _writeSettings({
-    int? flags,
-    int? tone,
     int? brightness,
     int? starter,
     int? pulseMs,
@@ -1294,8 +1290,6 @@ class PumpSession extends ChangeNotifier {
       throw StateError('Connect to the pump first');
     }
     final next = PumpSettings(
-      buzzerFlags: flags ?? buzzerFlags,
-      buzzerTone: (tone ?? buzzerTone).clamp(0, 3),
       ledBrightness: (brightness ?? ledBrightness).clamp(1, 100),
       starterType: starter ?? starterType,
       relayPulseMs: (pulseMs ?? relayPulseMs).clamp(
@@ -1308,8 +1302,6 @@ class PumpSession extends ChangeNotifier {
     _applySettings(
       PumpSettings(
         runSeconds: runSeconds,
-        buzzerFlags: next.buzzerFlags,
-        buzzerTone: next.buzzerTone,
         ledBrightness: next.ledBrightness,
         starterType: next.starterType,
         relayPulseMs: next.relayPulseMs,
@@ -1463,31 +1455,51 @@ class PumpSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setBuzzerSettings({
-    bool? enabled,
-    bool? onButton,
-    bool? onPump,
-    bool? onAutoOff,
-    int? tone,
-  }) async {
-    var f = buzzerFlags;
-    void bit(int mask, bool? v) {
-      if (v == null) return;
-      f = v ? (f | mask) : (f & ~mask);
-    }
-
-    bit(TankLinkUuids.buzzEnabled, enabled);
-    bit(TankLinkUuids.buzzOnButton, onButton);
-    bit(TankLinkUuids.buzzOnPump, onPump);
-    bit(TankLinkUuids.buzzOnAutoOff, onAutoOff);
-    await _writeSettings(flags: f, tone: tone);
-    status = buzzerEnabled ? 'Buzzer updated' : 'Buzzer off';
+  /// Save [next] as the pump's buzzer settings. The pump notifies them back.
+  Future<void> setBuzzer(BuzzerConfig next) async {
+    if (!authed || !connected) throw StateError('Connect to the pump first');
+    await _chr(TankLinkUuids.buzzer)
+        .write(next.encode(), withoutResponse: false);
+    buzzer = next;
     notifyListeners();
   }
 
-  Future<void> testBuzzer() async {
-    if (_cmd == null || !authed) return;
-    await _cmd!.write([TankLinkUuids.cmdTestBeep], withoutResponse: false);
+  /// Play [sound] on the pump now, whatever the settings.
+  Future<void> testSound(int sound) async {
+    if (_cmd == null || !authed) throw StateError('Connect to the pump first');
+    await _cmd!.write([
+      TankLinkUuids.cmdTestBeep,
+      sound,
+    ], withoutResponse: false);
+  }
+
+  /// Save auto-fill's pump-wide settings. The pump notifies them back, with
+  /// the state they lead to.
+  Future<void> setAutoFillConfig({
+    required bool limitTimes,
+    required bool stopAtEnd,
+    required int gapMin,
+    required List<DayWindow> windows,
+  }) async {
+    if (!authed || !connected) throw StateError('Connect to the pump first');
+    await _chr(TankLinkUuids.autoFill).write(
+      AutoFillInfo.encodeConfig(
+        limitTimes: limitTimes,
+        stopAtEnd: stopAtEnd,
+        gapMin: gapMin,
+        windows: windows,
+      ),
+      withoutResponse: false,
+    );
+    AppLog.i('pump', 'Auto-fill settings saved');
+  }
+
+  /// Watch the selected tank from now on: fill if it is low, and clear a pause.
+  Future<void> armAutoFill() async {
+    if (!authed || !connected) throw StateError('Connect to the pump first');
+    await _chr(TankLinkUuids.autoFill)
+        .write([TankLinkUuids.autoFillOpArm], withoutResponse: false);
+    AppLog.i('pump', 'Auto-fill armed');
   }
 
   void _applyTankStatus(TankStatus? t) {
@@ -1907,6 +1919,16 @@ class PumpSession extends ChangeNotifier {
       _settingsNotifySub,
       (v) => _applySettings(PumpSettings.parse(v)),
     );
+    _buzzerNotifySub = await _follow(
+      _chr(TankLinkUuids.buzzer),
+      _buzzerNotifySub,
+      (v) => buzzer = BuzzerConfig.parse(v),
+    );
+    _autoFillNotifySub = await _follow(
+      _chr(TankLinkUuids.autoFill),
+      _autoFillNotifySub,
+      (v) => autoFill = AutoFillInfo.parse(v),
+    );
     await _bindWifi();
     await _bindOtaStatus();
     await _bindAlerts();
@@ -2278,6 +2300,12 @@ class PumpSession extends ChangeNotifier {
     _otaNotifySub = null;
     await _settingsNotifySub?.cancel();
     _settingsNotifySub = null;
+    await _buzzerNotifySub?.cancel();
+    _buzzerNotifySub = null;
+    await _autoFillNotifySub?.cancel();
+    _autoFillNotifySub = null;
+    buzzer = null;
+    autoFill = null;
     otaState = TankLinkUuids.otaStIdle;
     otaOffset = 0;
     pumpNotice = null;

@@ -4,18 +4,12 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
-#include "buzzer.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define PUMP_CONFIG_MAGIC 0x50554D54u /* 'PUMT': auto-off moved to tank slots */
-
-#define PUMP_BUZZ_FLAG_ENABLED   (1u << 0)
-#define PUMP_BUZZ_FLAG_ON_BUTTON (1u << 1)
-#define PUMP_BUZZ_FLAG_ON_PUMP   (1u << 2)
-#define PUMP_BUZZ_FLAG_ON_AUTO   (1u << 3)
 
 #define PUMP_LED_BRIGHTNESS_DEFAULT 70
 #define PUMP_RELAY_PULSE_MS_MIN 50
@@ -38,8 +32,6 @@ typedef struct {
 
 /* The settings the app writes in one go (Settings characteristic). */
 typedef struct {
-    uint8_t buzzer_flags;    /* PUMP_BUZZ_FLAG_* */
-    uint8_t buzzer_tone;     /* buzzer_tone_t */
     uint8_t led_brightness;  /* 1-100 */
     uint8_t starter_type;    /* pump_starter_type_t */
     uint16_t relay_pulse_ms; /* PUMP_RELAY_PULSE_MS_MIN-MAX */
@@ -58,12 +50,6 @@ esp_err_t pump_config_set_usage(const pump_usage_t *usage);
 /** Check every field, then save them all with one write. Nothing changes
  * (in flash or in effect) if any field is out of range. */
 esp_err_t pump_config_set_settings(const pump_settings_t *settings);
-
-uint8_t pump_config_buzzer_flags(void);
-uint8_t pump_config_buzzer_tone(void);
-bool pump_config_buzzer_on_button(void);
-bool pump_config_buzzer_on_pump(void);
-bool pump_config_buzzer_on_auto(void);
 
 uint8_t pump_config_led_brightness(void);
 void pump_config_apply_led(void);

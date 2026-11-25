@@ -19,6 +19,8 @@
 #include "gatt_payloads.h"
 #include "pump_alert.h"
 #include "pump_api.h"
+#include "pump_autofill.h"
+#include "pump_buzz.h"
 #include "pump_control.h"
 #include "pump_diag.h"
 #include "pump_ota.h"
@@ -46,6 +48,8 @@ typedef enum {
     SUB_WIFI,
     SUB_ALERTS,
     SUB_SETTINGS,
+    SUB_BUZZER,
+    SUB_AUTO_FILL,
     SUB_COUNT,
 } sub_t;
 
@@ -58,6 +62,8 @@ static const uint8_t s_sub_chr[SUB_COUNT] = {
     [SUB_WIFI] = PUMP_API_CHR_WIFI,
     [SUB_ALERTS] = PUMP_API_CHR_ALERT_LOG,
     [SUB_SETTINGS] = PUMP_API_CHR_SETTINGS,
+    [SUB_BUZZER] = PUMP_API_CHR_BUZZER,
+    [SUB_AUTO_FILL] = PUMP_API_CHR_AUTO_FILL,
 };
 
 typedef struct {
@@ -195,6 +201,18 @@ void gatt_svr_notify_settings(void)
     notify_all(SUB_SETTINGS, buf, gatt_payload_settings(buf));
 }
 
+void gatt_svr_notify_buzzer(void)
+{
+    uint8_t buf[PUMP_BUZZ_PAYLOAD_LEN];
+    notify_all(SUB_BUZZER, buf, pump_buzz_payload(buf));
+}
+
+void gatt_svr_notify_autofill(void)
+{
+    uint8_t buf[PUMP_AF_PAYLOAD_MAX];
+    notify_all(SUB_AUTO_FILL, buf, pump_autofill_payload(buf));
+}
+
 void gatt_svr_notify_alerts(void)
 {
     uint8_t buf[PUMP_ALERT_LOG_MAX_LEN];
@@ -329,6 +347,8 @@ static const ble_uuid128_t uuid_battery = TANKLINK_CHR_BATTERY_INIT;
 static const ble_uuid128_t uuid_wifi = TANKLINK_CHR_WIFI_INIT;
 static const ble_uuid128_t uuid_alert_key = TANKLINK_CHR_ALERT_KEY_INIT;
 static const ble_uuid128_t uuid_alert_log = TANKLINK_CHR_ALERT_LOG_INIT;
+static const ble_uuid128_t uuid_buzzer = TANKLINK_CHR_BUZZER_INIT;
+static const ble_uuid128_t uuid_auto_fill = TANKLINK_CHR_AUTO_FILL_INIT;
 
 #define F_R BLE_GATT_CHR_F_READ
 #define F_W BLE_GATT_CHR_F_WRITE
@@ -372,6 +392,12 @@ static const struct ble_gatt_svc_def s_services[] = {
             {.uuid = &uuid_alert_log.u, .access_cb = on_chr,
              .arg = (void *)(uintptr_t)PUMP_API_CHR_ALERT_LOG, .flags = F_R | F_N,
              .val_handle = &s_val_handle[SUB_ALERTS]},
+            {.uuid = &uuid_buzzer.u, .access_cb = on_chr,
+             .arg = (void *)(uintptr_t)PUMP_API_CHR_BUZZER, .flags = F_R | F_W | F_N,
+             .val_handle = &s_val_handle[SUB_BUZZER]},
+            {.uuid = &uuid_auto_fill.u, .access_cb = on_chr,
+             .arg = (void *)(uintptr_t)PUMP_API_CHR_AUTO_FILL, .flags = F_R | F_W | F_N,
+             .val_handle = &s_val_handle[SUB_AUTO_FILL]},
             {0},
         },
     },

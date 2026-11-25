@@ -53,6 +53,9 @@ Pump (`pump_node/main/`):
 | `pump_api.c` | The app API, shared by both transports: one `pump_api_read` / `pump_api_write` per characteristic, sessions, sign-in. Pair stays in `gatt_svr.c` (BLE only) |
 | `pump_wifi.c` | Optional Wi-Fi: saved network (`tl_wifi`), reconnect, scan, mDNS, SNTP time |
 | `pump_wifi_api.c` | TCP server on port 7580: the same API over Wi-Fi (framing, tags) |
+| `pump_autofill.c` | Auto-fill: when the selected tank fills itself (armed / paused, gap, allowed times, stop at the end), the state the app shows |
+| `pump_buzz.c`, `buzzer.c` | Which events sound and how (switches, a sound per event, quiet hours); `buzzer.c` plays the patterns on its own task |
+| `pump_window.c` | Daily time windows (auto-fill times, quiet hours), weekday |
 | `pump_alert.c` | Alerts: events (tank full, auto-off, power cut, tank offline, battery low, sensor removed), the alert key (made when a signed-in phone first reads it), tag, log and the advertisement bytes |
 | `pump_update.c` | When the pump checks (every 3 h, retry backoff, deferred while busy), when it installs by itself, the update lock (no start, pairing or reset while updating), the state the app shows |
 | `pump_update_http.c` | The network half of the update: ask the report service what's newest, download an image into `pump_ota` |
@@ -69,6 +72,7 @@ App (`tanklink_app/lib/`):
 | `ble/ota_upload.dart` | The shared OTA transfer for pump and tank |
 | `update/` | GitHub release checks, downloads, update flows (the update sheet picks a method: the pump downloads it, the phone sends it over Wi-Fi, or over Bluetooth) |
 | `screens/settings/alerts_screen.dart` | Alerts switches, test alert, permission and battery help |
+| `screens/settings/auto_fill_screen.dart`, `buzzer_screen.dart` | Auto-fill (tanks, allowed times, gap, live state) and the buzzer (events, sounds, quiet hours) |
 | `screens/`, `screens/home/`, `screens/settings/` | UI. One widget family per file. `settings/wifi_screen.dart` sets up the pump's Wi-Fi |
 | `util/format.dart` | Shared labels |
 | `util/water_use.dart`, `screens/usage_screen.dart` | Water and power: litres, energy and cost from run time (unit tested) and the charts. Flow, power, price and the 200-fill history all live on the pump |
@@ -86,6 +90,7 @@ These values are duplicated by hand. There is no codegen. If you change one, cha
 | Sign-in answer, LoRa tag, tank OTA token | `components/tanklink_lora/tanklink_crypto.c` (shared) | same | `authResponse` in `tanklink_app/lib/ble/protocol.dart` (covered by `test/auth_test.dart`) |
 | Report body (`POST /v1/report`) | — | — | `tanklink_app/lib/diag/report_builder.dart` (`toJson`) ↔ `report_worker/src/index.js` |
 | BLE payload layouts | `pump_node/main/gatt_payloads.c` (reads) and the handlers in `gatt_svr.c` (writes) | `tank_node/main/tank_gatt.c` | `tanklink_app/lib/ble/protocol.dart` (covered by `test/protocol_test.dart`) |
+| Buzzer and AutoFill payloads, buzzer events and sounds, auto-fill states | `pump_node/main/pump_buzz.h`, `buzzer.h`, `pump_autofill.h` (and their `.c`) | — | `BuzzerConfig`, `AutoFillInfo` in `tanklink_app/lib/ble/protocol.dart`, constants in `tanklink_uuids.dart` (`test/protocol_test.dart`) |
 | Alert tag and advertisement layout | `pump_node/main/pump_alert.c`, `main.c` (`advertise`) | — | `lib/ble/protocol.dart` (`alertTag`, `pumpAdvAlert`; `test/protocol_test.dart`) and `AlertNotifier.kt` / `AlertScanReceiver.kt` |
 | Alert types and what `arg` carries | `pump_node/main/pump_alert.h` | — | `tanklink_uuids.dart`, `AlertNotifier.kt` (the notification text) |
 | LoRa UNPAIR notice | `pump_node/main/lora_link.c` (`on_unpair_packet`) | `tank_node/main/tank_link.c`, `main.c` (`tell_old_pump`) | — |

@@ -4,7 +4,7 @@
     scripts/wifi_api_check.py <pump ip or tanklink-XXXX.local> <token hex> [--beep]
 
 Does HELLO, AUTH, reads Info and State and, with --beep, sends the test beep
-(Cmd 0xB1) so you hear it work. <token hex> is one phone's 16-byte pairing
+(Cmd 0xB1, the click sound) so you hear it work. <token hex> is one phone's 16-byte pairing
 token (32 hex characters). Framing and tags: docs/PROTOCOL.md, "Wi-Fi
 transport"; the app's lib/link/wifi_link.dart must match this script.
 """
@@ -126,7 +126,7 @@ def main() -> int:
     status, state = c.request(READ, CHR_STATE)
     print(f"State: status={status} pump {'ON' if state[:1] == bytes([1]) else 'off'}")
     if args.beep:
-        status, _ = c.request(WRITE, CHR_CMD, bytes([CMD_TEST_BEEP]))
+        status, _ = c.request(WRITE, CHR_CMD, bytes([CMD_TEST_BEEP, 0]))
         print(f"Test beep: status={status}")
     return 0
 

@@ -199,11 +199,9 @@ String _nulTerminated(List<int> b) {
 }
 
 /// Pump Settings characteristic (pump-wide; auto-off and float modes are
-/// per tank and per sensor).
+/// per tank and per sensor, the buzzer and auto-fill have their own).
 class PumpSettings {
   const PumpSettings({
-    required this.buzzerFlags,
-    required this.buzzerTone,
     required this.ledBrightness,
     required this.starterType,
     required this.relayPulseMs,
@@ -213,8 +211,6 @@ class PumpSettings {
     this.name = '',
   });
 
-  final int buzzerFlags;
-  final int buzzerTone;
   final int ledBrightness;
   final int starterType;
   final int relayPulseMs;
@@ -226,53 +222,263 @@ class PumpSettings {
   /// with [encodeUsage]).
   final UsageSettings usage;
 
-  /// The pump installs its own updates when it is idle (minor 5).
+  /// The pump installs its own updates when it is idle.
   final bool autoUpdate;
 
   /// The pump's own name, shown by every phone that has it. Empty until
-  /// someone names it (minor 8).
+  /// someone names it.
   final String name;
 
-  static const _readLen = 50;
+  static const readLen = 48;
 
-  /// run(4) serial(5) buzzer_flags tone led starter pulse_ms(2), then
-  /// flow_dlpm(2) watts(2) price_centi(2) currency(4) auto_update(1) name(24,
-  /// UTF-8, NUL-padded).
+  /// run(4) serial(5) led starter pulse_ms(2), then flow_dlpm(2) watts(2)
+  /// price_centi(2) currency(4) auto_update(1) name(24, UTF-8, NUL-padded).
   static PumpSettings? parse(List<int> b) {
-    if (b.length < _readLen) return null;
-    final flow = _u16(b, 15);
-    final price = _u16(b, 19);
-    final cur = b.sublist(21, 25);
+    if (b.length < readLen) return null;
+    final flow = _u16(b, 13);
+    final price = _u16(b, 17);
+    final cur = b.sublist(19, 23);
     final end = cur.indexOf(0);
     return PumpSettings(
       usage: UsageSettings(
         flowLpm: flow == 0 ? null : flow / 10,
-        pumpWatts: _u16(b, 17).toDouble(),
+        pumpWatts: _u16(b, 15).toDouble(),
         pricePerKwh: price == 0 ? null : price / 100,
         currency: utf8.decode(end < 0 ? cur : cur.sublist(0, end)),
       ),
-      autoUpdate: b[25] != 0,
-      name: _nulTerminated(b.sublist(26, 50)),
+      autoUpdate: b[23] != 0,
+      name: _nulTerminated(b.sublist(24, 48)),
       runSeconds: _u32(b, 0),
-      buzzerFlags: b[9],
-      buzzerTone: b[10].clamp(0, 3),
-      ledBrightness: b[11].clamp(1, 100),
-      starterType: b[12],
-      relayPulseMs: _u16(b, 13)
+      ledBrightness: b[9].clamp(1, 100),
+      starterType: b[10],
+      relayPulseMs: _u16(b, 11)
           .clamp(TankLinkUuids.relayPulseMsMin, TankLinkUuids.relayPulseMsMax)
           .toInt(),
     );
   }
 
-  /// buzzer_flags tone led starter pulse_ms(2) auto_update(1).
+  /// led starter pulse_ms(2) auto_update(1).
   List<int> encode() => [
-    buzzerFlags,
-    buzzerTone,
     ledBrightness,
     starterType,
     relayPulseMs & 0xff,
     (relayPulseMs >> 8) & 0xff,
     autoUpdate ? 1 : 0,
+  ];
+}
+
+/// One daily time window (auto-fill's allowed times, the buzzer's quiet
+/// hours), in pump-local time. [end] before [start] runs past midnight;
+/// [days] are the days it starts on, bit 0 = Monday ... bit 6 = Sunday.
+class DayWindow {
+  const DayWindow({
+    required this.start,
+    required this.end,
+    this.days = allDays,
+    this.enabled = true,
+  });
+
+  static const allDays = 0x7f;
+
+  /// Minutes after midnight, 0-1439.
+  final int start;
+  final int end;
+  final int days;
+  final bool enabled;
+
+  bool get crossesMidnight => end < start;
+
+  /// Valid for the pump: some day set, start != end.
+  bool get valid => days & allDays != 0 && start != end;
+
+  bool onDay(int weekday0) => (days >> weekday0) & 1 == 1;
+
+  DayWindow copyWith({int? start, int? end, int? days, bool? enabled}) =>
+      DayWindow(
+        start: start ?? this.start,
+        end: end ?? this.end,
+        days: days ?? this.days,
+        enabled: enabled ?? this.enabled,
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is DayWindow &&
+      other.start == start &&
+      other.end == end &&
+      other.days == days &&
+      other.enabled == enabled;
+
+  @override
+  int get hashCode => Object.hash(start, end, days, enabled);
+}
+
+/// The Buzzer characteristic: master switch, quiet hours, and a switch and a
+/// sound for each event (index = TankLinkUuids.buzzEvent*).
+class BuzzerConfig {
+  const BuzzerConfig({
+    required this.enabled,
+    required this.quiet,
+    required this.quietButton,
+    required this.events,
+    required this.sounds,
+    required this.quietStart,
+    required this.quietEnd,
+  });
+
+  final bool enabled;
+
+  /// Quiet hours on: only button sounds (if [quietButton]) play in them.
+  final bool quiet;
+  final bool quietButton;
+
+  /// Bit i = event i sounds.
+  final int events;
+
+  /// Sound for each event (TankLinkUuids.buzzSound*).
+  final List<int> sounds;
+
+  /// Minutes after midnight.
+  final int quietStart;
+  final int quietEnd;
+
+  static const len = 3 + TankLinkUuids.buzzEventCount + 4;
+
+  bool on(int event) => (events >> event) & 1 == 1;
+  int soundFor(int event) => sounds[event];
+
+  /// flags(1) events(u16) sounds(event count) quiet_start_h/m quiet_end_h/m.
+  static BuzzerConfig? parse(List<int> b) {
+    if (b.length != len) return null;
+    const n = TankLinkUuids.buzzEventCount;
+    final q = 3 + n;
+    return BuzzerConfig(
+      enabled: b[0] & 1 != 0,
+      quiet: b[0] & 2 != 0,
+      quietButton: b[0] & 4 != 0,
+      events: _u16(b, 1),
+      sounds: List.unmodifiable(b.sublist(3, 3 + n)),
+      quietStart: b[q] * 60 + b[q + 1],
+      quietEnd: b[q + 2] * 60 + b[q + 3],
+    );
+  }
+
+  List<int> encode() => [
+    (enabled ? 1 : 0) | (quiet ? 2 : 0) | (quietButton ? 4 : 0),
+    events & 0xff,
+    (events >> 8) & 0xff,
+    ...sounds,
+    quietStart ~/ 60,
+    quietStart % 60,
+    quietEnd ~/ 60,
+    quietEnd % 60,
+  ];
+
+  BuzzerConfig copyWith({
+    bool? enabled,
+    bool? quiet,
+    bool? quietButton,
+    int? events,
+    List<int>? sounds,
+    int? quietStart,
+    int? quietEnd,
+  }) => BuzzerConfig(
+    enabled: enabled ?? this.enabled,
+    quiet: quiet ?? this.quiet,
+    quietButton: quietButton ?? this.quietButton,
+    events: events ?? this.events,
+    sounds: sounds ?? this.sounds,
+    quietStart: quietStart ?? this.quietStart,
+    quietEnd: quietEnd ?? this.quietEnd,
+  );
+
+  BuzzerConfig withEvent(int event, bool on) =>
+      copyWith(events: on ? events | (1 << event) : events & ~(1 << event));
+
+  BuzzerConfig withSound(int event, int sound) =>
+      copyWith(sounds: [...sounds]..[event] = sound);
+}
+
+/// The AutoFill characteristic: how auto-fill behaves pump-wide, and what it
+/// is doing for the selected tank right now.
+class AutoFillInfo {
+  const AutoFillInfo({
+    required this.state,
+    required this.slot,
+    required this.waitMin,
+    required this.limitTimes,
+    required this.stopAtEnd,
+    required this.gapMin,
+    required this.windows,
+  });
+
+  /// TankLinkUuids.afState*.
+  final int state;
+
+  /// The tank [state] is about (the selected one).
+  final int slot;
+
+  /// Minutes until it may start ([TankLinkUuids.afStateCooldown],
+  /// [TankLinkUuids.afStateWaitTime]); null when unknown or none.
+  final int? waitMin;
+
+  /// Only start within [windows].
+  final bool limitTimes;
+
+  /// Stop an auto-fill when its allowed time ends.
+  final bool stopAtEnd;
+
+  /// Least time between a stop and the next automatic start.
+  final int gapMin;
+  final List<DayWindow> windows;
+
+  /// state slot wait_min(u16) flags gap count, then count x
+  /// enabled days start_h start_m end_h end_m.
+  static AutoFillInfo? parse(List<int> b) {
+    if (b.length < 7) return null;
+    final count = b[6];
+    if (count > TankLinkUuids.autoFillWindowMax || b.length != 7 + count * 6) {
+      return null;
+    }
+    final wait = _u16(b, 2);
+    return AutoFillInfo(
+      state: b[0],
+      slot: b[1],
+      waitMin: wait == 0xffff ? null : wait,
+      limitTimes: b[4] & 1 != 0,
+      stopAtEnd: b[4] & 2 != 0,
+      gapMin: b[5],
+      windows: [
+        for (var i = 0; i < count; i++)
+          DayWindow(
+            enabled: b[7 + i * 6] != 0,
+            days: b[8 + i * 6],
+            start: b[9 + i * 6] * 60 + b[10 + i * 6],
+            end: b[11 + i * 6] * 60 + b[12 + i * 6],
+          ),
+      ],
+    );
+  }
+
+  /// The settings write: 0x01 flags gap count windows.
+  static List<int> encodeConfig({
+    required bool limitTimes,
+    required bool stopAtEnd,
+    required int gapMin,
+    required List<DayWindow> windows,
+  }) => [
+    TankLinkUuids.autoFillOpConfig,
+    (limitTimes ? 1 : 0) | (stopAtEnd ? 2 : 0),
+    gapMin,
+    windows.length,
+    for (final w in windows) ...[
+      w.enabled ? 1 : 0,
+      w.days,
+      w.start ~/ 60,
+      w.start % 60,
+      w.end ~/ 60,
+      w.end % 60,
+    ],
   ];
 }
 

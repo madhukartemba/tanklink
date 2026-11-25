@@ -28,6 +28,8 @@ extern "C" {
  *   Wifi     7f1a0011-ac01-4c8c-9b2e-74616e6b6c6e
  *   AlertKey 7f1a0012-ac01-4c8c-9b2e-74616e6b6c6e
  *   AlertLog 7f1a0013-ac01-4c8c-9b2e-74616e6b6c6e
+ *   Buzzer   7f1a0014-ac01-4c8c-9b2e-74616e6b6c6e
+ *   AutoFill 7f1a0015-ac01-4c8c-9b2e-74616e6b6c6e
  */
 #define TANKLINK_UUID_BASE_TAIL 0x6e, 0x6c, 0x6b, 0x6e, 0x61, 0x74, 0x2e, 0x9b, \
                                 0x8c, 0x4c, 0x01, 0xac
@@ -51,6 +53,8 @@ extern "C" {
 #define TANKLINK_CHR_WIFI_INIT  BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x11, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_ALERT_KEY_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x12, 0x00, 0x1a, 0x7f)
 #define TANKLINK_CHR_ALERT_LOG_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x13, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_BUZZER_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x14, 0x00, 0x1a, 0x7f)
+#define TANKLINK_CHR_AUTO_FILL_INIT BLE_UUID128_INIT(TANKLINK_UUID_BASE_TAIL, 0x15, 0x00, 0x1a, 0x7f)
 
 #define TANKLINK_DEVICE_NAME_PREFIX "TankLink-"
 /* GAP name before the serial suffix is known. Adverts use PREFIX + serial. */
@@ -79,7 +83,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 9 /* 9: starter type 2 (single-phase MCB) */
+#define TANKLINK_PROTO_MINOR 10 /* 10: Buzzer and AutoFill characteristics */
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -233,10 +237,10 @@ extern "C" {
 /* Info read length for this protocol version. */
 #define TANKLINK_INFO_LEN 18
 
-/* Settings write: buzzer_flags tone led starter pulse_ms(u16) auto_update(1)
- * (auto_update: install pump updates by itself when idle). Float modes are per
- * sensor (Cmd 0xA7). */
-#define TANKLINK_SETTINGS_WRITE_LEN 7
+/* Settings write: led starter pulse_ms(u16) auto_update(1) (auto_update:
+ * install pump updates by itself when idle). Float modes are per sensor
+ * (Cmd 0xA7); the buzzer has its own characteristic. */
+#define TANKLINK_SETTINGS_WRITE_LEN 5
 
 /* Tanks: active_slot(1) count(1), then count x entry:
  * slot_index(1) sensor_pin(1) sensor_index(1, 0xFF = none) auto_off_min(1)

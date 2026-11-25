@@ -20,7 +20,8 @@ import 'settings/add_phone_dialog.dart';
 import 'settings/update_tiles.dart';
 import 'settings/alerts_screen.dart';
 import 'settings/wifi_screen.dart';
-import 'settings/buzzer_settings_sheet.dart';
+import 'settings/auto_fill_screen.dart';
+import 'settings/buzzer_screen.dart';
 import 'settings/led_brightness_tile.dart';
 import 'settings/auto_off_section.dart';
 import 'settings/factory_reset_dialog.dart';
@@ -87,11 +88,14 @@ Future<void> showRenamePumpDialog(BuildContext context, SavedPump pump) async {
   }
 }
 
-String _buzzerSummary(PumpSession session) {
-  if (!session.buzzerEnabled) return 'Off';
-  const tones = ['Click', 'Soft', 'Sharp', 'Double'];
-  final tone = tones[session.buzzerTone.clamp(0, 3)];
-  return 'On · $tone';
+String _autoFillSummary(PumpSession session) {
+  final on = session.tanks.where(
+    (t) => session.canAutoFill(t.index) && t.autoFill,
+  );
+  if (on.isEmpty) return 'Off · fill a tank by itself when it runs low';
+  final names = on.map((t) => session.tankNameFor(t.index)).join(', ');
+  final limit = session.autoFill?.limitTimes ?? false;
+  return 'On for $names${limit ? ' · set times' : ''}';
 }
 
 String _starterSummary(PumpSession session) =>
@@ -236,19 +240,17 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
               leading: const Icon(Icons.volume_up_outlined),
               title: const Text('Buzzer'),
               subtitle: Text(
-                ready ? _buzzerSummary(session) : 'Connect to change',
+                ready ? buzzerSummary(session.buzzer) : 'Connect to change',
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
               enabled: ready,
               onTap: !ready
                   ? null
                   : () {
-                      showModalBottomSheet<void>(
-                        context: context,
-                        isScrollControlled: true,
-                        useSafeArea: true,
-                        showDragHandle: true,
-                        builder: (_) => const BuzzerSettingsSheet(),
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const BuzzerScreen(),
+                        ),
                       );
                     },
             ),
@@ -295,6 +297,25 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => const SchedulesScreen(),
+                        ),
+                      );
+                    },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.water_drop_outlined),
+              title: const Text('Auto-fill'),
+              subtitle: Text(
+                ready ? _autoFillSummary(session) : 'Connect to change',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              enabled: ready,
+              onTap: !ready
+                  ? null
+                  : () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const AutoFillScreen(),
                         ),
                       );
                     },

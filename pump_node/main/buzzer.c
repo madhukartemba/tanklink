@@ -2,6 +2,7 @@
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "sdkconfig.h"
@@ -15,48 +16,52 @@ esp_err_t buzzer_init(void)
     ESP_LOGI(TAG, "disabled");
     return ESP_OK;
 }
-void buzzer_set_enabled(bool enabled)
+void buzzer_play(buzzer_sound_t sound)
 {
-    (void)enabled;
+    (void)sound;
 }
-bool buzzer_enabled(void)
-{
-    return false;
-}
-void buzzer_set_user_tone(buzzer_tone_t tone)
-{
-    (void)tone;
-}
-buzzer_tone_t buzzer_user_tone(void)
-{
-    return BUZZER_TONE_CLICK;
-}
-void buzzer_play(buzzer_tone_t tone, bool force)
-{
-    (void)tone;
-    (void)force;
-}
-void buzzer_play_user(bool force)
-{
-    (void)force;
-}
-void buzzer_off(void) {}
 
 #else
 
-static bool s_enabled = true;
-static buzzer_tone_t s_user_tone = BUZZER_TONE_CLICK;
+/* On/off times in ms, alternating, starting with on; 0 ends the pattern.
+ * An active buzzer only has timing, so the patterns differ a lot. */
+#define MAX_STEPS 12
+static const uint16_t s_patterns[BUZZER_SOUND_COUNT][MAX_STEPS] = {
+    [BUZZER_SOUND_CLICK] = {70},
+    [BUZZER_SOUND_TICK] = {20},
+    [BUZZER_SOUND_LONG] = {280},
+    [BUZZER_SOUND_DOUBLE] = {55, 90, 55},
+    [BUZZER_SOUND_TRIPLE] = {45, 70, 45, 70, 45},
+    [BUZZER_SOUND_RISING] = {50, 80, 50, 80, 220},
+    [BUZZER_SOUND_FALLING] = {220, 100, 60},
+    [BUZZER_SOUND_CHIRP] = {25, 35, 25, 35, 25, 35, 25},
+    [BUZZER_SOUND_ALARM] = {120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120},
+};
+
+static QueueHandle_t s_queue;
 
 static void set_level(int level)
 {
     gpio_set_level(CONFIG_PUMP_BUZZER_GPIO, level);
 }
 
-static void beep_ms(uint32_t on_ms)
+static void buzzer_task(void *arg)
 {
-    set_level(1);
-    vTaskDelay(pdMS_TO_TICKS(on_ms < 10 ? 10 : on_ms));
-    set_level(0);
+    (void)arg;
+    uint8_t sound;
+    while (1) {
+        if (xQueueReceive(s_queue, &sound, portMAX_DELAY) != pdTRUE) {
+            continue;
+        }
+        const uint16_t *p = s_patterns[sound];
+        for (int i = 0; i < MAX_STEPS && p[i] != 0; i++) {
+            set_level((i & 1) == 0);
+            vTaskDelay(pdMS_TO_TICKS(p[i]));
+        }
+        set_level(0);
+        /* A gap, so two queued sounds stay two sounds. */
+        vTaskDelay(pdMS_TO_TICKS(120));
+    }
 }
 
 esp_err_t buzzer_init(void)
@@ -73,73 +78,21 @@ esp_err_t buzzer_init(void)
         return err;
     }
     set_level(0);
+    s_queue = xQueueCreate(3, sizeof(uint8_t));
+    if (!s_queue || xTaskCreate(buzzer_task, "buzzer", 2048, NULL, 4, NULL) != pdPASS) {
+        return ESP_ERR_NO_MEM;
+    }
     ESP_LOGI(TAG, "GPIO %d (active)", CONFIG_PUMP_BUZZER_GPIO);
     return ESP_OK;
 }
 
-void buzzer_set_enabled(bool enabled)
+void buzzer_play(buzzer_sound_t sound)
 {
-    s_enabled = enabled;
-    if (!enabled) {
-        set_level(0);
-    }
-}
-
-bool buzzer_enabled(void)
-{
-    return s_enabled;
-}
-
-void buzzer_off(void)
-{
-    set_level(0);
-}
-
-void buzzer_play(buzzer_tone_t tone, bool force)
-{
-    if (!force && !s_enabled) {
+    if (sound >= BUZZER_SOUND_COUNT || !s_queue) {
         return;
     }
-    if (tone >= BUZZER_TONE_COUNT) {
-        tone = BUZZER_TONE_CLICK;
-    }
-
-    /* Active buzzer (GPIO4) — patterns must differ a lot to be audible. */
-    switch (tone) {
-    case BUZZER_TONE_SOFT:
-        beep_ms(20);
-        break;
-    case BUZZER_TONE_SHARP:
-        beep_ms(280);
-        break;
-    case BUZZER_TONE_DOUBLE:
-        beep_ms(55);
-        vTaskDelay(pdMS_TO_TICKS(90));
-        beep_ms(55);
-        break;
-    case BUZZER_TONE_CLICK:
-    default:
-        beep_ms(70);
-        break;
-    }
-}
-
-void buzzer_play_user(bool force)
-{
-    buzzer_play(s_user_tone, force);
-}
-
-void buzzer_set_user_tone(buzzer_tone_t tone)
-{
-    if (tone >= BUZZER_TONE_COUNT) {
-        tone = BUZZER_TONE_CLICK;
-    }
-    s_user_tone = tone;
-}
-
-buzzer_tone_t buzzer_user_tone(void)
-{
-    return s_user_tone;
+    const uint8_t b = (uint8_t)sound;
+    xQueueSend(s_queue, &b, 0);
 }
 
 #endif /* CONFIG_PUMP_ENABLE_BUZZER */

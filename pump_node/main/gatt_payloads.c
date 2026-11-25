@@ -62,23 +62,21 @@ size_t gatt_payload_info(uint8_t out[TANKLINK_INFO_LEN], bool authed)
 
 size_t gatt_payload_settings(uint8_t out[GATT_SETTINGS_READ_LEN])
 {
-    /* run(4) serial(5) buzzer_flags tone led starter pulse_ms(2), then usage:
-     * flow_dlpm(2) watts(2) price_centi(2) currency(4) */
+    /* run(4) serial(5) led starter pulse_ms(2), then usage: flow_dlpm(2)
+     * watts(2) price_centi(2) currency(4), then auto_update(1) name(24) */
     put_u32(&out[0], pump_control_run_seconds());
     memcpy(&out[4], pump_pair_serial(), TANKLINK_SERIAL_LEN + 1);
-    out[9] = pump_config_buzzer_flags();
-    out[10] = pump_config_buzzer_tone();
-    out[11] = pump_config_led_brightness();
-    out[12] = pump_config_starter_type();
-    put_u16(&out[13], pump_config_relay_pulse_ms());
+    out[9] = pump_config_led_brightness();
+    out[10] = pump_config_starter_type();
+    put_u16(&out[11], pump_config_relay_pulse_ms());
     const pump_usage_t *u = pump_config_usage();
-    put_u16(&out[15], u->flow_dlpm);
-    put_u16(&out[17], u->watts);
-    put_u16(&out[19], u->price_centi);
-    memcpy(&out[21], u->currency, PUMP_USAGE_CURRENCY_LEN);
-    out[25] = pump_config_auto_update() ? 1 : 0;
-    memset(&out[26], 0, PUMP_NAME_MAX);
-    strncpy((char *)&out[26], pump_config_name(), PUMP_NAME_MAX);
+    put_u16(&out[13], u->flow_dlpm);
+    put_u16(&out[15], u->watts);
+    put_u16(&out[17], u->price_centi);
+    memcpy(&out[19], u->currency, PUMP_USAGE_CURRENCY_LEN);
+    out[23] = pump_config_auto_update() ? 1 : 0;
+    memset(&out[24], 0, PUMP_NAME_MAX);
+    strncpy((char *)&out[24], pump_config_name(), PUMP_NAME_MAX);
     return GATT_SETTINGS_READ_LEN;
 }
 

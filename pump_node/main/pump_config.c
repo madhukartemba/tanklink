@@ -14,9 +14,6 @@
 #define NVS_KEY "cfg"
 #define NVS_KEY_USAGE "usage"
 #define NVS_KEY_NAME "name"
-#define DEFAULT_BUZZ_FLAGS \
-    (PUMP_BUZZ_FLAG_ENABLED | PUMP_BUZZ_FLAG_ON_BUTTON | PUMP_BUZZ_FLAG_ON_PUMP | \
-     PUMP_BUZZ_FLAG_ON_AUTO)
 
 static pump_usage_t s_usage;
 static char s_name[PUMP_NAME_MAX + 1];
@@ -159,8 +156,7 @@ typedef struct {
     uint32_t magic;
     uint16_t unused_dist[4];
     int64_t unused_time;
-    uint8_t buzzer_flags;   /* PUMP_BUZZ_FLAG_* */
-    uint8_t buzzer_tone;    /* buzzer_tone_t */
+    uint8_t unused_buzz[2]; /* buzzer settings moved to pump_buzz.c */
     uint8_t led_brightness; /* 1-100 */
     uint8_t starter_type;   /* pump_starter_type_t */
     uint8_t auto_update;    /* 1 = install pump updates by itself (Wi-Fi) */
@@ -175,24 +171,20 @@ static void load_defaults(pump_config_t *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
     cfg->magic = PUMP_CONFIG_MAGIC;
-    cfg->buzzer_flags = DEFAULT_BUZZ_FLAGS;
-    cfg->buzzer_tone = BUZZER_TONE_CLICK;
     cfg->led_brightness = PUMP_LED_BRIGHTNESS_DEFAULT;
     cfg->starter_type = PUMP_STARTER_NONE;
     cfg->relay_pulse_ms = CONFIG_PUMP_RELAY_PULSE_MS;
     cfg->auto_update = 1; /* on: it only acts once Wi-Fi is set up, and only when idle */
 }
 
-static bool settings_valid(uint8_t tone, uint8_t led, uint8_t starter, uint32_t pulse_ms)
+static bool settings_valid(uint8_t led, uint8_t starter, uint32_t pulse_ms)
 {
-    return tone < BUZZER_TONE_COUNT && led >= 1 && led <= 100 && starter < PUMP_STARTER_COUNT &&
+    return led >= 1 && led <= 100 && starter < PUMP_STARTER_COUNT &&
            pulse_ms >= PUMP_RELAY_PULSE_MS_MIN && pulse_ms <= PUMP_RELAY_PULSE_MS_MAX;
 }
 
 static void apply(void)
 {
-    buzzer_set_enabled((s_cfg.buzzer_flags & PUMP_BUZZ_FLAG_ENABLED) != 0);
-    buzzer_set_user_tone((buzzer_tone_t)s_cfg.buzzer_tone);
     status_led_set_brightness(s_cfg.led_brightness);
 }
 
@@ -213,8 +205,8 @@ static esp_err_t save(void)
 
 static void log_cfg(void)
 {
-    ESP_LOGI(TAG, "buzz_flags=0x%02x tone=%u led=%u starter=%u pulse=%ums auto_update=%u",
-             s_cfg.buzzer_flags, s_cfg.buzzer_tone, s_cfg.led_brightness, s_cfg.starter_type,
+    ESP_LOGI(TAG, "led=%u starter=%u pulse=%ums auto_update=%u", s_cfg.led_brightness,
+             s_cfg.starter_type,
              (unsigned)s_cfg.relay_pulse_ms, s_cfg.auto_update);
 }
 
@@ -232,8 +224,7 @@ esp_err_t pump_config_init(void)
         nvs_close(h);
         if (err == ESP_OK &&
             (len != sizeof(s_cfg) || s_cfg.magic != PUMP_CONFIG_MAGIC ||
-             !settings_valid(s_cfg.buzzer_tone, s_cfg.led_brightness, s_cfg.starter_type,
-                             s_cfg.relay_pulse_ms))) {
+             !settings_valid(s_cfg.led_brightness, s_cfg.starter_type, s_cfg.relay_pulse_ms))) {
             err = ESP_ERR_NVS_INVALID_LENGTH; /* another layout, or damaged */
         }
     }
@@ -253,13 +244,10 @@ esp_err_t pump_config_init(void)
 
 esp_err_t pump_config_set_settings(const pump_settings_t *in)
 {
-    if (!in || !settings_valid(in->buzzer_tone, in->led_brightness, in->starter_type,
-                               in->relay_pulse_ms)) {
+    if (!in || !settings_valid(in->led_brightness, in->starter_type, in->relay_pulse_ms)) {
         return ESP_ERR_INVALID_ARG;
     }
     const pump_config_t before = s_cfg;
-    s_cfg.buzzer_flags = in->buzzer_flags;
-    s_cfg.buzzer_tone = in->buzzer_tone;
     s_cfg.led_brightness = in->led_brightness;
     s_cfg.starter_type = in->starter_type;
     s_cfg.relay_pulse_ms = in->relay_pulse_ms;
@@ -274,34 +262,6 @@ esp_err_t pump_config_set_settings(const pump_settings_t *in)
     ESP_ERROR_CHECK(relay_control_set_type((pump_starter_type_t)in->starter_type));
     log_cfg();
     return ESP_OK;
-}
-
-uint8_t pump_config_buzzer_flags(void)
-{
-    return s_cfg.buzzer_flags;
-}
-
-uint8_t pump_config_buzzer_tone(void)
-{
-    return s_cfg.buzzer_tone;
-}
-
-bool pump_config_buzzer_on_button(void)
-{
-    return (s_cfg.buzzer_flags & PUMP_BUZZ_FLAG_ENABLED) &&
-           (s_cfg.buzzer_flags & PUMP_BUZZ_FLAG_ON_BUTTON);
-}
-
-bool pump_config_buzzer_on_pump(void)
-{
-    return (s_cfg.buzzer_flags & PUMP_BUZZ_FLAG_ENABLED) &&
-           (s_cfg.buzzer_flags & PUMP_BUZZ_FLAG_ON_PUMP);
-}
-
-bool pump_config_buzzer_on_auto(void)
-{
-    return (s_cfg.buzzer_flags & PUMP_BUZZ_FLAG_ENABLED) &&
-           (s_cfg.buzzer_flags & PUMP_BUZZ_FLAG_ON_AUTO);
 }
 
 uint8_t pump_config_led_brightness(void)

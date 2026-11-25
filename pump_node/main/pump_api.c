@@ -23,6 +23,8 @@
 #include "pump_tanks.h"
 #include "pump_wifi.h"
 #include "pump_alert.h"
+#include "pump_autofill.h"
+#include "pump_buzz.h"
 #include "pump_update.h"
 #include "pump_wifi_api.h"
 #include "status_led.h"
@@ -174,6 +176,12 @@ pump_api_err_t pump_api_read(pump_api_session_t *s, uint8_t chr, uint8_t *out, s
     case PUMP_API_CHR_ALERT_LOG:
         *len = pump_alert_log_payload(out);
         break;
+    case PUMP_API_CHR_BUZZER:
+        *len = pump_buzz_payload(out);
+        break;
+    case PUMP_API_CHR_AUTO_FILL:
+        *len = pump_autofill_payload(out);
+        break;
     case PUMP_API_CHR_WIFI:
         *len = s->wifi_page == WIFI_READ_STATUS ? gatt_payload_wifi_status(out)
                                                 : gatt_payload_wifi_scan(out, s->wifi_page);
@@ -281,7 +289,14 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
         return PUMP_API_OK;
 
     case TANKLINK_CMD_TEST_BEEP:
-        buzzer_play_user(true);
+        /* The sound to play: the app's preview, whatever the settings. */
+        if (len < 2) {
+            return PUMP_API_ERR_LEN;
+        }
+        if (body[1] >= BUZZER_SOUND_COUNT) {
+            return PUMP_API_ERR_REFUSED;
+        }
+        pump_buzz_test((buzzer_sound_t)body[1]);
         return PUMP_API_OK;
 
     case TANKLINK_CMD_TANK_PAIR_STOP:
@@ -357,6 +372,10 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
         if (pump_tanks_set_auto_fill(body[1], body[2] != 0) != ESP_OK) {
             return PUMP_API_ERR_REFUSED;
         }
+        /* Turned on by hand: fill if it is low now, not only on the next drop. */
+        if (body[2] != 0) {
+            pump_autofill_arm();
+        }
         gatt_svr_notify_tanks();
         return PUMP_API_OK;
 
@@ -395,18 +414,15 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
 
 static pump_api_err_t write_settings(const uint8_t *buf, size_t len)
 {
-    /* buzzer_flags tone led starter pulse_ms(u16) auto_update. A newer app may
-     * append fields (protocol minor); they are ignored. */
-    if (len < TANKLINK_SETTINGS_WRITE_LEN) {
+    /* led starter pulse_ms(u16) auto_update */
+    if (len != TANKLINK_SETTINGS_WRITE_LEN) {
         return PUMP_API_ERR_LEN;
     }
     const pump_settings_t set = {
-        .buzzer_flags = buf[0],
-        .buzzer_tone = buf[1],
-        .led_brightness = buf[2],
-        .starter_type = buf[3],
-        .relay_pulse_ms = (uint16_t)(buf[4] | (buf[5] << 8)),
-        .auto_update = buf[6] != 0,
+        .led_brightness = buf[0],
+        .starter_type = buf[1],
+        .relay_pulse_ms = (uint16_t)(buf[2] | (buf[3] << 8)),
+        .auto_update = buf[4] != 0,
     };
     /* A new starter type stops the motor with the old profile first: never
      * mid-fill, or the pump would think it still runs. */
@@ -619,6 +635,9 @@ pump_api_err_t pump_api_write(pump_api_session_t *s, uint8_t chr, const uint8_t 
         s->authed = phone >= 0;
         s->phone = (int8_t)phone;
         ESP_LOGI(TAG, "Auth %s id=%u phone=%d", phone >= 0 ? "OK" : "FAILED", s->id, phone);
+        if (phone >= 0) {
+            pump_buzz(PUMP_BUZZ_PHONE);
+        }
         err = phone >= 0 ? PUMP_API_OK : PUMP_API_ERR_NOT_AUTH;
         break;
     }
@@ -628,9 +647,28 @@ pump_api_err_t pump_api_write(pump_api_session_t *s, uint8_t chr, const uint8_t 
                                                           : run_command(s, data, len);
         break;
     case PUMP_API_CHR_SETTINGS:
-        err = len > TANKLINK_SETTINGS_WRITE_LEN + 16 ? PUMP_API_ERR_LEN
-                                                     : write_settings(data, len);
+        err = write_settings(data, len);
         break;
+    case PUMP_API_CHR_BUZZER:
+        if (len != PUMP_BUZZ_PAYLOAD_LEN) {
+            err = PUMP_API_ERR_LEN;
+        } else if (pump_buzz_write(data, len) != ESP_OK) {
+            err = PUMP_API_ERR_REFUSED;
+        } else {
+            gatt_svr_notify_buzzer();
+            err = PUMP_API_OK;
+        }
+        break;
+    case PUMP_API_CHR_AUTO_FILL: {
+        const esp_err_t e = pump_autofill_write(data, len);
+        err = e == ESP_ERR_INVALID_SIZE ? PUMP_API_ERR_LEN
+              : e != ESP_OK             ? PUMP_API_ERR_REFUSED
+                                        : PUMP_API_OK;
+        if (err == PUMP_API_OK) {
+            gatt_svr_notify_autofill();
+        }
+        break;
+    }
     case PUMP_API_CHR_SCHED:
         err = len < 1 || len > 2 + PUMP_SCHED_MAX * 4 + 4 ? PUMP_API_ERR_LEN
                                                          : write_sched(data, len);

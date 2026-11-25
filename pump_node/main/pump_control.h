@@ -28,11 +28,13 @@ bool pump_control_is_on(void);
  */
 void pump_control_set(bool on, pump_cause_t cause);
 
-/** Same, without the beep (the caller already gave feedback). */
+/** Same, without the buzzer (the caller already gave feedback). */
 void pump_control_set_silent(bool on, pump_cause_t cause);
 
 /** Seconds since the pump started, 0 when off. */
 uint32_t pump_control_run_seconds(void);
+/** Why the running fill started (pump_cause_t), PUMP_CAUSE_UNKNOWN when off. */
+uint8_t pump_control_started_by(void);
 
 /** Why a start would be denied right now (see pump_errors.h), or PUMP_ERR_NONE. */
 uint8_t pump_control_start_blocker(void);

@@ -125,8 +125,6 @@ class _AutoOffSectionState extends State<AutoOffSection> {
             ),
           ),
         ],
-        if (ready && _editSlot != null)
-          _AutoFillRow(session: session, slot: _editSlot!),
         if (ready && _autoEnabled && _editSlot != null) ...[
           const SizedBox(height: 8),
           // Indent to match title text (icon 24 + gap 16).
@@ -196,107 +194,6 @@ class _AutoOffSectionState extends State<AutoOffSection> {
           ),
         ],
       ],
-    );
-  }
-}
-
-/// "Fill when low" for one tank. Any tank with a sensor can use it.
-class _AutoFillRow extends StatefulWidget {
-  const _AutoFillRow({required this.session, required this.slot});
-
-  final PumpSession session;
-  final int slot;
-
-  @override
-  State<_AutoFillRow> createState() => _AutoFillRowState();
-}
-
-class _AutoFillRowState extends State<_AutoFillRow> {
-  bool _busy = false;
-
-  Future<void> _set(bool on) async {
-    setState(() => _busy = true);
-    try {
-      await widget.session.setAutoFill(widget.slot, on);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(errorMessage(e))));
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final session = widget.session;
-    final scheme = Theme.of(context).colorScheme;
-    final slot = session.slotAt(widget.slot);
-    final can = session.canAutoFill(widget.slot);
-    final on = can && (slot?.autoFill ?? false);
-    final String subtitle;
-    if (!can) {
-      subtitle = 'Needs a tank sensor on this tank.';
-    } else if (session.hasEmptyFloat(widget.slot)) {
-      subtitle =
-          'Starts when the water drops below the almost-empty float, '
-          'stops when the tank is full';
-    } else {
-      subtitle =
-          'Starts when the water drops below the full float, '
-          'stops when the tank is full again';
-    }
-    // One pump, several tanks: the pump can't see the valve or lever.
-    final leverWarning = on && session.multiTank;
-    return Padding(
-      padding: const EdgeInsets.only(left: 40, top: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Fill when low',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: scheme.onSurfaceVariant,
-                    fontSize: 13,
-                  ),
-                ),
-                if (leverWarning)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.warning_amber_rounded,
-                          size: 16,
-                          color: scheme.error,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            'Only fills while this tank is selected. If the '
-                            'valve or lever is not set to it, the pump may '
-                            'fill another tank.',
-                            style: TextStyle(color: scheme.error, fontSize: 13),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Switch(value: on, onChanged: !can || _busy ? null : _set),
-        ],
-      ),
     );
   }
 }

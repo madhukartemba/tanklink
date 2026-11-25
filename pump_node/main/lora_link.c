@@ -13,6 +13,7 @@
 #include "pump_control.h"
 #include "nvs.h"
 #include "pump_clock.h"
+#include "pump_buzz.h"
 #include "pump_tanks.h"
 #include "pump_battery_log.h"
 #include "pump_errors.h"
@@ -74,6 +75,10 @@ bool lora_link_active_tank_full(void)
     return false;
 }
 bool lora_link_active_tank_low(void)
+{
+    return false;
+}
+bool lora_link_active_tank_fresh(void)
 {
     return false;
 }
@@ -510,7 +515,7 @@ static void apply_tank_packet(uint8_t node, const tanklink_lora_status_t *pkt,
         status_led_set_tank_full(full);
         /* Only the selected tank stops a fill; other tanks may well be full. */
         if (full && pump_control_is_on()) {
-            pump_control_set_silent(false, PUMP_CAUSE_TANK_FULL);
+            pump_control_set(false, PUMP_CAUSE_TANK_FULL);
         }
     }
     ESP_LOGI(TAG,
@@ -613,6 +618,7 @@ static void on_pair_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t sn
     s_pairing = false;
     restore_led_after_tank_pair();
     send_ack(pkt, rt->key);
+    pump_buzz(PUMP_BUZZ_PAIRING);
     ESP_LOGI(TAG, "sensor %u %s %02x:%02x:%02x:%02x:%02x:%02x", node,
              added ? "paired" : "re-paired", pkt->tank_id[0], pkt->tank_id[1],
              pkt->tank_id[2], pkt->tank_id[3], pkt->tank_id[4], pkt->tank_id[5]);
@@ -849,6 +855,7 @@ esp_err_t lora_link_start_tank_pair(uint32_t timeout_ms)
     s_pair_deadline_us = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
     status_led_set_mode(STATUS_LED_TANK_PAIRING);
     ESP_LOGI(TAG, "tank pair window open (%u ms)", (unsigned)timeout_ms);
+    pump_buzz(PUMP_BUZZ_PAIRING);
     gatt_svr_notify_tank();
     return ESP_OK;
 }
@@ -925,6 +932,13 @@ bool lora_link_active_tank_low(void)
     const uint8_t node = pump_tanks_active_node();
     return node != PUMP_NODE_NONE && node_online(node) && s_rt[node].seq_known &&
            s_rt[node].fresh_since_boot && pump_tanks_active_is_low(s_rt[node].flags);
+}
+
+bool lora_link_active_tank_fresh(void)
+{
+    const uint8_t node = pump_tanks_active_node();
+    return node != PUMP_NODE_NONE && node_online(node) && s_rt[node].seq_known &&
+           s_rt[node].fresh_since_boot;
 }
 
 bool lora_link_tank_bound(void)
