@@ -285,26 +285,14 @@ static void enter_deep_sleep(bool after_trouble)
     esp_deep_sleep_start();
 }
 
-/**
- * Pairing mode ended (paired, cancelled or timed out): if this tank was paired
- * with a pump before, tell that pump it has been removed. Sent last, with the
- * old key. A pump that was just paired again has the new key and ignores it, so
- * re-pairing with the same pump keeps its names, schedules and settings.
- */
-static void tell_old_pump(bool had_pair, uint8_t old_key[TL_KEY_LEN], uint8_t bat)
-{
-    if (had_pair) {
-        (void)tank_link_send_unpair(bat, old_key);
-    }
-    memset(old_key, 0, TL_KEY_LEN);
-}
-
 static esp_err_t run_pairing_mode(uint8_t bat)
 {
     ESP_LOGI(TAG, "pairing mode (%d ms window, click to cancel)", CONFIG_TANK_PAIR_WINDOW_MS);
-    const bool had_pair = load_paired();
-    uint8_t old_key[TL_KEY_LEN];
-    memcpy(old_key, tank_link_key(), sizeof(old_key));
+    /* If this tank was paired with a pump, tell that pump it has left first,
+     * with the old key, so the pump drops it before pairing starts. */
+    if (load_paired()) {
+        (void)tank_link_send_unpair(bat, tank_link_key());
+    }
     save_paired(false);
     tank_led_pairing_flash_start();
     cancel_ctx_t cancel = {0};
@@ -316,7 +304,6 @@ static esp_err_t run_pairing_mode(uint8_t bat)
         if (pair_should_cancel(&cancel)) {
             tank_led_pairing_flash_stop();
             tank_led_show_error(TANK_ERR_PAIR_CANCELLED);
-            tell_old_pump(had_pair, old_key, bat);
             return ESP_ERR_INVALID_STATE;
         }
         err = tank_link_send_pair_request(bat, pair_should_cancel, &cancel);
@@ -324,7 +311,6 @@ static esp_err_t run_pairing_mode(uint8_t bat)
             save_paired(true);
             tank_led_pairing_flash_stop();
             tank_led_success();
-            tell_old_pump(had_pair, old_key, bat);
             /* Extra STATUS so the pump marks online even if PAIR apply was missed. */
             tank_inputs_t in;
             tank_board_read(&in);
@@ -335,7 +321,6 @@ static esp_err_t run_pairing_mode(uint8_t bat)
         if (err == ESP_ERR_INVALID_STATE || cancel.clicked) {
             tank_led_pairing_flash_stop();
             tank_led_show_error(TANK_ERR_PAIR_CANCELLED);
-            tell_old_pump(had_pair, old_key, bat);
             return ESP_ERR_INVALID_STATE;
         }
         /* Keep flashing between retry rounds until window ends. */
@@ -343,7 +328,6 @@ static esp_err_t run_pairing_mode(uint8_t bat)
             if (pair_should_cancel(&cancel)) {
                 tank_led_pairing_flash_stop();
                 tank_led_show_error(TANK_ERR_PAIR_CANCELLED);
-                tell_old_pump(had_pair, old_key, bat);
                 return ESP_ERR_INVALID_STATE;
             }
             vTaskDelay(pdMS_TO_TICKS(20));
@@ -352,7 +336,6 @@ static esp_err_t run_pairing_mode(uint8_t bat)
     tank_led_pairing_flash_stop();
     tank_led_show_error(TANK_ERR_PAIR_TIMEOUT);
     ESP_LOGW(TAG, "pairing timed out");
-    tell_old_pump(had_pair, old_key, bat);
     return ESP_ERR_TIMEOUT;
 }
 
