@@ -107,7 +107,7 @@ Stored on the pump in NVS namespace `pump`, key `cfg`. Defaults apply after a fi
 | --- | --- | --- | --- |
 | Auto-off (per tank) | 30 min | 1 – 240 min (can't be turned off) | Pump settings. Stored with the tank slot in `tl_tanks` |
 | Install updates automatically | **on** | on / off, needs Wi-Fi; only when the pump is idle and no fill is planned | Pump settings. `auto_update` in `pump` `cfg` |
-| Auto-fill (per tank) | off | on / off, only for a tank with a sensor | Auto-fill. `auto_fill` in `tl_tanks` |
+| Auto-fill tank | none | one tank per pump, only a tank with a sensor | Auto-fill, or the home screen. `af_slot` in `tl_tanks` |
 | Auto-fill times and gap | any time, 15 min gap, no stop at the end | up to 4 windows (days, start, end), stop at the end of a window, gap 5 – 180 min | Auto-fill. `cfg` in `tl_afill` |
 | Water and power | flow not set, 750 W, price not set, ₹ | flow (L/min), power (W), price per kWh, currency | Water and power → Pump details. `usage` in `pump`, its own key, so it never resets the other settings |
 | Buzzer | on; every event but "phone connects"; quiet hours off (22:00–07:00) | master switch, 12 events each with a switch and one of 9 sounds, quiet hours | Buzzer. `cfg` in `tl_buzz` |
@@ -132,7 +132,7 @@ Other data the pump saves (all cleared by factory reset, which erases the whole 
 | `tl_tank` | Per paired sensor N: its LoRa link key (`key<N>`, the BLE OTA token is derived from it), the last seq it accepted (`seq<N>`, so replays stay refused after a restart) and its last packet (`last<N>`, for restoring last-seen after a restart). |
 | `tl_afill` | Auto-fill's allowed times, gap and stop-at-end (`cfg`) |
 | `tl_buzz` | Buzzer switches, sounds and quiet hours (`cfg`) |
-| `tl_tanks` | Paired sensors (up to 4: MAC, float mode), tank slots (up to 8: sensor, which float, name, auto-off), and the selected tank (`slots`). Auto-fill per slot as a bit mask (`auto_fill`). |
+| `tl_tanks` | Paired sensors (up to 4: MAC, float mode), tank slots (up to 8: sensor, which float, name, auto-off), and the selected tank (`slots`). The auto-fill tank (`af_slot`, `0xFF` = none). |
 | `tl_sched` | Fill schedules (up to 4) |
 | `tl_wifi` | Optional Wi-Fi: network name (`ssid`) and password (`pass`). Cleared by factory reset and Forget Wi-Fi. Without them Wi-Fi never starts |
 | `tl_alert` | The alert key (`key`, 16 bytes; made when a signed-in phone first reads it, replaced when phones are removed) and the last alert number (`seq`) |

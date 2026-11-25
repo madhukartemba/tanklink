@@ -172,8 +172,11 @@ static pump_af_state_t step(uint16_t *wait)
 {
     *wait = PUMP_AF_WAIT_NONE;
     const af_cfg_t c = snapshot();
-    const uint8_t slot = pump_tanks_active();
-    if (slot != s_slot) {
+    /* Only while the auto-fill tank is selected: the selection is the user
+     * saying where the valve or lever points. */
+    const uint8_t slot = pump_tanks_auto_fill_slot();
+    const bool selected = slot == pump_tanks_active();
+    if (slot != s_slot || !selected) {
         s_slot = slot;
         s_armed = false;
         s_paused = false;
@@ -188,6 +191,9 @@ static pump_af_state_t step(uint16_t *wait)
         s_paused = false;
         return PUMP_AF_OFF;
     }
+    if (!selected) {
+        return PUMP_AF_NOT_SELECTED; /* armed afresh once it is selected */
+    }
 
     const bool limited = (c.flags & PUMP_AF_F_LIMIT) != 0;
     pump_civil_time_t now;
@@ -195,7 +201,7 @@ static pump_af_state_t step(uint16_t *wait)
 
     if (pump_control_is_on()) {
         if (pump_control_started_by() != PUMP_CAUSE_AUTO_FILL) {
-            return lora_link_active_tank_low() ? PUMP_AF_PUMP_ON : PUMP_AF_WATCHING;
+            return lora_link_slot_low(slot) ? PUMP_AF_PUMP_ON : PUMP_AF_WATCHING;
         }
         if (limited && (c.flags & PUMP_AF_F_STOP_AT_END) && have_time && !any_open(&c, &now)) {
             ESP_LOGI(TAG, "Allowed time over: stopping");
@@ -206,17 +212,17 @@ static pump_af_state_t step(uint16_t *wait)
         return PUMP_AF_FILLING;
     }
 
-    if (!lora_link_tank_online()) {
+    if (!lora_link_slot_online(slot)) {
         return PUMP_AF_OFFLINE;
     }
-    if (lora_link_active_tank_full()) {
+    if (lora_link_slot_full(slot)) {
         s_paused = false;
     }
     /* Arm and start only on what the tank said since this boot. */
-    if (!lora_link_active_tank_fresh()) {
+    if (!lora_link_slot_fresh(slot)) {
         return PUMP_AF_WATCHING;
     }
-    if (!lora_link_active_tank_low()) {
+    if (!lora_link_slot_low(slot)) {
         s_armed = true; /* above its low mark: the next drop may start a fill */
         return PUMP_AF_WATCHING;
     }
@@ -296,7 +302,7 @@ size_t pump_autofill_payload(uint8_t out[PUMP_AF_PAYLOAD_MAX])
 {
     const af_cfg_t c = snapshot();
     out[0] = s_state;
-    out[1] = pump_tanks_active();
+    out[1] = pump_tanks_auto_fill_slot();
     out[2] = (uint8_t)(s_wait & 0xFF);
     out[3] = (uint8_t)(s_wait >> 8);
     out[4] = c.flags;

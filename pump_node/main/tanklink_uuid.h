@@ -141,8 +141,8 @@ extern "C" {
 #define TANKLINK_CMD_TANK_SELECT 0xA4
 #define TANKLINK_CMD_TANK_RENAME 0xA5
 #define TANKLINK_CMD_TANK_AUTO_OFF 0xA6 /* slot(1) minutes(1), 1-240 */
-/* slot(1) on(1). Fill by itself when its almost-empty float drops; only for
- * a tank with both floats. */
+/* slot(1) on(1). Fill by itself when it runs low; only for a tank with a
+ * sensor, one tank per pump (on moves it from any other tank). */
 #define TANKLINK_CMD_TANK_AUTO_FILL 0xA8
 /* flow_dlpm(u16) watts(u16) price_centi(u16) currency(4, UTF-8, NUL-padded):
  * what the app needs for litres and cost (see Settings). */
@@ -246,7 +246,7 @@ extern "C" {
  * slot_index(1) sensor_pin(1) sensor_index(1, 0xFF = none) auto_off_min(1)
  * name(16). */
 #define TANKLINK_TANKS_ENTRY_LEN 20
-/* After the entries: auto_fill_mask(1), bit i = slot i. */
+/* After the entries: auto_fill_slot(1), 0xFF = none. */
 
 /* Sensors: count(1) max(1), then count x entry:
  * index(1) id(6) mode(1) raw_flags(1) battery(1) online(1) age_sec(u16)

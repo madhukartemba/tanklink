@@ -164,7 +164,8 @@ class TankSlot {
   /// Stop a fill into this tank after this many minutes (1–240).
   final int autoOffMin;
 
-  /// Fills by itself when it runs low (see `cmdTankAutoFill`).
+  /// Fills by itself when it runs low (see `cmdTankAutoFill`). At most one
+  /// tank per pump.
   final bool autoFill;
 
   TankSlot copyWith({String? name, int? autoOffMin, bool? autoFill}) =>

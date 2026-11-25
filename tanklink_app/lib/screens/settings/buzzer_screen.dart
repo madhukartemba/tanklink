@@ -210,7 +210,7 @@ class _EventRow extends StatelessWidget {
         style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
       ),
       isThreeLine: hint != null,
-      onTap: () => _pickSound(context, session, config, event, title),
+      onTap: () => _pickSound(context, session, event, title),
       trailing: Switch(
         value: on,
         onChanged: (v) => runOrSnack(
@@ -226,7 +226,6 @@ class _EventRow extends StatelessWidget {
 Future<void> _pickSound(
   BuildContext context,
   PumpSession session,
-  BuzzerConfig config,
   int event,
   String title,
 ) {
@@ -237,7 +236,13 @@ Future<void> _pickSound(
     useSafeArea: true,
     builder: (ctx) => Consumer<PumpSession>(
       builder: (ctx, s, _) {
-        final cur = s.buzzer ?? config;
+        final cur = s.buzzer;
+        if (cur == null) {
+          return const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 32),
+            child: Text('Connect to the pump to change sounds'),
+          );
+        }
         final scheme = Theme.of(ctx).colorScheme;
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),

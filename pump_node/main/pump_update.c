@@ -447,7 +447,8 @@ static bool auto_install_ok(int64_t t)
             return false;
         }
     }
-    if (pump_tanks_auto_fill_on(pump_tanks_active()) && lora_link_active_tank_low()) {
+    if (pump_tanks_auto_fill_slot() == pump_tanks_active() &&
+        lora_link_slot_low(pump_tanks_active())) {
         return false;
     }
     return true;

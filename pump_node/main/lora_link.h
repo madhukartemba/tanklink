@@ -53,10 +53,14 @@ bool lora_link_node_status(uint8_t node, lora_node_status_t *out);
 
 /** The selected tank has a sensor that is online and says full. */
 bool lora_link_active_tank_full(void);
-/** The selected tank's sensor has sent a reading since this boot (and is online). */
-bool lora_link_active_tank_fresh(void);
-/** The selected tank is low: almost-empty float down, or below its only float (fresh reading, auto-fill tanks only). */
-bool lora_link_active_tank_low(void);
+/** [slot] has a sensor that is online and says full. */
+bool lora_link_slot_full(uint8_t slot);
+/** [slot]'s sensor has sent a reading since this boot (and is online). */
+bool lora_link_slot_fresh(uint8_t slot);
+/** [slot] is low: almost-empty float down, or below its only float (fresh reading, tanks with a sensor only). */
+bool lora_link_slot_low(uint8_t slot);
+/** [slot]'s sensor is online. */
+bool lora_link_slot_online(uint8_t slot);
 
 /* ---- The selected tank's sensor ---- */
 bool lora_link_tank_bound(void);

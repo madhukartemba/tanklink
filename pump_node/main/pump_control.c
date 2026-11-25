@@ -272,6 +272,21 @@ void pump_control_set_silent(bool on, pump_cause_t cause)
     unlock();
 }
 
+bool pump_control_switch_tank(uint8_t slot)
+{
+    if (slot == pump_tanks_active()) {
+        return true;
+    }
+    if (s_on || pump_tanks_select(slot, false) != ESP_OK) {
+        return false;
+    }
+    lora_link_on_active_changed();
+    gatt_svr_notify_tanks();
+    gatt_svr_notify_tank();
+    gatt_svr_notify_nodes();
+    return true;
+}
+
 /** Start a fill if a schedule is due now. Switches to its tank first. */
 static void start_due_schedule(void)
 {
@@ -283,15 +298,9 @@ static void start_due_schedule(void)
     if (slot < 0 || s_on) {
         return;
     }
-    if ((uint8_t)slot != pump_tanks_active()) {
-        if (pump_tanks_select((uint8_t)slot, false) != ESP_OK) {
-            ESP_LOGW(TAG, "Schedule slot %d missing", slot);
-            return;
-        }
-        lora_link_on_active_changed();
-        gatt_svr_notify_tanks();
-        gatt_svr_notify_tank();
-        gatt_svr_notify_nodes();
+    if (!pump_control_switch_tank((uint8_t)slot)) {
+        ESP_LOGW(TAG, "Schedule slot %d missing", slot);
+        return;
     }
     ESP_LOGI(TAG, "Schedule start %02u:%02u slot %d", now.hour, now.minute, slot);
     pump_control_set(true, PUMP_CAUSE_SCHEDULE);

@@ -71,6 +71,8 @@ extern "C" void status_led_show_error(uint8_t code)
 
 /* ~50 Hz — smooth enough; less RMT contention vs BLE. */
 #define FRAME_MS 20
+/* Hold bloom after release: full to empty. */
+#define HOLD_SHRINK_MS 450.0f
 
 using pixelengine::Color;
 using pixelengine::Layout;
@@ -157,13 +159,17 @@ class HoldBloom final : public pixelengine::Animation {
         }
         const uint32_t color = *color_;
         const float x = clamp01(*pct_ / 100.0f);
-        /* Ease out: the bloom answers the press at once and settles at full. */
+        /* Brightness eases out: the press is answered at once. */
         const float p = 1.0f - (1.0f - x) * (1.0f - x);
+        /* The radius eases in and out, and the edge widens quickly to about
+         * two LEDs, so each LED fades in over several frames instead of
+         * popping on as the edge passes it. */
+        const float r = x * x * (3.0f - 2.0f * x);
         const float max_r = (led_count_ > 1) ? (static_cast<float>(led_count_ - 1) * 0.5f) : 0.5f;
         /* Fully lit out to `inner`, then a soft edge `soft` wide. 0.55 matches
          * the standby glow's center (one LED, or two for an even count). */
-        const float inner = 0.55f + p * max_r;
-        const float soft = 0.45f + 1.5f * p;
+        const float inner = 0.55f + r * max_r;
+        const float soft = 0.45f + 2.0f * std::sqrt(x);
         const float level = 0.20f + 0.70f * p;  /* 0.20 = standby glow level */
         const float floor = 0.08f * p;          /* dim strip under a grown bloom */
         for (size_t i = 0; i < led_count_; ++i) {
@@ -778,7 +784,13 @@ void anim_task(void *arg)
                                          : 100.0f * static_cast<float>(since) /
                                                static_cast<float>(fill_ms);
         }
-        s_hold_pct += (hold_goal - s_hold_pct) * (holding ? 0.35f : 0.12f);
+        if (holding) {
+            s_hold_pct += (hold_goal - s_hold_pct) * 0.35f;
+        } else {
+            /* Shrink at a steady pace (full to empty in HOLD_SHRINK_MS): an
+             * exponential fall sweeps the first LEDs off in a few frames. */
+            s_hold_pct = std::max(0.0f, s_hold_pct - 100.0f * FRAME_MS / HOLD_SHRINK_MS);
+        }
         s_ota_pct += (static_cast<float>(s_ota_pct_target) - s_ota_pct) * 0.22f;
 
         const uint32_t hold_target = s_hold_color_target;

@@ -26,10 +26,19 @@ class AutoFillScreen extends StatelessWidget {
                 _StatusCard(session: session, info: info),
                 if (session.multiTank) ...[
                   const SizedBox(height: 12),
-                  const _LeverWarning(),
+                  _LeverWarning(session: session),
                 ],
                 const SizedBox(height: 20),
-                const _SectionTitle('Tanks'),
+                const _SectionTitle('Tank'),
+                if (session.multiTank)
+                  Text(
+                    'One tank per pump. It only fills while that tank is '
+                    'selected.',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
+                  ),
                 for (final t in session.tanks)
                   _TankRow(session: session, slot: t.index),
                 const SizedBox(height: 20),
@@ -44,6 +53,43 @@ class AutoFillScreen extends StatelessWidget {
             ),
     );
   }
+}
+
+/// Turn auto-fill on or off for [slot]. Only one tank per pump may use it, so
+/// turning it on for a second tank asks before moving it.
+Future<void> setAutoFillFor(
+  BuildContext context,
+  PumpSession session,
+  int slot,
+  bool on,
+) async {
+  final other = session.autoFillTank;
+  if (on && other != null && other.index != slot) {
+    final from = session.tankNameFor(other.index);
+    final to = session.tankNameFor(slot);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Move auto-fill to $to?'),
+        content: Text(
+          'Only one tank per pump can use auto-fill. It will be turned off '
+          'for $from.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Move'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+  }
+  await runOrSnack(context, () => session.setAutoFill(slot, on));
 }
 
 /// Write auto-fill's pump-wide settings, changing only what is given.
@@ -105,8 +151,8 @@ class _StatusCard extends StatelessWidget {
       TankLinkUuids.afStateOff => (
         Icons.water_drop_outlined,
         scheme.onSurfaceVariant,
-        'Off for $tank',
-        'Auto-fill only works on the selected tank. Turn it on below.',
+        'Auto-fill is off',
+        'Turn it on for a tank below.',
       ),
       TankLinkUuids.afStateOffline => (
         Icons.sensors_off_rounded,
@@ -146,7 +192,7 @@ class _StatusCard extends StatelessWidget {
         scheme.tertiary,
         'Waiting between fills',
         '$tank is low. It can start in '
-            '${wait == null ? 'a few minutes' : formatWait(wait)}.',
+            '${formatWait(wait!)}.',
       ),
       TankLinkUuids.afStatePaused => (
         Icons.pause_circle_outline_rounded,
@@ -177,18 +223,22 @@ class _StatusCard extends StatelessWidget {
         'The pump is already running',
         'Another fill is running. Auto-fill waits until it stops.',
       ),
-      _ => (
-        Icons.help_outline_rounded,
-        scheme.onSurfaceVariant,
-        'Unknown state',
-        'Update the app.',
+      TankLinkUuids.afStateNotSelected => (
+        Icons.alt_route_rounded,
+        scheme.tertiary,
+        'Waiting for $tank to be selected',
+        'Auto-fill only fills $tank while it is the selected tank. Select it '
+            'when the valve or lever is set to it.',
       ),
+      _ => throw StateError('auto-fill state ${info.state}'),
     };
     final String? action = switch (info.state) {
       TankLinkUuids.afStateWaitArm => 'Fill now',
       TankLinkUuids.afStatePaused => 'Resume',
+      TankLinkUuids.afStateNotSelected => 'Select $tank',
       _ => null,
     };
+    final notSelected = info.state == TankLinkUuids.afStateNotSelected;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -218,7 +268,14 @@ class _StatusCard extends StatelessWidget {
           if (action != null) ...[
             const SizedBox(height: 10),
             FilledButton.tonal(
-              onPressed: () => runOrSnack(context, session.armAutoFill),
+              onPressed: notSelected && session.pumpOn
+                  ? null
+                  : () => runOrSnack(
+                      context,
+                      notSelected
+                          ? () => session.selectTank(info.slot)
+                          : session.armAutoFill,
+                    ),
               child: Text(action),
             ),
           ],
@@ -229,7 +286,9 @@ class _StatusCard extends StatelessWidget {
 }
 
 class _LeverWarning extends StatelessWidget {
-  const _LeverWarning();
+  const _LeverWarning({required this.session});
+
+  final PumpSession session;
 
   @override
   Widget build(BuildContext context) {
@@ -240,18 +299,56 @@ class _LeverWarning extends StatelessWidget {
         color: scheme.errorContainer.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.warning_amber_rounded, color: scheme.error),
-          const SizedBox(width: 10),
-          const Expanded(
-            child: Text(
-              'This pump fills several tanks. Auto-fill only fills the '
-              'selected tank. If the valve or lever is not set to it, the '
-              'pump may fill another tank.',
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.warning_amber_rounded, color: scheme.error),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Auto-fill only runs while the auto-fill tank is selected. '
+                  'Select the tank the valve or lever is set to, or the water '
+                  'may go into another tank.',
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 10),
+          const Text(
+            'Valve or lever is set to',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final t in session.tanks)
+                ChoiceChip(
+                  label: Text(session.tankNameFor(t.index)),
+                  selected: t.index == session.activeSlot,
+                  onSelected: session.pumpOn && t.index != session.activeSlot
+                      ? null
+                      : (_) {
+                          if (t.index == session.activeSlot) return;
+                          runOrSnack(
+                            context,
+                            () => session.selectTank(t.index),
+                          );
+                        },
+                ),
+            ],
+          ),
+          if (session.pumpOn) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Stop the pump to change it.',
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+            ),
+          ],
         ],
       ),
     );
@@ -268,7 +365,6 @@ class _TankRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = session.slotAt(slot)!;
     final can = session.canAutoFill(slot);
-    final selected = slot == session.activeSlot;
     final String subtitle;
     if (!can) {
       subtitle = 'Needs a tank sensor';
@@ -280,16 +376,14 @@ class _TankRow extends StatelessWidget {
     final name = t.name.isEmpty ? session.tankNameFor(slot) : t.name;
     return SwitchListTile(
       contentPadding: EdgeInsets.zero,
-      title: Text(session.multiTank && selected ? '$name · selected' : name),
+      title: Text(name),
       subtitle: Text(
-        session.multiTank && !selected && can && t.autoFill
-            ? '$subtitle. Only while selected.'
+        session.multiTank && can && t.autoFill && slot != session.activeSlot
+            ? '$subtitle, once it is selected'
             : subtitle,
       ),
-      value: can && t.autoFill,
-      onChanged: !can
-          ? null
-          : (v) => runOrSnack(context, () => session.setAutoFill(slot, v)),
+      value: t.autoFill,
+      onChanged: !can ? null : (v) => setAutoFillFor(context, session, slot, v),
     );
   }
 }

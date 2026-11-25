@@ -101,6 +101,25 @@ String windowLabel(int start, int end) =>
     '${end < start ? ' (next day)' : ''}';
 
 /// A wait in minutes: "5 min", "2 h 10 min", "3 days".
+/// Auto-fill's state in a few words, for the home screen's button on a tank
+/// that has auto-fill on. Off there only means the pump hasn't caught up
+/// with turning it on (its next check is within a second).
+String autoFillShort(int state, int? waitMin) => switch (state) {
+  TankLinkUuids.afStateOff => 'turning on',
+  TankLinkUuids.afStateOffline => 'sensor offline',
+  TankLinkUuids.afStateWatching => 'watching',
+  TankLinkUuids.afStateWaitArm => 'already low',
+  TankLinkUuids.afStateWaitTime =>
+    waitMin == null ? 'no allowed time' : 'starts in ${formatWait(waitMin)}',
+  TankLinkUuids.afStateNoClock => 'needs the time',
+  TankLinkUuids.afStateCooldown => 'starts in ${formatWait(waitMin!)}',
+  TankLinkUuids.afStatePaused => 'paused',
+  TankLinkUuids.afStateFilling => 'filling',
+  TankLinkUuids.afStateBusy || TankLinkUuids.afStatePumpOn => 'waiting',
+  TankLinkUuids.afStateNotSelected => 'tank not selected',
+  _ => throw StateError('auto-fill state $state'),
+};
+
 String formatWait(int minutes) {
   if (minutes < 60) return '$minutes min';
   if (minutes < 48 * 60) {

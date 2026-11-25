@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../ble/pump_session.dart';
 import '../../util/format.dart';
 import '../../util/error_text.dart';
+import '../settings/auto_fill_screen.dart';
 
 /// Full-area tank status — level, signal, battery; no FW / tank ID.
 class TankHero extends StatelessWidget {
@@ -245,6 +246,11 @@ class TankHero extends StatelessWidget {
                   fontSize: veryTight ? 14 : null,
                 ),
               ),
+              if (session.canAutoFill(session.activeSlot) &&
+                  session.autoFill != null) ...[
+                SizedBox(height: veryTight ? 6 : 12),
+                _AutoFillChip(session: session),
+              ],
               Spacer(flex: veryTight ? 1 : 2),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -322,6 +328,41 @@ class TankHero extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Auto-fill on or off for the tank shown, with what
+/// it is doing. Tap to switch it.
+class _AutoFillChip extends StatelessWidget {
+  const _AutoFillChip({required this.session});
+
+  final PumpSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final slot = session.activeSlot;
+    final on = session.slotAt(slot)!.autoFill;
+    final info = session.autoFill!;
+    final label = on
+        ? 'Auto-fill · ${autoFillShort(info.state, info.waitMin)}'
+        : 'Auto-fill off';
+    return Center(
+      child: FilterChip(
+        selected: on,
+        showCheckmark: false,
+        avatar: Icon(
+          on ? Icons.autorenew_rounded : Icons.water_drop_outlined,
+          size: 18,
+          color: on ? scheme.primary : scheme.onSurfaceVariant,
+        ),
+        label: Text(label),
+        tooltip: on
+            ? 'Turn auto-fill off for this tank'
+            : 'Fill this tank by itself when it runs low',
+        onSelected: (v) => setAutoFillFor(context, session, slot, v),
       ),
     );
   }

@@ -1,9 +1,11 @@
 #pragma once
 
 /*
- * Auto-fill: the selected tank fills itself when it runs low (see
- * pump_tanks_active_is_low), within the allowed times. Which tanks use it is
- * per tank (pump_tanks); how it behaves is pump-wide, here, saved in NVS
+ * Auto-fill: the auto-fill tank (one per pump, pump_tanks) fills itself when
+ * it runs low (see pump_tanks_slot_is_low), within the allowed times, but only
+ * while it is the selected tank: the selection says where the valve or lever
+ * points, and the pump never switches it for auto-fill. How it behaves is
+ * pump-wide, here, saved in NVS
  * (tl_afill/cfg) and read and written through the AutoFill characteristic.
  *
  * It starts once per drop: armed when the tank is seen above its low mark
@@ -11,7 +13,7 @@
  * ends any other way than "tank full", the end of its allowed time or the
  * pump stopping it for pairing or an update pauses it until the tank is next
  * seen full, so a dry source or a stuck float can't keep starting the pump.
- * Turning it on for the selected tank, or Arm in the app, arms it at once.
+ * Turning it on for a tank, or Arm in the app, arms it at once.
  */
 
 #include <stdbool.h>
@@ -34,7 +36,7 @@ extern "C" {
 
 /* Sent to the app as one byte: append only. */
 typedef enum {
-    PUMP_AF_OFF = 0,        /* the selected tank has auto-fill off */
+    PUMP_AF_OFF = 0,        /* no tank has auto-fill on */
     PUMP_AF_OFFLINE = 1,    /* its sensor isn't heard */
     PUMP_AF_WATCHING = 2,   /* armed (or waiting for a first reading): fills when it runs low */
     PUMP_AF_WAIT_ARM = 3,   /* already low when it started watching: waits to see it above */
@@ -45,11 +47,12 @@ typedef enum {
     PUMP_AF_FILLING = 8,    /* the pump is running an auto-fill */
     PUMP_AF_BUSY = 9,       /* low, but pairing or an update is under way */
     PUMP_AF_PUMP_ON = 10,   /* low, but the pump is already running another fill */
+    PUMP_AF_NOT_SELECTED = 11, /* another tank is selected: it waits until its tank is */
 } pump_af_state_t;
 
 #define PUMP_AF_WAIT_NONE 0xFFFF
 
-/* state slot wait_min(u16) flags gap_min count, then count x
+/* state slot (the auto-fill tank, 0xFF = none) wait_min(u16) flags gap_min count, then count x
  * enabled days start_h start_m end_h end_m */
 #define PUMP_AF_WINDOW_LEN 6
 #define PUMP_AF_PAYLOAD_MAX (7 + PUMP_AF_WINDOW_MAX * PUMP_AF_WINDOW_LEN)

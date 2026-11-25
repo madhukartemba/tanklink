@@ -294,6 +294,7 @@ class TankLinkUuids {
   static const afStateFilling = 8;
   static const afStateBusy = 9;
   static const afStatePumpOn = 10;
+  static const afStateNotSelected = 11;
 
   /// Starter profile (settings byte). Single-phase holds relay 1 closed while
   /// the pump runs (pump protocol minor 9).

@@ -14,7 +14,7 @@
 #define TANKS_MAGIC 0x544E4B36u /* 'TNK6': several sensor nodes */
 /* Auto-fill on/off per slot, a bit mask. Its own key so the slot blob keeps
  * its layout. */
-#define NVS_KEY_AUTO_FILL "auto_fill"
+#define NVS_KEY_AUTO_FILL "af_slot"
 
 typedef struct {
     uint32_t magic;
@@ -24,7 +24,9 @@ typedef struct {
 } tanks_blob_t;
 
 static tanks_blob_t s_blob;
-static uint8_t s_auto_fill; /* bit i = slot i fills itself when low */
+/* The one tank that fills itself when low, PUMP_TANK_AUTO_FILL_NONE = none.
+ * One per pump: a lever left on the wrong tank can only ever affect one. */
+static uint8_t s_auto_fill = PUMP_TANK_AUTO_FILL_NONE;
 _Static_assert(PUMP_TANK_SLOT_MAX <= 8, "auto-fill mask is 8 bits");
 
 static bool mac_nonzero(const uint8_t *mac)
@@ -102,7 +104,9 @@ static void drop_slot(int i)
     }
     ESP_LOGI(TAG, "slot %d removed", i);
     memset(&s_blob.slots[i], 0, sizeof(s_blob.slots[i]));
-    s_auto_fill &= (uint8_t)~(1u << i);
+    if (s_auto_fill == i) {
+        s_auto_fill = PUMP_TANK_AUTO_FILL_NONE;
+    }
     (void)pump_sched_drop_slot((uint8_t)i);
 }
 
@@ -118,7 +122,9 @@ static int create_slot(uint8_t node, uint8_t sensor, uint8_t auto_off_min)
         s->node = node;
         s->sensor = sensor;
         s->auto_off_min = auto_off_min;
-        s_auto_fill &= (uint8_t)~(1u << i); /* a new tank starts with it off */
+        if (s_auto_fill == i) {
+            s_auto_fill = PUMP_TANK_AUTO_FILL_NONE; /* a new tank starts with it off */
+        }
         /* Named in normalize(), once the final slot count is known. */
         /* A schedule left behind by a slot that used this index is stale. */
         (void)pump_sched_drop_slot((uint8_t)i);
@@ -224,17 +230,15 @@ static void normalize(void)
         }
     }
     /* Auto-fill only where the tank has a sensor (see pump_tanks.h). */
-    for (int i = 0; i < PUMP_TANK_SLOT_MAX; i++) {
-        if (!pump_tanks_slot_can_auto_fill((uint8_t)i)) {
-            s_auto_fill &= (uint8_t)~(1u << i);
-        }
+    if (s_auto_fill != PUMP_TANK_AUTO_FILL_NONE && !pump_tanks_slot_can_auto_fill(s_auto_fill)) {
+        s_auto_fill = PUMP_TANK_AUTO_FILL_NONE;
     }
 }
 
 esp_err_t pump_tanks_init(void)
 {
     memset(&s_blob, 0, sizeof(s_blob));
-    s_auto_fill = 0;
+    s_auto_fill = PUMP_TANK_AUTO_FILL_NONE;
     /* Only a missing or bad blob means "no tanks". A read error keeps the
      * stored sensors: saving over them would unpair every tank. */
     bool read_failed = false;
@@ -250,7 +254,7 @@ esp_err_t pump_tanks_init(void)
             read_failed = err != ESP_ERR_NVS_NOT_FOUND && err != ESP_ERR_NVS_INVALID_LENGTH;
             memset(&s_blob, 0, sizeof(s_blob));
         } else if (nvs_get_u8(h, NVS_KEY_AUTO_FILL, &s_auto_fill) != ESP_OK) {
-            s_auto_fill = 0;
+            s_auto_fill = PUMP_TANK_AUTO_FILL_NONE; /* never set */
         }
         nvs_close(h);
     } else if (err != ESP_ERR_NVS_NOT_FOUND) {
@@ -440,11 +444,7 @@ uint8_t pump_tanks_active(void)
 
 uint8_t pump_tanks_active_node(void)
 {
-    if (!pump_tanks_slot_present(s_blob.active)) {
-        return PUMP_NODE_NONE;
-    }
-    const uint8_t node = s_blob.slots[s_blob.active].node;
-    return node_valid(node) ? node : PUMP_NODE_NONE;
+    return pump_tanks_slot_node(s_blob.active);
 }
 
 uint8_t pump_tanks_mode(void)
@@ -561,9 +561,9 @@ esp_err_t pump_tanks_set_auto_fill(uint8_t slot, bool on)
         return ESP_ERR_INVALID_STATE;
     }
     if (on) {
-        s_auto_fill |= (uint8_t)(1u << slot);
-    } else {
-        s_auto_fill &= (uint8_t)~(1u << slot);
+        s_auto_fill = slot; /* moves it off any other tank */
+    } else if (s_auto_fill == slot) {
+        s_auto_fill = PUMP_TANK_AUTO_FILL_NONE;
     }
     ESP_LOGI(TAG, "slot %u auto-fill %s", slot, on ? "on" : "off");
     return save_blob();
@@ -571,18 +571,25 @@ esp_err_t pump_tanks_set_auto_fill(uint8_t slot, bool on)
 
 bool pump_tanks_auto_fill_on(uint8_t slot)
 {
-    return slot < PUMP_TANK_SLOT_MAX && (s_auto_fill & (1u << slot)) != 0 &&
-           pump_tanks_slot_can_auto_fill(slot);
+    return s_auto_fill == slot && pump_tanks_slot_can_auto_fill(slot);
 }
 
-uint8_t pump_tanks_auto_fill_mask(void)
+uint8_t pump_tanks_auto_fill_slot(void)
 {
     return s_auto_fill;
 }
 
-bool pump_tanks_active_is_low(uint8_t raw_flags)
+uint8_t pump_tanks_slot_node(uint8_t slot)
 {
-    const uint8_t slot = s_blob.active;
+    if (!pump_tanks_slot_present(slot)) {
+        return PUMP_NODE_NONE;
+    }
+    const uint8_t node = s_blob.slots[slot].node;
+    return node_valid(node) ? node : PUMP_NODE_NONE;
+}
+
+bool pump_tanks_slot_is_low(uint8_t slot, uint8_t raw_flags)
+{
     if (!pump_tanks_slot_can_auto_fill(slot)) {
         return false;
     }

@@ -74,12 +74,24 @@ bool lora_link_active_tank_full(void)
 {
     return false;
 }
-bool lora_link_active_tank_low(void)
+bool lora_link_slot_full(uint8_t slot)
 {
+    (void)slot;
     return false;
 }
-bool lora_link_active_tank_fresh(void)
+bool lora_link_slot_low(uint8_t slot)
 {
+    (void)slot;
+    return false;
+}
+bool lora_link_slot_fresh(uint8_t slot)
+{
+    (void)slot;
+    return false;
+}
+bool lora_link_slot_online(uint8_t slot)
+{
+    (void)slot;
     return false;
 }
 bool lora_link_tank_bound(void)
@@ -918,27 +930,36 @@ bool lora_link_node_status(uint8_t node, lora_node_status_t *out)
     return true;
 }
 
-bool lora_link_active_tank_full(void)
+bool lora_link_slot_full(uint8_t slot)
 {
-    const uint8_t node = pump_tanks_active_node();
+    const uint8_t node = pump_tanks_slot_node(slot);
     return node != PUMP_NODE_NONE && node_online(node) &&
-           pump_tanks_active_is_full(s_rt[node].flags);
+           pump_tanks_slot_is_full(slot, s_rt[node].flags);
 }
 
-bool lora_link_active_tank_low(void)
+bool lora_link_active_tank_full(void)
+{
+    return lora_link_slot_full(pump_tanks_active());
+}
+
+bool lora_link_slot_fresh(uint8_t slot)
+{
+    const uint8_t node = pump_tanks_slot_node(slot);
+    return node != PUMP_NODE_NONE && node_online(node) && s_rt[node].seq_known &&
+           s_rt[node].fresh_since_boot;
+}
+
+bool lora_link_slot_low(uint8_t slot)
 {
     /* Only a reading the tank actually sent since boot: a record restored
      * from flash after a restart must not start a fill. */
-    const uint8_t node = pump_tanks_active_node();
-    return node != PUMP_NODE_NONE && node_online(node) && s_rt[node].seq_known &&
-           s_rt[node].fresh_since_boot && pump_tanks_active_is_low(s_rt[node].flags);
+    return lora_link_slot_fresh(slot) &&
+           pump_tanks_slot_is_low(slot, s_rt[pump_tanks_slot_node(slot)].flags);
 }
 
-bool lora_link_active_tank_fresh(void)
+bool lora_link_slot_online(uint8_t slot)
 {
-    const uint8_t node = pump_tanks_active_node();
-    return node != PUMP_NODE_NONE && node_online(node) && s_rt[node].seq_known &&
-           s_rt[node].fresh_since_boot;
+    return node_online(pump_tanks_slot_node(slot));
 }
 
 bool lora_link_tank_bound(void)

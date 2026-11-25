@@ -39,6 +39,11 @@ uint8_t pump_control_started_by(void);
 /** Why a start would be denied right now (see pump_errors.h), or PUMP_ERR_NONE. */
 uint8_t pump_control_start_blocker(void);
 
+/** Make [slot] the selected tank before an automatic start (schedule,
+ * auto-fill). False while the pump runs or if the slot is missing. Call with
+ * the pump_control lock held (from the poll). */
+bool pump_control_switch_tank(uint8_t slot);
+
 /** Last LED / start-denied error (see pump_errors.h). */
 uint8_t pump_control_last_error(void);
 void pump_control_set_error(uint8_t code);

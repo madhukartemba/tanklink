@@ -274,6 +274,16 @@ class _TankChip extends StatelessWidget {
     return FilterChip(
       selected: selected,
       showCheckmark: false,
+      avatar: slot.autoFill
+          ? Tooltip(
+              message: 'Auto-fill on',
+              child: Icon(
+                Icons.autorenew_rounded,
+                size: 18,
+                color: scheme.primary,
+              ),
+            )
+          : null,
       label: Text(
         '${slot.name.isEmpty ? session.tankNameFor(slot.index) : slot.name} · $label',
       ),

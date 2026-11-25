@@ -1330,7 +1330,16 @@ class PumpSession extends ChangeNotifier {
     return sensorForSlot(t)?.mode == TankLinkUuids.sensorModeEmpty;
   }
 
-  /// Turn auto-fill on or off for one tank. The pump notifies the tank list.
+  /// The tank with auto-fill on (one per pump), or null.
+  TankSlot? get autoFillTank {
+    for (final t in tanks) {
+      if (t.autoFill) return t;
+    }
+    return null;
+  }
+
+  /// Turn auto-fill on or off for one tank. On moves it from any other tank.
+  /// The pump notifies the tank list.
   Future<void> setAutoFill(int slot, bool on) async {
     final chr = _cmd;
     if (chr == null || !authed) {
@@ -1345,7 +1354,10 @@ class PumpSession extends ChangeNotifier {
       on ? 1 : 0,
     ], withoutResponse: false);
     tanks = [
-      for (final t in tanks) t.index == slot ? t.copyWith(autoFill: on) : t,
+      for (final t in tanks)
+        t.index == slot
+            ? t.copyWith(autoFill: on)
+            : (on ? t.copyWith(autoFill: false) : t),
     ];
     AppLog.i('pump', 'Auto-fill ${on ? 'on' : 'off'} for slot $slot');
     notifyListeners();

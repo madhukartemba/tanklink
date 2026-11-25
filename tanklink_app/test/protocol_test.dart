@@ -299,7 +299,7 @@ void main() {
       ...entry(0, 0, 0, 30, 'Roof'),
       ...entry(1, 1, 0, 0, 'Sump'),
       ...entry(2, 0, 3, 45, 'Garden'),
-      0, // auto-fill mask
+      0xff, // no auto-fill tank
     ])!;
     expect(list.activeSlot, 2);
     expect(list.slots.map((s) => s.name), ['Roof', 'Sump', 'Garden']);
@@ -308,7 +308,7 @@ void main() {
     expect(list.slots.map((s) => s.autoOffMin), [30, 0, 45]);
   });
 
-  test('TankList reads the auto-fill mask after the entries', () {
+  test('TankList reads the auto-fill slot after the entries', () {
     List<int> entry(int index, String name) => [
       index,
       0,
@@ -321,10 +321,10 @@ void main() {
       0, 2, //
       ...entry(0, 'Roof'),
       ...entry(3, 'Sump'),
-      0x08, // slot 3 fills when low
+      3, // slot 3 fills when low
     ])!;
     expect(withMask.slots.map((s) => s.autoFill), [false, true]);
-    // The mask byte is part of the layout: without it the payload is bad.
+    // The slot byte is part of the layout: without it the payload is bad.
     expect(TankList.parse([0, 1, ...entry(0, 'Roof')]), isNull);
   });
 
@@ -333,7 +333,7 @@ void main() {
       0, 1, //
       0, 0, TankLinkUuids.sensorNone, 30, ...'Tank'.codeUnits,
       ...List.filled(12, 0),
-      0, // auto-fill mask
+      0xff, // no auto-fill tank
     ])!;
     expect(list.slots.single.node, TankLinkUuids.sensorNone);
   });
@@ -748,6 +748,21 @@ void releaseNotesTests() {
       final a = AutoFillInfo.parse([2, 0, 0xff, 0xff, 0, 15, 0])!;
       expect(a.waitMin, isNull);
       expect(a.windows, isEmpty);
+    });
+
+    test('a state this app does not know does not parse', () {
+      expect(
+        AutoFillInfo.parse([
+          TankLinkUuids.afStateNotSelected + 1,
+          0,
+          0,
+          0,
+          0,
+          15,
+          0,
+        ]),
+        isNull,
+      );
     });
 
     test('a count that does not match the length does not parse', () {

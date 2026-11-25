@@ -437,7 +437,9 @@ class AutoFillInfo {
   static AutoFillInfo? parse(List<int> b) {
     if (b.length < 7) return null;
     final count = b[6];
-    if (count > TankLinkUuids.autoFillWindowMax || b.length != 7 + count * 6) {
+    if (b[0] > TankLinkUuids.afStateNotSelected ||
+        count > TankLinkUuids.autoFillWindowMax ||
+        b.length != 7 + count * 6) {
       return null;
     }
     final wait = _u16(b, 2);
@@ -588,7 +590,7 @@ class TankList {
 
   /// active_slot count, then count × 20-byte entries:
   /// index sensor_pin sensor_index auto_off name(16), then
-  /// auto_fill_mask(1), bit i = slot i.
+  /// auto_fill_slot(1), 0xFF = none.
   static TankList? parse(List<int> b) {
     if (b.length < 2) return null;
     const entry = TankLinkUuids.tanksEntryLen;
@@ -599,7 +601,7 @@ class TankList {
       entries.add(b.sublist(o, o + entry));
     }
     if (o >= b.length) return null;
-    final autoFillMask = b[o];
+    final autoFillSlot = b[o];
     for (final e in entries) {
       final raw = e.sublist(4);
       final end = raw.indexOf(0);
@@ -610,7 +612,7 @@ class TankList {
           node: e[2],
           autoOffMin: e[3],
           name: String.fromCharCodes(end < 0 ? raw : raw.sublist(0, end)),
-          autoFill: e[0] < 8 && (autoFillMask >> e[0]) & 1 == 1,
+          autoFill: e[0] == autoFillSlot,
         ),
       );
     }

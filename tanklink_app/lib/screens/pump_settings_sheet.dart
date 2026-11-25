@@ -89,13 +89,15 @@ Future<void> showRenamePumpDialog(BuildContext context, SavedPump pump) async {
 }
 
 String _autoFillSummary(PumpSession session) {
-  final on = session.tanks.where(
-    (t) => session.canAutoFill(t.index) && t.autoFill,
-  );
-  if (on.isEmpty) return 'Off · fill a tank by itself when it runs low';
-  final names = on.map((t) => session.tankNameFor(t.index)).join(', ');
-  final limit = session.autoFill?.limitTimes ?? false;
-  return 'On for $names${limit ? ' · set times' : ''}';
+  final info = session.autoFill;
+  if (info == null) return 'Loading…';
+  final tank = session.autoFillTank;
+  if (tank == null) return 'Off · fill a tank by itself when it runs low';
+  final limit = info.limitTimes;
+  final name = session.multiTank
+      ? ' for ${session.tankNameFor(tank.index)}'
+      : '';
+  return 'On$name${limit ? ' · set times' : ''}';
 }
 
 String _starterSummary(PumpSession session) =>
