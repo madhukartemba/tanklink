@@ -95,10 +95,27 @@ static void on_start(void)
         status_led_show_error(PUMP_ERR_NOT_PAIRED);
         return;
     }
-    if (pump_config_buzzer_on_button()) {
-        buzzer_play_user(false);
-    }
+    /* The beep came at the 1 s mark (on_start_armed). */
     pump_control_set_silent(true, PUMP_CAUSE_BUTTON);
+}
+
+/* Held 1 s with the pump off: green and a beep if releasing would start it,
+ * red and a double beep if not. During phone pairing release only ends
+ * pairing, so the bloom stays blue and that beep comes on release. */
+static void on_start_armed(void)
+{
+    if (pump_pair_pairing_active()) {
+        return;
+    }
+    const bool ok = pump_pair_is_paired() && pump_control_start_blocker() == PUMP_ERR_NONE;
+    status_led_set_hold_color(ok ? STATUS_LED_HOLD_GREEN : STATUS_LED_HOLD_RED);
+    if (pump_config_buzzer_on_button()) {
+        if (ok) {
+            buzzer_play_user(false);
+        } else {
+            buzzer_play(BUZZER_TONE_DOUBLE, false);
+        }
+    }
 }
 
 static void on_stop(void)
@@ -388,6 +405,7 @@ void app_main(void)
     board_set_long_press_callback(on_ble_pair_hold);
     board_set_factory_reset_callback(on_factory_reset_hold);
     board_set_start_callback(on_start);
+    board_set_start_armed_callback(on_start_armed);
     board_set_stop_callback(on_stop);
     if (lora_link_init() != ESP_OK) {
         ESP_LOGW(TAG, "LoRa init failed — tank link offline");

@@ -49,6 +49,8 @@ Same flash pattern as the tank: **N short red flashes**, a long pause, then the 
 
 ### Factory reset (not an error code)
 
+Holding the button with the pump off grows a blue light from the center. At 1 s it beeps and turns **green** if letting go will start the pump, or **red** with a double beep if it can't (tank full, not paired, an update or a lockout); letting go on red shows the error code. During phone pairing it stays blue (letting go ends pairing).
+
 Hold the pump **button** for BLE pairing (~5 s, blue progress), then **keep holding** (~10 s more, red progress). On completion the strip flashes green and the pump reboots with pairing, tank bind, and settings cleared. From the app: Settings → Factory reset → type `RESET`.
 
 ## Interrupted fill (app notice, not an error code)

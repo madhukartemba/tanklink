@@ -236,8 +236,9 @@ It uses the same rules as the app (`AGENTS.md` → Versions): highest semver amo
 ### 4.2 Choosing the link
 
 - Save the pump's last IP (from the Wi-Fi characteristic) with the pump in `lib/ble/models.dart`.
-- On connect: try Wi-Fi at the saved IP (1.5 s timeout). If that fails, look it up with mDNS (Android `NsdManager` through a small Kotlin bridge; `_tanklink._tcp`, match the TXT `id`), then fall back to BLE.
-- While connected over BLE, keep trying Wi-Fi in the background every 30 s and switch when it works. Never switch in the middle of an update.
+- On connect: try Wi-Fi at the saved IP (1.5 s timeout) while a Bluetooth scan for the pump runs at the same time. If Wi-Fi doesn't answer, connect over BLE right away; an mDNS lookup (Android `NsdManager` through a small Kotlin bridge; `_tanklink._tcp`, match the TXT `id`) runs alongside and is used only if Bluetooth fails too (out of range, new address).
+- While connected over BLE, try Wi-Fi in the background right after connecting, every 15 s, and whenever the pump reports a new address (the Wifi characteristic's IP, so a changed address needs no mDNS). When it answers, the session moves over without a disconnect: everything is bound again over Wi-Fi while the screens keep their values, then BLE is closed. Never switch in the middle of an update.
+- BLE setup asks Android for a short connection interval (high priority) while the session is bound, then goes back to balanced.
 - Setting per pump: "Connect over: Automatic / Bluetooth only".
 - Show which link is in use: a small Wi-Fi or Bluetooth icon in the pump header.
 - Over Wi-Fi, BLE-only actions (add a phone, pair a tank sensor, tank firmware updates) connect over BLE when needed and say "Move closer to the pump" if BLE can't connect.

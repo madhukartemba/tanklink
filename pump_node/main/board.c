@@ -24,7 +24,7 @@
 
 static board_button_cb_t s_start_cb;
 static board_button_cb_t s_stop_cb;
-static board_hold_progress_cb_t s_hold_cb;
+static board_button_cb_t s_armed_cb;
 static board_long_press_cb_t s_long_cb;
 static board_long_press_cb_t s_factory_cb;
 static bool s_pump_on;
@@ -47,36 +47,24 @@ static bool gpio_is_pressed(int gpio)
 #endif
 }
 
-static void enter_hold_progress(void)
+/** Show the hold bloom, growing to full over fill_ms. */
+static void enter_hold_progress(uint32_t fill_ms)
 {
     const status_led_mode_t cur = status_led_get_mode();
     if (cur != STATUS_LED_HOLD_PROGRESS) {
         s_mode_before_hold = cur;
         status_led_set_mode(STATUS_LED_HOLD_PROGRESS);
     }
-    status_led_set_hold_progress(0);
+    status_led_hold_fill(fill_ms);
 }
 
+/* A start or stop callback may have set the light itself (an error code,
+ * pairing ended); otherwise go to what the pump is doing now. */
 static void leave_hold_progress_if_needed(void)
 {
     if (status_led_get_mode() == STATUS_LED_HOLD_PROGRESS) {
-        status_led_set_mode(s_mode_before_hold);
+        status_led_set_mode(s_pump_on ? STATUS_LED_PUMP_ON : s_mode_before_hold);
     }
-}
-
-static void update_hold_pct(uint32_t held_ms, uint32_t threshold_ms)
-{
-    if (threshold_ms == 0) {
-        threshold_ms = 1;
-    }
-    uint8_t pct = (uint8_t)(((uint64_t)held_ms * 100) / threshold_ms);
-    if (pct > 100) {
-        pct = 100;
-    }
-    if (s_hold_cb) {
-        s_hold_cb(pct);
-    }
-    status_led_set_hold_progress(pct);
 }
 
 /*
@@ -117,7 +105,7 @@ static void button_task(void *arg)
                 pair_fired = false;
                 factory_fired = false;
                 stopped_on_press = false;
-                status_led_set_hold_danger(false);
+                status_led_set_hold_color(STATUS_LED_HOLD_BLUE);
                 if (s_pump_on) {
                     stopped_on_press = true;
                     ESP_LOGI(TAG, "Button press while running → OFF");
@@ -125,7 +113,8 @@ static void button_task(void *arg)
                         s_stop_cb();
                     }
                 }
-                enter_hold_progress();
+                /* After a stop the fill leads to phone pairing, not to ON. */
+                enter_hold_progress(stopped_on_press ? pair_ms : action_ms);
             }
             break;
 
@@ -135,34 +124,27 @@ static void button_task(void *arg)
             if (!pressed) {
                 if (armed_on && !pair_fired && !stopped_on_press) {
                     ESP_LOGI(TAG, "Button held %u ms + release → ON", (unsigned)held_ms);
-                    leave_hold_progress_if_needed();
+                    /* Start while the bloom is still up, so it fades straight
+                     * into the running light (no standby glow in between). */
                     if (s_start_cb) {
                         s_start_cb();
                     }
+                    leave_hold_progress_if_needed();
                 } else if (!factory_fired) {
                     leave_hold_progress_if_needed();
                 }
-                status_led_set_hold_danger(false);
                 state = BTN_IDLE;
                 break;
             }
 
             if (!pair_fired) {
-                if (!stopped_on_press && held_ms < action_ms) {
-                    /* Phase 1: fill toward ON. */
-                    update_hold_pct(held_ms, action_ms);
-                } else {
-                    if (!stopped_on_press && !armed_on) {
-                        armed_on = true;
-                        ESP_LOGI(TAG, "ON armed — release to start, keep holding for BLE pair");
-                    }
-                    /* Phase 2: fill toward BLE pairing. */
-                    if (stopped_on_press) {
-                        update_hold_pct(held_ms, pair_ms);
-                    } else {
-                        /* Stay fully spread once armed; restarting from 0 made the
-                         * bloom collapse and regrow. */
-                        update_hold_pct(action_ms, action_ms);
+                /* The bloom grows on the LED task; once armed it stays full
+                 * until pairing. */
+                if (!stopped_on_press && !armed_on && held_ms >= action_ms) {
+                    armed_on = true;
+                    ESP_LOGI(TAG, "ON armed — release to start, keep holding for BLE pair");
+                    if (s_armed_cb) {
+                        s_armed_cb(); /* green / red and a beep */
                     }
                 }
                 if (held_ms >= pair_ms) {
@@ -172,17 +154,14 @@ static void button_task(void *arg)
                         s_long_cb();
                     }
                     /* Keep holding for factory reset — red progress. */
-                    status_led_set_hold_danger(true);
-                    enter_hold_progress();
-                    update_hold_pct(0, factory_ms);
+                    status_led_set_hold_color(STATUS_LED_HOLD_RED);
+                    enter_hold_progress(factory_ms);
                 }
             } else if (!factory_fired) {
                 const uint32_t extra = held_ms - pair_ms;
-                update_hold_pct(extra, factory_ms);
                 if (extra >= factory_ms) {
                     factory_fired = true;
                     leave_hold_progress_if_needed();
-                    status_led_set_hold_danger(false);
                     ESP_LOGW(TAG, "Button held %u ms → factory reset", (unsigned)held_ms);
                     if (s_factory_cb) {
                         s_factory_cb();
@@ -267,9 +246,9 @@ void board_set_stop_callback(board_button_cb_t cb)
     s_stop_cb = cb;
 }
 
-void board_set_hold_progress_callback(board_hold_progress_cb_t cb)
+void board_set_start_armed_callback(board_button_cb_t cb)
 {
-    s_hold_cb = cb;
+    s_armed_cb = cb;
 }
 
 void board_set_long_press_callback(board_long_press_cb_t cb)

@@ -145,8 +145,9 @@ class TankLinkUuids {
   /// slot(1) minutes(1), 1–240 (the pump clamps; auto-off can't be off).
   static const cmdTankAutoOff = 0xA6;
 
-  /// slot(1) on(1): fill by itself when its almost-empty float drops. Only
-  /// for a tank whose sensor has both floats.
+  /// slot(1) on(1): fill by itself when the tank runs low (almost-empty
+  /// float, or below the full float when that is its only one). Only for a
+  /// tank with a sensor.
   static const cmdTankAutoFill = 0xA8;
 
   /// flow_dlpm(u16) watts(u16) price_centi(u16) currency(4): saved on the

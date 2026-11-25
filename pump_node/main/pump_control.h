@@ -34,6 +34,9 @@ void pump_control_set_silent(bool on, pump_cause_t cause);
 /** Seconds since the pump started, 0 when off. */
 uint32_t pump_control_run_seconds(void);
 
+/** Why a start would be denied right now (see pump_errors.h), or PUMP_ERR_NONE. */
+uint8_t pump_control_start_blocker(void);
+
 /** Last LED / start-denied error (see pump_errors.h). */
 uint8_t pump_control_last_error(void);
 void pump_control_set_error(uint8_t code);

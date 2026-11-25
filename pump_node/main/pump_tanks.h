@@ -120,18 +120,19 @@ bool pump_tanks_slot_is_full(uint8_t slot, uint8_t raw_flags);
 bool pump_tanks_active_is_full(uint8_t raw_flags);
 
 /* ---- Auto-fill ----
- * A tank can fill itself when it runs low only if its sensor has both
- * floats: the sensor is in "almost empty" mode and this is its pin-1 tank.
- * The setting is cleared when that stops being true. */
+ * Any tank with a sensor can fill itself when it runs low. "Low" is the
+ * almost-empty float when the tank has one (pin-1 tank of a sensor in
+ * almost-empty mode), else the full float dropping: the tank is kept topped
+ * up. The setting is cleared when the tank loses its sensor. */
 
 bool pump_tanks_slot_can_auto_fill(uint8_t slot);
-/** ESP_ERR_INVALID_STATE when turning it on for a tank without both floats. */
+/** ESP_ERR_INVALID_STATE when turning it on for a tank without a sensor. */
 esp_err_t pump_tanks_set_auto_fill(uint8_t slot, bool on);
 bool pump_tanks_auto_fill_on(uint8_t slot);
 /** Bit i set = slot i has auto-fill on. */
 uint8_t pump_tanks_auto_fill_mask(void);
 
-/** True when [raw_flags] say the active tank's almost-empty float is down. */
+/** True when [raw_flags] say the active tank is low (see above). */
 bool pump_tanks_active_is_low(uint8_t raw_flags);
 
 #ifdef __cplusplus

@@ -24,13 +24,13 @@ extern "C" void status_led_set_mode(status_led_mode_t mode)
 {
     (void)mode;
 }
-extern "C" void status_led_set_hold_progress(uint8_t percent)
+extern "C" void status_led_hold_fill(uint32_t duration_ms)
 {
-    (void)percent;
+    (void)duration_ms;
 }
-extern "C" void status_led_set_hold_danger(bool danger)
+extern "C" void status_led_set_hold_color(status_led_hold_color_t color)
 {
-    (void)danger;
+    (void)color;
 }
 extern "C" void status_led_set_update_progress(uint8_t percent)
 {
@@ -80,7 +80,9 @@ namespace {
 
 PixelEngine s_px;
 volatile status_led_mode_t s_mode = STATUS_LED_BOOT;
-volatile uint8_t s_hold_pct_target = 0;
+/* Hold fill: grows from 0 at s_fill_t0_ms to 100 % after s_fill_ms. */
+volatile uint32_t s_fill_t0_ms = 0;
+volatile uint32_t s_fill_ms = 1;
 volatile uint8_t s_ota_pct_target = 0;
 volatile uint8_t s_brightness_pct = 70;
 volatile bool s_tank_full = false;
@@ -89,7 +91,13 @@ volatile bool s_activity_pulse_req = false;
 volatile uint8_t s_error_code = 1;
 volatile uint8_t s_pending_error = 0;
 volatile status_led_mode_t s_mode_before_error = STATUS_LED_IDLE;
-uint32_t s_hold_color = Color::rgb(40, 120, 255);
+static constexpr uint32_t kHoldBlue = Color::rgb(40, 120, 255);
+static constexpr uint32_t kHoldGreen = Color::rgb(30, 220, 70);
+static constexpr uint32_t kHoldRed = Color::rgb(220, 40, 40);
+volatile uint32_t s_hold_color_target = kHoldBlue;
+/* Shown hold colour, blended toward the target each frame. */
+uint32_t s_hold_color = kHoldBlue;
+float s_hold_rgb[3] = {40.0f, 120.0f, 255.0f};
 float s_hold_pct = 0.0f;
 float s_ota_pct = 0.0f;
 float s_bri = 0.70f;
@@ -126,7 +134,11 @@ static uint32_t scale_bri(uint32_t c, float t)
     return Color::scale(c, clamp01(t) * s_bri);
 }
 
-/** Button-hold feedback: a soft bloom growing out from the center. */
+/**
+ * Button-hold feedback: a soft bloom growing out from the center. Empty, it
+ * is the standby glow's lit center at the same level, so a press starts
+ * without a jump; it then grows outward and brightens.
+ */
 class HoldBloom final : public pixelengine::Animation {
    public:
     HoldBloom(size_t led_count, const float *pct, const uint32_t *color)
@@ -144,22 +156,21 @@ class HoldBloom final : public pixelengine::Animation {
             return;
         }
         const uint32_t color = *color_;
-        /* Ease progress so expansion feels continuous, not stepped. */
-        const float p = smoother01(clamp01(*pct_ / 100.0f));
-        /* Wide falloff, never hard on/off edges. */
+        const float x = clamp01(*pct_ / 100.0f);
+        /* Ease out: the bloom answers the press at once and settles at full. */
+        const float p = 1.0f - (1.0f - x) * (1.0f - x);
         const float max_r = (led_count_ > 1) ? (static_cast<float>(led_count_ - 1) * 0.5f) : 0.5f;
-        const float radius = 0.35f + p * (max_r + 0.85f);
-        const float soft = 1.6f + 0.9f * p; /* wider penumbra as it grows */
+        /* Fully lit out to `inner`, then a soft edge `soft` wide. 0.55 matches
+         * the standby glow's center (one LED, or two for an even count). */
+        const float inner = 0.55f + p * max_r;
+        const float soft = 0.45f + 1.5f * p;
+        const float level = 0.20f + 0.70f * p;  /* 0.20 = standby glow level */
+        const float floor = 0.08f * p;          /* dim strip under a grown bloom */
         for (size_t i = 0; i < led_count_; ++i) {
             const float d = std::fabs(static_cast<float>(i) - center_);
-            float t = 1.0f - (d - (radius - soft)) / soft;
-            t = clamp01(t);
+            float t = (d <= inner) ? 1.0f : clamp01(1.0f - (d - inner) / soft);
             t = t * t * (3.0f - 2.0f * t); /* smoothstep */
-            /* Dim floor under the bloom so mode changes don't flash black. */
-            const float floor = 0.04f + 0.06f * p;
-            const float core = (d < 0.55f) ? (0.12f * p) : 0.0f;
-            const float bri = floor + (0.55f + 0.33f * p) * t + core;
-            buffer_[i] = scale_bri(color, bri);
+            buffer_[i] = scale_bri(color, floor + (level - floor) * t);
         }
     }
 
@@ -672,6 +683,18 @@ void apply_mode(status_led_mode_t mode)
         s_px.addAnimation(std::make_unique<SoftWave>(kN, Color::Blue, 9.5f, 0.42f, 0.05f, 2.2f));
         break;
     case STATUS_LED_HOLD_PROGRESS:
+        /* A fresh press from standby starts in the standby colour (the bloom's
+         * empty frame then matches the glow) and blends to the hold colour.
+         * A bloom still fading from the last press keeps its colour. */
+        if (s_hold_pct < 1.0f) {
+            const uint32_t from = (s_applied == STATUS_LED_IDLE)
+                                      ? (s_tank_full ? kStandbyFull : kStandbyNotFull)
+                                      : s_hold_color_target;
+            s_hold_rgb[0] = Color::r(from);
+            s_hold_rgb[1] = Color::g(from);
+            s_hold_rgb[2] = Color::b(from);
+            s_hold_color = from;
+        }
         /* Immediate, not the 1 s crossfade: the bloom must start on the press. */
         s_px.setAnimationImmediate(std::make_unique<HoldBloom>(kN, &s_hold_pct, &s_hold_color));
         break;
@@ -704,6 +727,9 @@ void anim_task(void *arg)
     (void)arg;
     status_led_mode_t last = static_cast<status_led_mode_t>(-1);
     bool boot_started = false;
+    /* Fixed frame period: a plain delay after the work drifted, and the
+     * engine's own frame gate then dropped every other frame now and then. */
+    TickType_t wake = xTaskGetTickCount();
     while (true) {
         s_bri = static_cast<float>(s_brightness_pct) / 100.0f;
 
@@ -740,15 +766,34 @@ void anim_task(void *arg)
             }
         }
 
-        /* Grow quickly with the button; after release shrink back slowly while the
-         * next animation fades in, so the bloom never snaps or freezes. */
+        /* Grow with the button, timed here so every frame moves the same
+         * amount; after release shrink back slowly while the next animation
+         * fades in, so the bloom never snaps or freezes. */
         const bool holding = (s_mode == STATUS_LED_HOLD_PROGRESS);
-        const float hold_goal = holding ? static_cast<float>(s_hold_pct_target) : 0.0f;
+        float hold_goal = 0.0f;
+        if (holding) {
+            const uint32_t fill_ms = s_fill_ms;
+            const uint32_t since = static_cast<uint32_t>(esp_timer_get_time() / 1000) - s_fill_t0_ms;
+            hold_goal = since >= fill_ms ? 100.0f
+                                         : 100.0f * static_cast<float>(since) /
+                                               static_cast<float>(fill_ms);
+        }
         s_hold_pct += (hold_goal - s_hold_pct) * (holding ? 0.35f : 0.12f);
         s_ota_pct += (static_cast<float>(s_ota_pct_target) - s_ota_pct) * 0.22f;
 
+        const uint32_t hold_target = s_hold_color_target;
+        const float goal_rgb[3] = {static_cast<float>(Color::r(hold_target)),
+                                   static_cast<float>(Color::g(hold_target)),
+                                   static_cast<float>(Color::b(hold_target))};
+        for (int c = 0; c < 3; ++c) {
+            s_hold_rgb[c] += (goal_rgb[c] - s_hold_rgb[c]) * 0.25f; /* ~150 ms */
+        }
+        s_hold_color = Color::rgb(static_cast<uint8_t>(s_hold_rgb[0] + 0.5f),
+                                  static_cast<uint8_t>(s_hold_rgb[1] + 0.5f),
+                                  static_cast<uint8_t>(s_hold_rgb[2] + 0.5f));
+
         s_px.update();
-        vTaskDelay(pdMS_TO_TICKS(FRAME_MS));
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(FRAME_MS));
     }
 }
 
@@ -760,7 +805,9 @@ extern "C" esp_err_t status_led_init(void)
         ESP_LOGE(TAG, "PixelEngine begin failed");
         return ESP_FAIL;
     }
-    s_px.setFps(1000.0f / FRAME_MS);
+    /* The task paces the frames; the engine's gate only has to let them all
+     * through (its ms clock can read a 20 ms period as 19). */
+    s_px.setFps(2000.0f / FRAME_MS);
 
     if (xTaskCreate(anim_task, "status_led", 6144, nullptr, 4, nullptr) != pdPASS) {
         return ESP_ERR_NO_MEM;
@@ -781,14 +828,26 @@ extern "C" void status_led_set_mode(status_led_mode_t mode)
     }
 }
 
-extern "C" void status_led_set_hold_progress(uint8_t percent)
+extern "C" void status_led_hold_fill(uint32_t duration_ms)
 {
-    s_hold_pct_target = percent > 100 ? 100 : percent;
+    s_fill_ms = duration_ms < 1 ? 1 : duration_ms;
+    s_fill_t0_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
 }
 
-extern "C" void status_led_set_hold_danger(bool danger)
+extern "C" void status_led_set_hold_color(status_led_hold_color_t color)
 {
-    s_hold_color = danger ? Color::rgb(220, 40, 40) : Color::rgb(40, 120, 255);
+    switch (color) {
+    case STATUS_LED_HOLD_GREEN:
+        s_hold_color_target = kHoldGreen;
+        break;
+    case STATUS_LED_HOLD_RED:
+        s_hold_color_target = kHoldRed;
+        break;
+    case STATUS_LED_HOLD_BLUE:
+    default:
+        s_hold_color_target = kHoldBlue;
+        break;
+    }
 }
 
 extern "C" void status_led_set_update_progress(uint8_t percent)

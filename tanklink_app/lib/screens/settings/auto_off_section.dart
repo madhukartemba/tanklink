@@ -200,7 +200,7 @@ class _AutoOffSectionState extends State<AutoOffSection> {
   }
 }
 
-/// "Fill when low" for one tank. Only a tank with both floats can use it.
+/// "Fill when low" for one tank. Any tank with a sensor can use it.
 class _AutoFillRow extends StatefulWidget {
   const _AutoFillRow({required this.session, required this.slot});
 
@@ -237,13 +237,18 @@ class _AutoFillRowState extends State<_AutoFillRow> {
     final on = can && (slot?.autoFill ?? false);
     final String subtitle;
     if (!can) {
-      subtitle =
-          'Needs an almost-empty float on this tank. Set it in Tank sensors.';
-    } else {
+      subtitle = 'Needs a tank sensor on this tank.';
+    } else if (session.hasEmptyFloat(widget.slot)) {
       subtitle =
           'Starts when the water drops below the almost-empty float, '
           'stops when the tank is full';
+    } else {
+      subtitle =
+          'Starts when the water drops below the full float, '
+          'stops when the tank is full again';
     }
+    // One pump, several tanks: the pump can't see the valve or lever.
+    final leverWarning = on && session.multiTank;
     return Padding(
       padding: const EdgeInsets.only(left: 40, top: 8),
       child: Row(
@@ -263,6 +268,29 @@ class _AutoFillRowState extends State<_AutoFillRow> {
                     fontSize: 13,
                   ),
                 ),
+                if (leverWarning)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          size: 16,
+                          color: scheme.error,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            'Only fills while this tank is selected. If the '
+                            'valve or lever is not set to it, the pump may '
+                            'fill another tank.',
+                            style: TextStyle(color: scheme.error, fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),

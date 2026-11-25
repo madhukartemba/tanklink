@@ -223,7 +223,7 @@ static void normalize(void)
             }
         }
     }
-    /* Auto-fill only where the tank has both floats (see pump_tanks.h). */
+    /* Auto-fill only where the tank has a sensor (see pump_tanks.h). */
     for (int i = 0; i < PUMP_TANK_SLOT_MAX; i++) {
         if (!pump_tanks_slot_can_auto_fill((uint8_t)i)) {
             s_auto_fill &= (uint8_t)~(1u << i);
@@ -541,6 +541,12 @@ bool pump_tanks_slot_can_auto_fill(uint8_t slot)
     if (!pump_tanks_slot_present(slot)) {
         return false;
     }
+    return node_valid(s_blob.slots[slot].node);
+}
+
+/* The pin-1 tank of a sensor in almost-empty mode has a float at the bottom too. */
+static bool slot_has_empty_float(uint8_t slot)
+{
     const pump_tank_slot_t *s = &s_blob.slots[slot];
     return node_valid(s->node) && s->sensor == 0 &&
            s_blob.nodes[s->node].mode == PUMP_SENSOR_MODE_EMPTY;
@@ -576,7 +582,14 @@ uint8_t pump_tanks_auto_fill_mask(void)
 
 bool pump_tanks_active_is_low(uint8_t raw_flags)
 {
-    /* Almost-empty float on pin 2 reads LOW once the water is below it. */
-    return pump_tanks_slot_can_auto_fill(s_blob.active) &&
-           (raw_flags & TANKLINK_LORA_FLAG_SENSOR2) == 0;
+    const uint8_t slot = s_blob.active;
+    if (!pump_tanks_slot_can_auto_fill(slot)) {
+        return false;
+    }
+    if (slot_has_empty_float(slot)) {
+        /* Almost-empty float on pin 2 reads LOW once the water is below it. */
+        return (raw_flags & TANKLINK_LORA_FLAG_SENSOR2) == 0;
+    }
+    /* Full float only: low as soon as the water is below it (topped up). */
+    return !pump_tanks_slot_is_full(slot, raw_flags);
 }

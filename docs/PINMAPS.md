@@ -33,7 +33,7 @@ SuperMini header pins: GPIO 0–10, 20, 21 — all 13 used.
 | NeoPixel | 20 | |
 | Buzzer | 21 | UART0 TX — may chirp during ROM boot log |
 
-**Button:** running → press = OFF · off → hold ~1 s, release = ON · hold ~5 s = BLE pair · keep holding ~10 s more = factory reset.
+**Button:** running → press = OFF · off → hold ~1 s (a beep; the light turns green if it will start, red if not), release = ON · hold ~5 s = BLE pair · keep holding ~10 s more = factory reset.
 
 **DS3231 battery:** many modules charge the coin cell through a resistor + diode. Use an LIR2032, or remove that resistor if you fit a plain CR2032.
 

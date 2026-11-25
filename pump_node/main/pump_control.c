@@ -39,7 +39,8 @@ static int64_t s_stopped_us; /* when the pump last stopped, 0 = not since boot *
 
 /*
  * Auto-fill state for the selected tank. It is armed once the tank is seen
- * above its almost-empty float, and fires once when the float drops: a tank
+ * above its low mark (the almost-empty float, or the full float when that is
+ * its only one), and fires once when it drops below: a tank
  * that is already low (after a restart, a manual stop or turning the setting
  * on) waits for the next drop. An automatic fill that ends any way other
  * than "tank full" pauses auto-fill until the tank is next seen full, so a
@@ -169,6 +170,14 @@ static uint8_t start_blocker(void)
     return PUMP_ERR_NONE;
 }
 
+uint8_t pump_control_start_blocker(void)
+{
+    lock();
+    const uint8_t blocker = start_blocker();
+    unlock();
+    return blocker;
+}
+
 static void set_state(bool on, bool beep, pump_cause_t cause)
 {
     if (on) {
@@ -274,7 +283,7 @@ static void start_due_schedule(void)
     pump_control_set(true, PUMP_CAUSE_SCHEDULE);
 }
 
-/** Start a fill when the selected tank's almost-empty float drops. */
+/** Start a fill when the selected tank runs low (pump_tanks_active_is_low). */
 static void start_due_auto_fill(void)
 {
     const uint8_t slot = pump_tanks_active();

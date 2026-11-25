@@ -108,7 +108,7 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xA5` | Rename tank slot | `slot(1) name(≤16, UTF-8)` |
 | `0xA6` | Set a tank slot's auto-off. Always on: clamped to 1–240 | `slot(1) minutes(1)` |
 | `0xA7` | Set a sensor's float mode (see Sensors). Leaving two-tank mode deletes that sensor's second tank and its schedules, refused while the pump fills it | `sensor_id(6) mode(1)` |
-| `0xA8` | Auto-fill on/off for a tank (see below). Turning it on is refused unless the tank has both floats: its sensor is in almost-empty mode and it is that sensor's pin-1 tank | `slot(1) on(1)` |
+| `0xA8` | Auto-fill on/off for a tank (see below). Turning it on is refused for a tank without a sensor | `slot(1) on(1)` |
 | `0xA9` | Save the usage settings (see Settings) | `flow_dlpm(u16) watts(u16) price_centi(u16) currency(4)` |
 | `0xAA` | Check for a pump update now (Wi-Fi, see Wifi) | none |
 | `0xAB` | Install the update the check found | none |
@@ -197,7 +197,7 @@ Write:
 
 After the entries: `auto_fill_mask(1)`, bit *i* set = slot *i* fills itself when low.
 
-**Auto-fill** (selected tank only, so the valve or lever must already point at it): the pump starts when that tank's almost-empty float drops, and stops when it is full or on auto-off. It starts once per drop: it is armed when the tank is seen above the float and fires on the next drop, so a tank that is already low (after a restart, a manual stop or turning the setting on) waits for the next one. At least 15 minutes after any stop. Only on a reading the tank sent since boot, never on one restored from flash. An automatic fill that stops any way other than "tank full" (auto-off, the app, the button) pauses auto-fill until the tank is next seen full, so a dry source or a stuck float can't keep starting the pump. The tank must be online, and nothing starts during pairing or an update.
+**Auto-fill** (selected tank only, so the valve or lever must already point at it): the pump starts when that tank runs low, and stops when it is full or on auto-off. "Low" is the almost-empty float dropping when the tank has one (the pin-1 tank of a sensor in almost-empty mode); a tank with only its full float is low as soon as that float drops, so it is kept topped up. It starts once per drop: it is armed when the tank is seen above that float and fires on the next drop, so a tank that is already low (after a restart, a manual stop or turning the setting on) waits for the next one. At least 15 minutes after any stop. Only on a reading the tank sent since boot, never on one restored from flash. An automatic fill that stops any way other than "tank full" (auto-off, the app, the button) pauses auto-fill until the tank is next seen full, so a dry source or a stuck float can't keep starting the pump. The tank must be online, and nothing starts during pairing or an update.
 
 Up to 8 slots. With no sensor paired there is exactly one slot (`sensor_index` `0xFF`), holding the name and auto-off for running without a sensor. Otherwise every slot has a sensor, each sensor has a pin-1 slot, and a pin-2 slot only in two-tank mode. A new sensor adds one slot; the first one takes over the sensorless slot.
 

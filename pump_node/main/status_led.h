@@ -24,9 +24,16 @@ typedef enum {
 
 esp_err_t status_led_init(void);
 void status_led_set_mode(status_led_mode_t mode);
-void status_led_set_hold_progress(uint8_t percent); /* 0-100 */
-/** Red hold fill for factory-reset phase (vs blue BLE-pair hold). */
-void status_led_set_hold_danger(bool danger);
+typedef enum {
+    STATUS_LED_HOLD_BLUE = 0, /* filling toward start / phone pairing */
+    STATUS_LED_HOLD_GREEN,    /* held 1 s: release starts the pump */
+    STATUS_LED_HOLD_RED,      /* held 1 s but the pump can't start; factory-reset fill */
+} status_led_hold_color_t;
+
+/** Hold bloom: grow from empty to full over duration_ms, timed on the LED task. */
+void status_led_hold_fill(uint32_t duration_ms);
+/** Hold bloom colour; changes blend over about 150 ms. */
+void status_led_set_hold_color(status_led_hold_color_t color);
 void status_led_set_update_progress(uint8_t percent); /* 0-100 OTA bar */
 void status_led_set_brightness(uint8_t percent); /* 1-100 global master */
 uint8_t status_led_get_brightness(void);
