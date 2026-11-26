@@ -16,7 +16,7 @@ A local water-tank pump controller (no cloud control; the internet is only used 
 
 The pump can also join the home Wi-Fi (optional, set up from the app over BLE). Then the app controls it over TCP with the same bytes as BLE, and the pump checks for and installs its own firmware. BLE stays required for setup, phone pairing and the tank. The pump also raises **alerts** (tank full, auto-off, power cut, tank offline, battery low, sensor removed) that a phone shows even with the app closed, and it keeps its own **name**, so every phone shows the same one.
 
-Flow: the tank wakes on a float change or a 5-minute heartbeat, sends a LoRa STATUS packet with raw float pin levels, and sleeps. A pump pairs up to 4 tank sensors; each sensor's float mode says what its pins mean (full / almost-empty / second tank), giving up to 8 tanks. The pump fills one **selected** tank at a time (the user sets a valve or lever to match); only that tank's float can block a start or stop a fill. It drives the starter relays and serves state to the app over BLE. The app is the only UI besides the single pump button.
+Flow: the tank wakes on a float change or a heartbeat (every 5 minutes by default; the app's "Tank updates" sets it on the pump, which sends it to each tank in its LoRa ACK), sends a LoRa STATUS packet with raw float pin levels, and sleeps. A pump pairs up to 4 tank sensors; each sensor's float mode says what its pins mean (full / almost-empty / second tank), giving up to 8 tanks. The pump fills one **selected** tank at a time (the user sets a valve or lever to match); only that tank's float can block a start or stop a fill. It drives the starter relays and serves state to the app over BLE. The app is the only UI besides the single pump button.
 
 ## Docs map
 
@@ -47,7 +47,7 @@ Pump (`pump_node/main/`):
 | `relay_control.c`, `board.c` | Starter relays (none, two-button pulses, single-phase MCB: relay 1 held while running; starts blocked per reason: OTA, pairing, reset); button and LED wiring |
 | `lora_link.c` | Tank link: pairing, STATUS/ACK, UNPAIR (a tank that goes into pairing mode tells its old pump it left), per-sensor token and last-seen record |
 | `pump_tanks.c` | Paired sensors (up to 4, each with its float mode), tank slots (up to 8), the selected tank. Keeps the invariants in `pump_tanks.h` |
-| `pump_sched.c`, `pump_config.c`, `pump_pair.c` | Saved state in NVS: schedules, settings (including the pump's name and the auto-update switch), phone pairing |
+| `pump_sched.c`, `pump_config.c`, `pump_pair.c` | Saved state in NVS: schedules, settings (including the pump's name, the auto-update switch and the tank update interval), phone pairing |
 | `pump_clock.c`, `pump_rtc.c`, `pump_runlog.c` | Local time, DS3231, interrupted-fill detection |
 | `pump_ota.c` | Firmware update, from either transport or from the pump itself (owner = a session id; one lock, another session's writes get BUSY) |
 | `pump_api.c` | The app API, shared by both transports: one `pump_api_read` / `pump_api_write` per characteristic, sessions, sign-in. Pair stays in `gatt_svr.c` (BLE only) |
@@ -86,7 +86,7 @@ These values are duplicated by hand. There is no codegen. If you change one, cha
 | Contract | Pump (C) | Tank (C) | App (Dart) |
 | --- | --- | --- | --- |
 | BLE UUIDs, Cmd opcodes, OTA opcodes/status, payload lengths | `pump_node/main/tanklink_uuid.h` | `tank_node/main/tanklink_ble_uuid.h` | `tanklink_app/lib/ble/tanklink_uuids.dart` |
-| LoRa packet format | `components/tanklink_lora/include/tanklink_lora_proto.h` (shared) | same | — |
+| LoRa packet format, tank update interval range | `components/tanklink_lora/include/tanklink_lora_proto.h` (shared) | same | `tankUpdateMinSec` / `MaxSec` in `tanklink_uuids.dart` |
 | Sign-in answer, LoRa tag, tank OTA token | `components/tanklink_lora/tanklink_crypto.c` (shared) | same | `authResponse` in `tanklink_app/lib/ble/protocol.dart` (covered by `test/auth_test.dart`) |
 | Report body (`POST /v1/report`) | — | — | `tanklink_app/lib/diag/report_builder.dart` (`toJson`) ↔ `report_worker/src/index.js` |
 | BLE payload layouts | `pump_node/main/gatt_payloads.c` (reads) and the handlers in `gatt_svr.c` (writes) | `tank_node/main/tank_gatt.c` | `tanklink_app/lib/ble/protocol.dart` (covered by `test/protocol_test.dart`) |

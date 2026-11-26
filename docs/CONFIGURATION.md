@@ -66,7 +66,6 @@ Menu: **Pump Board**. The values below are the ones in `sdkconfig.defaults`.
 | `PUMP_LORA_FREQ_HZ` | `433000000` | **Must match the tank** |
 | `PUMP_TANK_PAIR_TIMEOUT_MS` | `60000` | LoRa tank-pair window opened from the app |
 | `PUMP_HW_REV` | `1` | Board revision, reported in Info and matched against firmware manifests. Bump when the board changes |
-| `PUMP_TANK_STALE_SEC` | `750` | Tank counts as out of range after this long with no packet. **Must match the app** (`tankStaleSec`) |
 
 Other `sdkconfig.defaults` settings: USB Serial/JTAG console, 4 MB flash, the custom `partitions_ota.csv` (two OTA slots), NimBLE with up to 5 connections and MTU 512, and signed OTA updates (`CONFIG_SECURE_SIGNED_*`, key `keys/firmware_signing_key.pem`; see [`firmware-build-setup.md`](firmware-build-setup.md#signing-key)).
 
@@ -89,7 +88,7 @@ Menu: **TankLink Tank Node**. The values below are the ones in `sdkconfig.defaul
 | `TANK_LORA_CS_GPIO` / `RST` / `DIO0` | `20` / `9` / `6` | |
 | `TANK_LORA_FREQ_HZ` | `433000000` | **Must match the pump** |
 | **Timing** | | |
-| `TANK_HEARTBEAT_SEC` | `300` | Deep-sleep wake interval when paired. Keep it well under the pump's `PUMP_TANK_STALE_SEC` (750, about 2.5×) |
+| `TANK_HEARTBEAT_SEC` | `300` | Deep-sleep wake interval when paired, until the pump sends its own (the app's **Tank updates**, carried in every ACK and saved as `beat` in `tank`). Also the unit of the crash backoff, whatever the app sets |
 | `TANK_TX_RETRIES` | `5` | Send attempts until the pump ACKs |
 | `TANK_ACK_TIMEOUT_MS` | `1500` | Wait per attempt for the pump's ACK (~410 ms on air at SF10) |
 | `TANK_BUTTON_HOLD_MS` | `3000` | Hold = LoRa pairing. Starts at 3 s, without waiting for release |
@@ -115,6 +114,7 @@ Stored on the pump in NVS namespace `pump`, key `cfg`. Defaults apply after a fi
 | **Starter type** | **none** | none, two-button, single-phase MCB | **Starter** |
 | Relay pulse | 1000 ms | 50 – 2000 ms (two-button only) | Starter |
 | Second float (per sensor) | off | off, almost-empty, two tanks | Tank sensors → a sensor. Stored with the sensor in `tl_tanks` |
+| Tank updates | 5 min | pump takes 5 s – 30 min; the app offers 1 – 30 min (debug builds 5 s – 10 min) | Tank sensors → Tank updates. `tank_beat` in `pump`, its own key. A sensor switches after its next update |
 
 > **The starter type defaults to "none".** In that mode the pump tracks on/off and the LED, but never touches the relays. A new or factory-reset pump needs **Starter → two-button** or **Starter → single-phase MCB** set in the app before it will actually run a motor.
 >
@@ -142,7 +142,7 @@ Other data the pump saves (all cleared by factory reset, which erases the whole 
 | `tl_bat` | Each sensor's daily battery low and high for 14 days (`b<N>`) |
 | `tl_run` | "Pump is running" record while a fill runs (refreshed each minute), and the interrupted-fill notice until it is dismissed |
 
-The tank saves its pairing, its LoRa link key (`link_key`) and its packet counter (`seq32`) in NVS namespace `tank`.
+The tank saves its pairing, its LoRa link key (`link_key`), its packet counter (`seq32`) and the update interval the pump asked for (`beat`) in NVS namespace `tank`.
 
 The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, and isn't cleared by factory reset.
 
@@ -153,8 +153,8 @@ The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, 
 | LoRa frequency | `PUMP_LORA_FREQ_HZ`, `TANK_LORA_FREQ_HZ` | 433 MHz |
 | LoRa radio settings | `sx1278_init` in `components/tanklink_lora/sx1278.c` (shared, so both nodes build the same) | SF10, 125 kHz, CR 4/5, +10 dBm (10 mW legal limit) |
 | Tank ACK wait vs LoRa air time | `TANK_ACK_TIMEOUT_MS` must cover the pump's ACK (~410 ms at SF10) plus its turnaround | 1500 ms |
-| Tank stale window | `PUMP_TANK_STALE_SEC`, app `TankLinkUuids.tankStaleSec` | 750 s |
-| Tank heartbeat vs stale window | `TANK_HEARTBEAT_SEC` must be well below `PUMP_TANK_STALE_SEC` | 300 s vs 750 s |
+| Tank update interval range | `TANKLINK_LORA_BEAT_MIN_SEC` / `MAX_SEC` (shared LoRa header), app `TankLinkUuids.tankUpdateMinSec` / `MaxSec` | 5 – 1800 s |
+| Tank offline window | `node_stale_sec` in `pump_node/main/lora_link.c` (2.5 intervals, at least 30 s). The pump sends it to the app in Tank and Sensors | 750 s at 5 min |
 | BLE UUIDs, opcodes, payloads | see [`AGENTS.md`](../AGENTS.md#shared-contracts--change-all-copies-together) | — |
 | BLE protocol major | `TANKLINK_PROTO_MAJOR` (pump, tank), app `TankLinkUuids.protoMajor` | 1 |
 | LoRa protocol major | `TANKLINK_LORA_VER` (shared header) | 5 |
@@ -189,11 +189,11 @@ NVS is 24 KB (6 pages of 4 KB, 126 entries of 32 bytes each). NVS skips a write 
 
 | What | When | Entries |
 | --- | --- | --- |
-| Tank packet: last seq (`seq<N>`) and last packet (`last<N>`) | each new packet: heartbeat every 5 min, plus float changes | 4 |
+| Tank packet: last seq (`seq<N>`) and last packet (`last<N>`, at most once a minute) | each new packet: one per tank update (5 min by default), plus float changes | 4 |
 | Running record (`tl_run`) | fill start, every minute while running, stop | 2 each |
 | Fill history (`tl_hist`) | each fill (the whole 200-fill ring, 2.4 KB) | ~80 |
 | Battery log, alert seq, settings, schedules | when they change | few |
 
-With one sensor that is about 1,300 entries a day, so each page is erased roughly 3 times a day; with four sensors about 10 times a day. At the 100,000 erase cycles the flash is rated for, that is over 25 years even with four sensors. The tank writes its packet counter once per packet into its own 24 KB NVS (a few hundred entries a day), which is lighter still. If the `DIAG: nvs entries` line shows `free` under ~150 for long, the partition is too full and wear rises; look at what grew.
+At the default 5-minute tank updates, with one sensor that is about 1,300 entries a day, so each page is erased roughly 3 times a day; with four sensors about 10 times a day. At the 100,000 erase cycles the flash is rated for, that is over 25 years even with four sensors. The tank writes its packet counter once per packet into its own 24 KB NVS (a few hundred entries a day), which is lighter still. A 5-second interval (debug app only) is about 17,000 seq writes a day per sensor, on both boards: fine for testing, not for a sensor left that way for years. If the `DIAG: nvs entries` line shows `free` under ~150 for long, the partition is too full and wear rises; look at what grew.
 
 Free flash in the OTA slot: about 18% (the image is about 1.5 MB of 1.75 MB). A change that adds more than ~200 KB needs a smaller feature set or a bigger partition table (which needs an `erase-flash` over USB).

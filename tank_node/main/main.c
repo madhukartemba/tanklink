@@ -262,7 +262,10 @@ static void enter_deep_sleep(bool after_trouble)
     if (!paired) {
         timer_sec = UNPAIRED_WAKE_SEC;
     } else {
-        timer_sec = (uint32_t)CONFIG_TANK_HEARTBEAT_SEC;
+        /* A backoff counts in default heartbeats, so a short interval
+         * set from the app can't make repeated faults wake it often. */
+        timer_sec = after_trouble ? (uint32_t)CONFIG_TANK_HEARTBEAT_SEC
+                                  : (uint32_t)tank_link_beat_sec();
         floats = floats_may_wake();
         if (!floats) {
             ESP_LOGW(TAG, "floats woke the tank %u times in 10 min: heartbeat only for now",

@@ -13,6 +13,7 @@
 #include "pump_control.h"
 #include "nvs.h"
 #include "pump_clock.h"
+#include "pump_config.h"
 #include "pump_buzz.h"
 #include "pump_tanks.h"
 #include "pump_battery_log.h"
@@ -64,6 +65,11 @@ esp_err_t lora_link_unpair_node(uint8_t node)
     return pump_tanks_node_remove(node, pump_control_is_on());
 }
 void lora_link_on_active_changed(void) {}
+void lora_link_on_beat_changed(void) {}
+uint16_t lora_link_tank_stale_sec(void)
+{
+    return 0;
+}
 bool lora_link_node_status(uint8_t node, lora_node_status_t *out)
 {
     (void)node;
@@ -167,9 +173,10 @@ const uint8_t *lora_link_tank_ble_token(void)
 
 #else
 
-#ifndef CONFIG_PUMP_TANK_STALE_SEC
-#define CONFIG_PUMP_TANK_STALE_SEC 750
-#endif
+/* A sensor is offline after this many update intervals without a packet
+ * (in halves: 5 = 2.5 intervals), and never sooner than the floor. */
+#define STALE_HALF_BEATS 5
+#define STALE_MIN_SEC 30
 
 /** Radio-side state of one paired sensor, indexed like pump_tanks nodes. */
 typedef struct {
@@ -190,6 +197,7 @@ typedef struct {
     uint8_t hw_rev;
     uint8_t fault;
     uint8_t last_saved_flags;
+    uint16_t beat_sec; /* the interval its last STATUS said it uses, 0 = unknown */
     int16_t rssi_dbm;
     int8_t snr_db;
     uint32_t last_seq;
@@ -327,12 +335,28 @@ static uint16_t node_age_sec(uint8_t node)
     return (uint16_t)age;
 }
 
+/*
+ * How long [node] may stay silent before it counts as offline. It follows
+ * the longer of the interval the sensor last reported and the one the pump
+ * asks for: right after a change the sensor still sleeps its old interval
+ * once (it learns the new one from the next ACK).
+ */
+static uint16_t node_stale_sec(uint8_t node)
+{
+    uint32_t beat = pump_config_tank_beat_sec();
+    if (node < PUMP_NODE_MAX && s_rt[node].beat_sec > beat) {
+        beat = s_rt[node].beat_sec;
+    }
+    const uint32_t stale = beat * STALE_HALF_BEATS / 2;
+    return (uint16_t)(stale < STALE_MIN_SEC ? STALE_MIN_SEC : stale);
+}
+
 static bool node_online(uint8_t node)
 {
     if (node >= PUMP_NODE_MAX || !pump_tanks_node_get(node, NULL) || !s_rt[node].heard) {
         return false;
     }
-    return node_age_sec(node) <= (uint16_t)CONFIG_PUMP_TANK_STALE_SEC;
+    return node_age_sec(node) <= node_stale_sec(node);
 }
 
 /** Radio state of the selected tank's sensor, or NULL. */
@@ -465,7 +489,7 @@ static void restore_last(uint8_t node)
 
 static void send_ack(const tanklink_lora_status_t *pkt, const uint8_t key[TL_KEY_LEN])
 {
-    uint8_t buf[TANKLINK_LORA_STATUS_LEN];
+    uint8_t buf[TANKLINK_LORA_STATUS_BEAT_LEN];
     tanklink_lora_status_t *ack = (tanklink_lora_status_t *)buf;
     memset(buf, 0, sizeof(buf));
     ack->magic0 = TANKLINK_LORA_MAGIC0;
@@ -474,7 +498,10 @@ static void send_ack(const tanklink_lora_status_t *pkt, const uint8_t key[TL_KEY
     ack->type = TANKLINK_LORA_TYPE_ACK;
     ack->seq = pkt->seq;
     memcpy(ack->tank_id, pkt->tank_id, TANKLINK_LORA_TANK_ID_LEN);
-    const size_t len = tl_lora_seal(key, buf, TANKLINK_LORA_STATUS_BODY_LEN);
+    /* The interval every sensor should use from its next sleep. */
+    tanklink_lora_put_beat(buf, pump_config_tank_beat_sec());
+    const size_t len =
+        tl_lora_seal(key, buf, TANKLINK_LORA_STATUS_BODY_LEN + TANKLINK_LORA_BEAT_LEN);
     esp_err_t err = sx1278_send(buf, len, 1500);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "ACK TX failed: %s", esp_err_to_name(err));
@@ -699,6 +726,11 @@ static void on_status_packet(const uint8_t *buf, size_t n, int16_t rssi, int8_t 
         return;
     }
     send_ack(pkt, rt->key);
+    const uint16_t beat = tanklink_lora_beat(buf, n);
+    if (beat != rt->beat_sec) {
+        ESP_LOGI(TAG, "sensor %d updates every %us", node, (unsigned)beat);
+        rt->beat_sec = beat;
+    }
     handle_packet((uint8_t)node, pkt, rssi, snr);
 }
 
@@ -714,8 +746,8 @@ static void poll_online(void)
         const bool online = node_online(n);
         if (rt->was_online && !online) {
             rt->was_online = false;
-            ESP_LOGW(TAG, "sensor %u went offline (no packet ≥%ds)", n,
-                     CONFIG_PUMP_TANK_STALE_SEC);
+            ESP_LOGW(TAG, "sensor %u went offline (no packet ≥%us)", n,
+                     (unsigned)node_stale_sec(n));
             if (n == active) {
                 pump_control_set_error(PUMP_ERR_TANK_OFFLINE);
                 pump_alert_raise(TL_ALERT_TANK_OFFLINE, pump_tanks_active());
@@ -926,6 +958,8 @@ bool lora_link_node_status(uint8_t node, lora_node_status_t *out)
     out->rssi_dbm = rt->heard ? rt->rssi_dbm : 0;
     out->snr_db = rt->heard ? rt->snr_db : 0;
     out->has_ble_token = rt->has_key;
+    out->beat_sec = rt->beat_sec;
+    out->stale_sec = node_stale_sec(node);
     memcpy(out->ble_token, rt->token, sizeof(out->ble_token));
     return true;
 }
@@ -979,6 +1013,18 @@ uint16_t lora_link_tank_age_sec(void)
 {
     const uint8_t node = pump_tanks_active_node();
     return node == PUMP_NODE_NONE ? 0xFFFF : node_age_sec(node);
+}
+uint16_t lora_link_tank_stale_sec(void)
+{
+    const uint8_t node = pump_tanks_active_node();
+    return node == PUMP_NODE_NONE ? node_stale_sec(PUMP_NODE_MAX) : node_stale_sec(node);
+}
+void lora_link_on_beat_changed(void)
+{
+    /* Offline windows follow the interval: a longer one may bring a sensor back. */
+    poll_online();
+    gatt_svr_notify_tank();
+    gatt_svr_notify_nodes();
 }
 int16_t lora_link_tank_rssi_dbm(void)
 {

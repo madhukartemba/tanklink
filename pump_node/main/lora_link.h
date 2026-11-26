@@ -33,6 +33,9 @@ esp_err_t lora_link_unpair_node(uint8_t node);
 /** Call after the selected tank changes: refreshes the tank-full LED and error. */
 void lora_link_on_active_changed(void);
 
+/** Call after the tank update interval (pump_config) changes. */
+void lora_link_on_beat_changed(void);
+
 typedef struct {
     bool heard;
     bool online;
@@ -46,6 +49,8 @@ typedef struct {
     bool has_ble_token;
     uint8_t ble_token[TANKLINK_LORA_BLE_TOKEN_LEN];
     uint8_t fault; /* tank LED code from the packet, 0 = none */
+    uint16_t beat_sec;  /* update interval the sensor last reported, 0 = unknown */
+    uint16_t stale_sec; /* offline after this long without a packet */
 } lora_node_status_t;
 
 /** Snapshot of one paired sensor. False if [node] is not paired. */
@@ -69,6 +74,8 @@ bool lora_link_tank_heard(void);
 bool lora_link_tank_online(void);
 /** Seconds since last RX; 0xFFFF if never heard. */
 uint16_t lora_link_tank_age_sec(void);
+/** Offline window of the selected tank's sensor (seconds). */
+uint16_t lora_link_tank_stale_sec(void);
 /** Last packet RSSI (dBm); 0 if never heard. */
 int16_t lora_link_tank_rssi_dbm(void);
 /** Last packet SNR (dB); 0 if never heard. */

@@ -12,6 +12,9 @@ extern "C" {
 typedef bool (*tank_link_should_cancel_fn)(void *ctx);
 
 esp_err_t tank_link_init(void);
+/** Seconds between updates while paired: what the pump last asked for in an
+ * ACK (saved), else CONFIG_TANK_HEARTBEAT_SEC. */
+uint16_t tank_link_beat_sec(void);
 void tank_link_deinit_radio(void);
 bool tank_link_radio_ok(void);
 /** 6-byte tank identity (WiFi STA MAC). */

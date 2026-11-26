@@ -102,12 +102,13 @@ menu "TankLink Tank Node"
             Skip deep sleep and loop heartbeats so USB-Serial/JTAG stays connected.
 
     config TANK_HEARTBEAT_SEC
-        int "Heartbeat / max sleep interval (seconds)"
-        range 5 86400
+        int "Default heartbeat interval (seconds)"
+        range 5 1800
         default 300
         help
-            Deep-sleep timer wake so the pump sees a periodic alive status.
-            In demo no-sleep mode this is the loop period instead.
+            Deep-sleep timer wake so the pump sees a periodic alive status,
+            until the pump sends its own interval in an ACK (the app's
+            "Tank updates" setting). Also the unit of the crash backoff.
 
     config TANK_BUTTON_HOLD_MS
         int "Button hold to restart pairing (ms)"

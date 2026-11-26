@@ -2,7 +2,7 @@
 
 Solar-charged tank sensor: FULL + almost-empty floats, button, LED, battery ADC, RA-02 LoRa. A 5 V solar supply on VIN charges the LiPo through the XIAO's charger ([WIRING.md](WIRING.md#power-and-solar)).
 
-See `main/tank_version.h`. Paired: deep sleep **5 min** heartbeat. Unpaired: button wake, plus a timer wake once a day. Short press (including a tap that is already released) → status + BLE OTA ~10 s. Hold 3 s → LoRa PAIR starts while the button is still held. Holding 3 s during the BLE window also starts pairing.
+See `main/tank_version.h`. Paired: deep sleep heartbeat, **5 min** by default; the app sets it on the pump (Tank sensors → Tank updates) and the tank takes it from the next ACK. Unpaired: button wake, plus a timer wake once a day. Short press (including a tap that is already released) → status + BLE OTA ~10 s. Hold 3 s → LoRa PAIR starts while the button is still held. Holding 3 s during the BLE window also starts pairing.
 
 **Wiring:** [WIRING.md](WIRING.md) · [docs/PINMAPS.md](../docs/PINMAPS.md)
 
@@ -13,8 +13,8 @@ See `main/tank_version.h`. Paired: deep sleep **5 min** heartbeat. Unpaired: b
 - **The button always works, a pairing hold included.** The tank never goes to sleep while the button is down: a press that starts during anything else (an error blink, a send, the boot light) is handled next, and an error blink stops the moment the button goes down. A press that starts in the last moments before sleep wakes the tank when it is released and still counts: a short press as a press, 3 s or more as a pairing hold.
 - **Button stuck** (down 20 s without a break): it is not a gesture. The tank sleeps, wakes the moment the button is let go, and arms it again. While it stays down, a float or timer wake doesn't read it as a press, so it can't start pairing by itself.
 - **Unpaired, or the saved pairing unreadable:** button wake plus a daily timer wake.
-- **A float that keeps flapping:** after 12 float wakes in 10 minutes, floats stop waking the tank until that window has passed; the 5-minute heartbeat still reports them.
-- **Crash, hang or brownout:** the next start sleeps one heartbeat with the radio off, then tries again. Each one in a row doubles that sleep (up to 16 heartbeats, 80 minutes), so a fault that repeats can't keep it awake. A normal wake clears it. The count lives in RTC memory, so it survives deep sleep and restarts.
+- **A float that keeps flapping:** after 12 float wakes in 10 minutes, floats stop waking the tank until that window has passed; the heartbeat still reports them.
+- **Crash, hang or brownout:** the next start sleeps one default heartbeat (5 min, whatever the app sets) with the radio off, then tries again. Each one in a row doubles that sleep (up to 16 heartbeats, 80 minutes), so a fault that repeats can't keep it awake. A normal wake clears it. The count lives in RTC memory, so it survives deep sleep and restarts.
 - **A hang:** a wake still running after 10 minutes restarts (the longest real wake, an update, takes about 3), and counts as trouble above.
 - **Light:** a soft pulse every time the pump answers (heartbeats too). A heartbeat or float change the pump didn't answer doesn't blink its error code (that kept the tank awake ~8 s); codes show after a button press.
 

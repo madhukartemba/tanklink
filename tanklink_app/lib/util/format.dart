@@ -129,3 +129,10 @@ String formatWait(int minutes) {
   }
   return '${(minutes / 1440).round()} days';
 }
+
+/// A tank update interval: "5 s", "1 min", "30 min".
+String formatUpdateInterval(int seconds) {
+  if (seconds < 60) return '$seconds s';
+  if (seconds % 60 != 0) return '${seconds ~/ 60} min ${seconds % 60} s';
+  return '${seconds ~/ 60} min';
+}

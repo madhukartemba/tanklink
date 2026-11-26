@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "tanklink_crypto.h"
@@ -66,6 +67,36 @@ typedef struct __attribute__((packed)) {
 #define TANKLINK_LORA_STATUS_LEN (TANKLINK_LORA_STATUS_BODY_LEN + TL_LORA_TAG_LEN)
 #define TANKLINK_LORA_PAIR_BODY_LEN (TANKLINK_LORA_STATUS_BODY_LEN + TANKLINK_LORA_KEY_LEN)
 #define TANKLINK_LORA_PAIR_LEN (TANKLINK_LORA_PAIR_BODY_LEN + TL_LORA_TAG_LEN)
+
+/*
+ * Update interval, appended after the status body (before the tag) in STATUS
+ * and ACK: u16 seconds, little-endian. In STATUS it is the interval the tank
+ * sleeps between updates now; in an ACK (to STATUS or PAIR) it is the
+ * interval the pump wants, which the tank uses from the sleep that follows.
+ * The pump sets it for all its sensors (app: "Tank updates").
+ */
+#define TANKLINK_LORA_BEAT_LEN 2
+#define TANKLINK_LORA_BEAT_MIN_SEC 5
+#define TANKLINK_LORA_BEAT_MAX_SEC 1800
+#define TANKLINK_LORA_BEAT_DEFAULT_SEC 300
+#define TANKLINK_LORA_STATUS_BEAT_LEN (TANKLINK_LORA_STATUS_LEN + TANKLINK_LORA_BEAT_LEN)
+
+/** The interval in a STATUS or ACK of [len] bytes (tag included), or 0 if it has none. */
+static inline uint16_t tanklink_lora_beat(const uint8_t *buf, size_t len)
+{
+    if (len < TANKLINK_LORA_STATUS_BEAT_LEN) {
+        return 0;
+    }
+    const uint8_t *b = buf + TANKLINK_LORA_STATUS_BODY_LEN;
+    return (uint16_t)(b[0] | (b[1] << 8));
+}
+
+static inline void tanklink_lora_put_beat(uint8_t *buf, uint16_t sec)
+{
+    uint8_t *b = buf + TANKLINK_LORA_STATUS_BODY_LEN;
+    b[0] = (uint8_t)(sec & 0xff);
+    b[1] = (uint8_t)(sec >> 8);
+}
 
 #ifdef __cplusplus
 }

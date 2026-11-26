@@ -94,6 +94,9 @@ class PumpSession extends ChangeNotifier {
   bool tankBound = false;
   bool tankPairing = false;
   bool tankOnline = false;
+
+  /// The selected sensor counts as offline after this long without a packet.
+  int tankStaleSec = 0;
   String tankIdHex = '';
   String tankFw = '';
   Uint8List? tankBleToken;
@@ -188,6 +191,9 @@ class PumpSession extends ChangeNotifier {
   /// The pump installs its own updates at night.
   bool autoUpdate = false;
 
+  /// Seconds between tank sensor updates, for every sensor of this pump.
+  int tankUpdateSec = TankLinkUuids.tankUpdateDefaultSec;
+
   BluetoothDevice? _device;
   PumpChr? _info;
   BluetoothCharacteristic? _pair;
@@ -278,7 +284,7 @@ class PumpSession extends ChangeNotifier {
 
   bool sensorOnline(TankSensor sensor) {
     final age = sensorAgeSec(sensor);
-    return sensor.online && age != null && age <= TankLinkUuids.tankStaleSec;
+    return sensor.online && age != null && age <= sensor.staleSec;
   }
 
   String sensorAgeLabel(TankSensor sensor) => ageLabel(sensorAgeSec(sensor));
@@ -1268,6 +1274,7 @@ class PumpSession extends ChangeNotifier {
     relayPulseMs = s.relayPulseMs;
     usageSettings = s.usage;
     autoUpdate = s.autoUpdate;
+    tankUpdateSec = s.tankUpdateSec;
     // The pump's name is the one every phone shows: take it when it differs.
     final cur = selected;
     if (s.name.isNotEmpty && cur != null && cur.name != s.name) {
@@ -1307,8 +1314,25 @@ class PumpSession extends ChangeNotifier {
         relayPulseMs: next.relayPulseMs,
         usage: usageSettings,
         autoUpdate: next.autoUpdate,
+        tankUpdateSec: tankUpdateSec,
       ),
     );
+    notifyListeners();
+  }
+
+  /// How often every tank sensor sends an update. The pump notifies its
+  /// settings back; each sensor switches after its next update.
+  Future<void> setTankUpdateSec(int sec) async {
+    final chr = _cmd;
+    if (chr == null || !authed) {
+      throw StateError('Connect to the pump first');
+    }
+    await chr.write(
+      PumpSettings.encodeTankUpdateSec(sec),
+      withoutResponse: false,
+    );
+    tankUpdateSec = sec;
+    AppLog.i('pump', 'Tank update interval set to ${sec}s');
     notifyListeners();
   }
 
@@ -1524,6 +1548,7 @@ class PumpSession extends ChangeNotifier {
     tankFlags = t.flags;
     tankBatteryPct = t.batteryPct;
     tankOnline = t.online;
+    tankStaleSec = t.staleSec;
     final age = t.ageSec;
     _tankLastHeardAt = age == null
         ? null
@@ -1547,7 +1572,7 @@ class PumpSession extends ChangeNotifier {
     } else {
       // Keep online flag honest as wall-clock age advances between notifies.
       final age = tankAgeSec;
-      if (age != null && age > TankLinkUuids.tankStaleSec) {
+      if (age != null && age > tankStaleSec) {
         tankOnline = false;
       }
     }
@@ -1634,7 +1659,7 @@ class PumpSession extends ChangeNotifier {
         return;
       }
       final age = tankAgeSec;
-      if (age != null && age > TankLinkUuids.tankStaleSec && tankOnline) {
+      if (age != null && age > tankStaleSec && tankOnline) {
         tankOnline = false;
       }
       notifyListeners();

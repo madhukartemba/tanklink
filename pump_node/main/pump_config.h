@@ -58,6 +58,11 @@ uint8_t pump_config_starter_type(void);
 bool pump_config_auto_update(void);
 uint16_t pump_config_relay_pulse_ms(void);
 
+/** Seconds between tank sensor updates, for every sensor (sent in each LoRa
+ * ACK). TANKLINK_LORA_BEAT_MIN_SEC-MAX_SEC, default 300. Saved under its own key. */
+uint16_t pump_config_tank_beat_sec(void);
+esp_err_t pump_config_set_tank_beat_sec(uint16_t sec);
+
 #ifdef __cplusplus
 }
 #endif

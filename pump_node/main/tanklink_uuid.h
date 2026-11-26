@@ -83,7 +83,7 @@ extern "C" {
  * append), Pair, Auth, OtaCtrl, OtaData and OtaStatus.
  */
 #define TANKLINK_PROTO_MAJOR 1
-#define TANKLINK_PROTO_MINOR 10 /* 10: Buzzer and AutoFill characteristics */
+#define TANKLINK_PROTO_MINOR 11 /* 11: tank update interval (Cmd 0xAF, Settings, Tank, Sensors) */
 
 /* Board revision of this build (Kconfig PUMP_HW_REV). Firmware manifests list
  * the revisions a binary fits, and the app only offers matching updates. */
@@ -161,6 +161,10 @@ extern "C" {
 /* Give the pump its name (minor 8): the UTF-8 bytes, 1 to 24, no control
  * characters. Shown by every phone that has the pump. */
 #define TANKLINK_CMD_RENAME_PUMP 0xAE
+/* How often every tank sensor sends an update (minor 11): seconds(u16),
+ * TANKLINK_LORA_BEAT_MIN_SEC-MAX_SEC (5-1800). A sensor takes it from the
+ * pump's next ACK, so the change shows after its next update. */
+#define TANKLINK_CMD_TANK_UPDATE_SEC 0xAF
 #define TANKLINK_CMD_UNPAIR    0xF0
 #define TANKLINK_CMD_FACTORY_RESET 0xF1
 /* Open / close the phone pairing window from a signed-in phone (minor 2).
@@ -178,7 +182,9 @@ extern "C" {
  * rssi_dbm_i8(1) snr_db_i8(1) last_error(1) ble_token(16), then the
  * interrupted fill: reason(1) started(u32) last_seen(u32) back(u32)
  * ran_sec(u32), then tank_hw_rev(1), then tank_fault(1), then
- * pump_flags(1), then boot_id(u32) = 59 bytes. pump_flags bit 0: the pump's
+ * pump_flags(1), then boot_id(u32), then stale_sec(u16) = 61 bytes.
+ * stale_sec (minor 11): the selected sensor counts as offline after this long
+ * without a packet; it follows the tank update interval. pump_flags bit 0: the pump's
  * clock lost power since it started (its coin cell is likely flat).
  * boot_id: random, new every time the pump starts, so the app can tell a
  * restart (a dismissed clock warning comes back after one). Times are
@@ -191,7 +197,8 @@ extern "C" {
 #define TANKLINK_TANK_STATUS_PUMP_FLAGS_AT 54
 #define TANKLINK_TANK_STATUS_CLOCK_LOST 0x01
 #define TANKLINK_TANK_STATUS_BOOT_ID_AT 55
-#define TANKLINK_TANK_STATUS_LEN 59
+#define TANKLINK_TANK_STATUS_STALE_AT 59
+#define TANKLINK_TANK_STATUS_LEN 61
 
 /* Schedule char write opcodes (authenticated). */
 #define TANKLINK_SCHED_OP_SET_CLOCK 0x01
@@ -250,8 +257,12 @@ extern "C" {
 
 /* Sensors: count(1) max(1), then count x entry:
  * index(1) id(6) mode(1) raw_flags(1) battery(1) online(1) age_sec(u16)
- * rssi(i8) snr(i8) fw(3) hw_rev(1) ble_token(16). */
+ * rssi(i8) snr(i8) fw(3) hw_rev(1) ble_token(16). Then count x fault(1),
+ * then (minor 11) count x interval(u16) stale(u16): the update interval the
+ * sensor last reported (0 = not yet) and how long it may stay silent before
+ * it counts as offline. */
 #define TANKLINK_NODES_ENTRY_LEN 35
+#define TANKLINK_NODES_BEAT_LEN 4
 
 /* History (read + write + notify): total(1) start(1) count(1), then count x
  * fill, newest first, starting at fill [start]. Write start(1) to choose the

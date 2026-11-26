@@ -21,6 +21,8 @@
 #define TAG "TANK_LINK"
 #define NVS_NS "tank"
 #define NVS_KEY_SEQ "seq32"
+/* The update interval the pump last asked for (u16 seconds). */
+#define NVS_KEY_BEAT "beat"
 /* The notice to the old pump is a courtesy: a couple of tries, then move on. */
 #define UNPAIR_TRIES 2
 
@@ -28,6 +30,37 @@ static uint32_t s_seq;
 static bool s_radio_ok;
 static uint8_t s_tank_id[TANKLINK_LORA_TANK_ID_LEN];
 static uint8_t s_fault;
+static uint16_t s_beat_sec = CONFIG_TANK_HEARTBEAT_SEC;
+/* The interval in the ACK the last send got, 0 = none. */
+static uint16_t s_ack_beat;
+
+static bool beat_valid(uint16_t sec)
+{
+    return sec >= TANKLINK_LORA_BEAT_MIN_SEC && sec <= TANKLINK_LORA_BEAT_MAX_SEC;
+}
+
+uint16_t tank_link_beat_sec(void)
+{
+    return s_beat_sec;
+}
+
+/* After an ACK: take the interval the pump asked for (saved only when it changed). */
+static void apply_ack_beat(void)
+{
+    const uint16_t sec = s_ack_beat;
+    if (!beat_valid(sec) || sec == s_beat_sec) {
+        return;
+    }
+    ESP_LOGI(TAG, "update interval %us -> %us (set on the pump)", (unsigned)s_beat_sec,
+             (unsigned)sec);
+    s_beat_sec = sec;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u16(h, NVS_KEY_BEAT, sec);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
 
 uint8_t tank_link_fault(void)
 {
@@ -58,6 +91,10 @@ esp_err_t tank_link_init(void)
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
         nvs_get_u32(h, NVS_KEY_SEQ, &s_seq);
+        uint16_t beat = 0;
+        if (nvs_get_u16(h, NVS_KEY_BEAT, &beat) == ESP_OK && beat_valid(beat)) {
+            s_beat_sec = beat;
+        }
         nvs_close(h);
     }
 
@@ -133,9 +170,12 @@ static bool packet_is_ack_for(const uint8_t *buf, size_t len, uint32_t seq,
     }
     /* Several tanks can share a pump, and seq is per tank: the ACK must be ours,
      * and only the pump that holds our key can tag it. */
-    return ack->seq == seq &&
-           memcmp(ack->tank_id, s_tank_id, TANKLINK_LORA_TANK_ID_LEN) == 0 &&
-           tl_lora_verify(key, buf, len);
+    if (ack->seq != seq || memcmp(ack->tank_id, s_tank_id, TANKLINK_LORA_TANK_ID_LEN) != 0 ||
+        !tl_lora_verify(key, buf, len)) {
+        return false;
+    }
+    s_ack_beat = tanklink_lora_beat(buf, len);
+    return true;
 }
 
 static bool wait_ack(uint32_t seq, const uint8_t key[TL_KEY_LEN], uint32_t timeout_ms,
@@ -204,6 +244,7 @@ static esp_err_t send_with_ack(const uint8_t *payload, size_t len, uint32_t seq,
 
     const uint32_t ack_ms = CONFIG_TANK_ACK_TIMEOUT_MS;
     const tanklink_lora_status_t *hdr = (const tanklink_lora_status_t *)payload;
+    s_ack_beat = 0;
 
     for (int i = 0; i < attempts; i++) {
         if (should_cancel && should_cancel(ctx)) {
@@ -233,12 +274,17 @@ esp_err_t tank_link_send_status(const tank_inputs_t *in, uint8_t battery_pct,
                                 bool button_event,
                                 tank_link_should_cancel_fn should_cancel, void *ctx)
 {
-    uint8_t buf[TANKLINK_LORA_STATUS_LEN];
+    uint8_t buf[TANKLINK_LORA_STATUS_BEAT_LEN];
     tanklink_lora_status_t *pkt = (tanklink_lora_status_t *)buf;
     fill_status(pkt, in, battery_pct, button_event, false);
+    tanklink_lora_put_beat(buf, s_beat_sec);
     const uint8_t *key = tank_link_key();
-    const size_t len = tl_lora_seal(key, buf, TANKLINK_LORA_STATUS_BODY_LEN);
+    const size_t len =
+        tl_lora_seal(key, buf, TANKLINK_LORA_STATUS_BODY_LEN + TANKLINK_LORA_BEAT_LEN);
     esp_err_t err = send_with_ack(buf, len, pkt->seq, key, CONFIG_TANK_TX_RETRIES, should_cancel, ctx);
+    if (err == ESP_OK) {
+        apply_ack_beat();
+    }
     if (err == ESP_ERR_INVALID_STATE && should_cancel) {
         return err;
     }
@@ -270,6 +316,9 @@ esp_err_t tank_link_send_pair_request(uint8_t battery_pct,
     esp_err_t err = send_with_ack(buf, len, pkt->seq, key, CONFIG_TANK_TX_RETRIES, should_cancel, ctx);
     if (err == ESP_OK) {
         err = tank_link_key_commit(key);
+    }
+    if (err == ESP_OK) {
+        apply_ack_beat();
     }
     memset(key, 0, sizeof(key));
     return err;

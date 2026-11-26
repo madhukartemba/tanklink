@@ -209,6 +209,7 @@ class PumpSettings {
     this.usage = const UsageSettings(),
     this.autoUpdate = false,
     this.name = '',
+    this.tankUpdateSec = TankLinkUuids.tankUpdateDefaultSec,
   });
 
   final int ledBrightness;
@@ -229,10 +230,15 @@ class PumpSettings {
   /// someone names it.
   final String name;
 
-  static const readLen = 48;
+  /// Seconds between tank sensor updates (read only here; written with
+  /// [encodeTankUpdateSec]).
+  final int tankUpdateSec;
+
+  static const readLen = 50;
 
   /// run(4) serial(5) led starter pulse_ms(2), then flow_dlpm(2) watts(2)
-  /// price_centi(2) currency(4) auto_update(1) name(24, UTF-8, NUL-padded).
+  /// price_centi(2) currency(4) auto_update(1) name(24, UTF-8, NUL-padded),
+  /// then tank_update_sec(2).
   static PumpSettings? parse(List<int> b) {
     if (b.length < readLen) return null;
     final flow = _u16(b, 13);
@@ -248,6 +254,7 @@ class PumpSettings {
       ),
       autoUpdate: b[23] != 0,
       name: _nulTerminated(b.sublist(24, 48)),
+      tankUpdateSec: _u16(b, 48),
       runSeconds: _u32(b, 0),
       ledBrightness: b[9].clamp(1, 100),
       starterType: b[10],
@@ -256,6 +263,13 @@ class PumpSettings {
           .toInt(),
     );
   }
+
+  /// Cmd 0xAF: how often every tank sensor sends an update.
+  static List<int> encodeTankUpdateSec(int sec) => [
+    TankLinkUuids.cmdTankUpdateSec,
+    sec & 0xff,
+    (sec >> 8) & 0xff,
+  ];
 
   /// led starter pulse_ms(2) auto_update(1).
   List<int> encode() => [
@@ -504,6 +518,7 @@ class TankStatus {
     required this.tankFault,
     required this.clockLostPower,
     required this.pumpBootId,
+    required this.staleSec,
   });
 
   final bool bound;
@@ -537,6 +552,10 @@ class TankStatus {
   /// Random, new every time the pump starts: tells the app it restarted.
   final int pumpBootId;
 
+  /// The selected sensor counts as offline after this many seconds without
+  /// a packet.
+  final int staleSec;
+
   static TankStatus? parse(List<int> b) {
     if (b.length < TankLinkUuids.tankStatusLen) return null;
     final fw = '${b[8]}.${b[9]}.${b[10]}';
@@ -564,6 +583,7 @@ class TankStatus {
               TankLinkUuids.tankStatusClockLost !=
           0,
       pumpBootId: _u32(b, TankLinkUuids.tankStatusBootIdAt),
+      staleSec: _u16(b, TankLinkUuids.tankStatusStaleAt),
     );
   }
 
@@ -636,6 +656,8 @@ class TankSensor {
     required this.hwRev,
     required this.bleToken,
     required this.fault,
+    required this.updateSec,
+    required this.staleSec,
   });
 
   /// Index the pump uses for it (stable while it stays paired).
@@ -665,19 +687,26 @@ class TankSensor {
   /// This sensor's own light code, 0 when it reported none.
   final int fault;
 
+  /// The update interval the sensor last reported, null until it has.
+  final int? updateSec;
+
+  /// It counts as offline after this many seconds without a packet.
+  final int staleSec;
+
   /// Last four hex digits, as printed on the board's BLE name.
   String get shortId => serialFromDeviceId(idHex);
 
   bool get otaReady => bleToken != null;
 
   /// count max, then count × [TankLinkUuids.sensorEntryLen] entries, then one
-  /// fault byte per entry.
+  /// fault byte per entry, then interval(u16) stale(u16) per entry.
   static List<TankSensor>? parseList(List<int> b) {
     if (b.length < 2) return null;
     const len = TankLinkUuids.sensorEntryLen;
     final count = b[0];
     final faultsAt = 2 + count * len;
-    if (b.length < faultsAt + count) return null;
+    final beatsAt = faultsAt + count;
+    if (b.length < beatsAt + count * 4) return null;
     final out = <TankSensor>[];
     for (var i = 0; i < count; i++) {
       final o = 2 + i * len;
@@ -699,6 +728,10 @@ class TankSensor {
           hwRev: b[o + 18],
           bleToken: token.any((v) => v != 0) ? token : null,
           fault: b[faultsAt + i],
+          updateSec: _u16(b, beatsAt + i * 4) == 0
+              ? null
+              : _u16(b, beatsAt + i * 4),
+          staleSec: _u16(b, beatsAt + i * 4 + 2),
         ),
       );
     }

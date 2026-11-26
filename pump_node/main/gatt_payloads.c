@@ -63,7 +63,8 @@ size_t gatt_payload_info(uint8_t out[TANKLINK_INFO_LEN], bool authed)
 size_t gatt_payload_settings(uint8_t out[GATT_SETTINGS_READ_LEN])
 {
     /* run(4) serial(5) led starter pulse_ms(2), then usage: flow_dlpm(2)
-     * watts(2) price_centi(2) currency(4), then auto_update(1) name(24) */
+     * watts(2) price_centi(2) currency(4), then auto_update(1) name(24),
+     * then tank_update_sec(2) */
     put_u32(&out[0], pump_control_run_seconds());
     memcpy(&out[4], pump_pair_serial(), TANKLINK_SERIAL_LEN + 1);
     out[9] = pump_config_led_brightness();
@@ -77,6 +78,7 @@ size_t gatt_payload_settings(uint8_t out[GATT_SETTINGS_READ_LEN])
     out[23] = pump_config_auto_update() ? 1 : 0;
     memset(&out[24], 0, PUMP_NAME_MAX);
     strncpy((char *)&out[24], pump_config_name(), PUMP_NAME_MAX);
+    put_u16(&out[24 + PUMP_NAME_MAX], pump_config_tank_beat_sec());
     return GATT_SETTINGS_READ_LEN;
 }
 
@@ -123,6 +125,7 @@ size_t gatt_payload_tank_status(uint8_t out[TANKLINK_TANK_STATUS_LEN])
     out[TANKLINK_TANK_STATUS_PUMP_FLAGS_AT] =
         pump_clock_lost_power_since_boot() ? TANKLINK_TANK_STATUS_CLOCK_LOST : 0;
     put_u32(&out[TANKLINK_TANK_STATUS_BOOT_ID_AT], boot_id());
+    put_u16(&out[TANKLINK_TANK_STATUS_STALE_AT], lora_link_tank_stale_sec());
     return TANKLINK_TANK_STATUS_LEN;
 }
 
@@ -187,6 +190,7 @@ size_t gatt_payload_nodes(uint8_t out[GATT_NODES_MAX_LEN])
     size_t o = 2;
     uint8_t count = 0;
     uint8_t faults[PUMP_NODE_MAX];
+    uint16_t beats[PUMP_NODE_MAX][2];
     for (uint8_t n = 0; n < PUMP_NODE_MAX; n++) {
         pump_tank_node_t node;
         lora_node_status_t st;
@@ -211,6 +215,8 @@ size_t gatt_payload_nodes(uint8_t out[GATT_NODES_MAX_LEN])
             memset(&e[19], 0, TANKLINK_TOKEN_LEN);
         }
         faults[count] = st.fault;
+        beats[count][0] = st.beat_sec;
+        beats[count][1] = st.stale_sec;
         o += TANKLINK_NODES_ENTRY_LEN;
         count++;
     }
@@ -218,6 +224,10 @@ size_t gatt_payload_nodes(uint8_t out[GATT_NODES_MAX_LEN])
     if (count > 0) {
         memcpy(&out[o], faults, count);
         o += count;
+    }
+    for (uint8_t i = 0; i < count; i++, o += TANKLINK_NODES_BEAT_LEN) {
+        put_u16(&out[o], beats[i][0]);
+        put_u16(&out[o + 2], beats[i][1]);
     }
     return o;
 }

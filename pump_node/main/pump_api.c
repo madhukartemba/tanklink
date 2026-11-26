@@ -244,6 +244,17 @@ static pump_api_err_t run_command(pump_api_session_t *s, const uint8_t *body, si
         gatt_svr_notify_settings();
         return PUMP_API_OK;
 
+    case TANKLINK_CMD_TANK_UPDATE_SEC:
+        if (len < 3) {
+            return PUMP_API_ERR_LEN;
+        }
+        if (pump_config_set_tank_beat_sec((uint16_t)(body[1] | (body[2] << 8))) != ESP_OK) {
+            return PUMP_API_ERR_REFUSED; /* outside 5 s to 30 min */
+        }
+        gatt_svr_notify_settings();
+        lora_link_on_beat_changed();
+        return PUMP_API_OK;
+
     case TANKLINK_CMD_TEST_ALERT:
         pump_alert_raise(TL_ALERT_TEST, 0xFF);
         return PUMP_API_OK;

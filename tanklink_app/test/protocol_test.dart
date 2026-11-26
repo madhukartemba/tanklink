@@ -114,8 +114,10 @@ void main() {
         1, // install updates by itself at night (minor 5)
         ...'Kitchen'.codeUnits,
         ...List.filled(17, 0), // the pump's name (minor 8)
+        ...[0x05, 0x00], // tank updates every 5 s (minor 11)
       ];
       final s = PumpSettings.parse(read)!;
+      expect(s.tankUpdateSec, 5);
       expect(s.autoUpdate, isTrue);
       expect(s.name, 'Kitchen');
       expect(s.usage.flowLpm, 38);
@@ -142,7 +144,15 @@ void main() {
 
     test('returns null when too short', () {
       expect(PumpSettings.parse(List.filled(10, 0)), isNull);
-      expect(PumpSettings.parse(List.filled(47, 0)), isNull);
+      expect(PumpSettings.parse(List.filled(49, 0)), isNull);
+    });
+
+    test('Cmd 0xAF sets the tank update interval (u16 seconds)', () {
+      expect(PumpSettings.encodeTankUpdateSec(1800), [
+        TankLinkUuids.cmdTankUpdateSec,
+        0x08,
+        0x07,
+      ]);
     });
 
     test('unset flow and price read as null', () {
@@ -152,7 +162,9 @@ void main() {
         0, 0, 0, 0,
         0, // auto_update
         ...List.filled(24, 0), // no name yet
+        0x2c, 0x01, // 300 s
       ])!;
+      expect(s.tankUpdateSec, 300);
       expect(s.usage.flowLpm, isNull);
       expect(s.usage.pricePerKwh, isNull);
       expect(s.usage.pumpWatts, 750);
@@ -227,6 +239,7 @@ void main() {
       b.setRange(48, 52, u32(600));
       b[TankLinkUuids.tankStatusHwRevAt] = 1;
       b[TankLinkUuids.tankStatusFaultAt] = TankLinkUuids.tankErrBattery;
+      b.setRange(59, 61, [0xee, 0x02]); // offline after 750 s
       return b;
     }
 
@@ -246,6 +259,8 @@ void main() {
       expect(t.hwRev, 1);
       expect(t.tankFault, TankLinkUuids.tankErrBattery);
       expect(t.clockLostPower, isFalse);
+      expect(t.staleSec, 750);
+      expect(TankStatus.parse(status().sublist(0, 60)), isNull);
     });
 
     test('reads the clock-lost-power flag (byte 54) and needs it', () {
@@ -368,7 +383,13 @@ void main() {
         ...entry(index: 0, id: idA),
         ...entry(index: 3, id: idB, age: 0xffff),
         0, TankLinkUuids.tankErrBattery, // fault per entry
+        0x05, 0x00, 0x1e, 0x00, // A: updates every 5 s, offline after 30 s
+        0x00, 0x00, 0xee, 0x02, // B: not reported yet, 750 s
       ])!;
+      expect(list.first.updateSec, 5);
+      expect(list.first.staleSec, 30);
+      expect(list.last.updateSec, isNull);
+      expect(list.last.staleSec, 750);
       expect(list, hasLength(2));
       final a = list.first;
       expect(a.index, 0);
@@ -388,6 +409,18 @@ void main() {
       expect(list.last.ageSec, isNull);
       expect(a.fault, 0);
       expect(list.last.fault, TankLinkUuids.tankErrBattery);
+    });
+
+    test('returns null without the interval bytes', () {
+      expect(
+        TankSensor.parseList([
+          1,
+          TankLinkUuids.sensorMax,
+          ...entry(index: 0, id: idA),
+          0,
+        ]),
+        isNull,
+      );
     });
 
     test('returns null without the fault bytes', () {

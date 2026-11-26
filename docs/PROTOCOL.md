@@ -59,6 +59,8 @@ All UUIDs are `7f1a00XX-ac01-4c8c-9b2e-74616e6b6c6e`.
 | 14 | Buzzer (minor 10) | ✓ | |
 | 15 | AutoFill (minor 10) | ✓ | |
 
+Minor 11: tank update interval (Cmd `0xAF`, appended to Settings, Tank and Sensors).
+
 Advertised names: pump `TankLink-XXXX` (last 4 hex of MAC), tank `TL-Tank-XXXX`. The tank also puts its `tank_id` in manufacturer data under company ID `0xFFFF`.
 
 **Pump advertising** (minor 2): flags, the complete name, and manufacturer data under company ID `0xFFFF` with one **state byte**: bit 0 = a phone can add it now (pairing window open), bit 1 = paired. The service UUID is in the scan response. The pump re-advertises whenever the state changes, so the app's Add pump screen shows *Ready to add* or *Not in pairing mode* without connecting, and waits for the window to open. Earlier firmware sends no manufacturer data.
@@ -117,6 +119,7 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xAC` | Forget the "updated automatically" notice | none |
 | `0xAD` | Raise a test alert (see Alerts) | none |
 | `0xAE` | Name the pump (minor 8). Refused if empty, longer than 24 bytes, not valid UTF-8 or containing control characters; leading and trailing spaces are dropped | `name` (UTF-8, 1–24 bytes) |
+| `0xAF` | Set how often every tank sensor sends an update (minor 11). Refused outside 5–1800 s. The app offers 1–30 min (debug builds: 5 s–10 min). Each sensor switches after its next update (it learns the value from the pump's ACK, see LoRa) | `seconds(u16)` |
 | `0xB1` | Play a buzzer sound now, whatever the buzzer settings (the app's preview). Refused for an unknown sound | `sound(1)` (see Buzzer) |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |
@@ -132,9 +135,11 @@ Maximum write length is 18 bytes.
 
 Minor 5 appends `auto_update(1)` to both the read and the write: 1 = the pump installs an update it found by itself, but only when it is unlikely to get in the way: the pump has been off for 10 minutes, it has been up for 10 minutes, no fill schedule is due in the next 60 minutes (with schedules set, the clock must be known), and a tank that fills by itself is not low. A failed try waits 6 hours. On by default (from pump 0.28.1); it does nothing until the pump has Wi-Fi.
 
-Read, 48 bytes (read and notify; the pump notifies whenever a setting or its name changes, to signed-in phones):
+Read, 50 bytes (read and notify; the pump notifies whenever a setting or its name changes, to signed-in phones):
 
-`run_secs(u32) serial(4 chars + NUL) led_brightness(1) starter_type(1) relay_pulse_ms(u16) flow_dlpm(u16) watts(u16) price_centi(u16) currency(4) auto_update(1) name(24)`
+`run_secs(u32) serial(4 chars + NUL) led_brightness(1) starter_type(1) relay_pulse_ms(u16) flow_dlpm(u16) watts(u16) price_centi(u16) currency(4) auto_update(1) name(24) tank_update_sec(u16)`
+
+- **Tank updates** (minor 11): seconds between tank sensor updates, for every sensor of this pump (default 300). Set with Cmd `0xAF`. Saved in NVS `pump/tank_beat`.
 
 - **Name** (minor 8): the pump's own name, UTF-8, NUL-padded, empty until someone names it. Set with Cmd `0xAE` (below). Stored on the pump, so every phone that has the pump shows the same name; the app takes the pump's name when it connects and whenever it changes. The Bluetooth advertising name stays `TankLink-XXXX`.
 
@@ -177,7 +182,7 @@ Write:
 
 ### Tank (read + notify, authed)
 
-The sensor of the **selected** tank (the one the pump fills), plus pump-wide error and interrupted-fill fields. `bound` = 0 when no sensor is paired. 59 bytes:
+The sensor of the **selected** tank (the one the pump fills), plus pump-wide error and interrupted-fill fields. `bound` = 0 when no sensor is paired. 61 bytes:
 
 | Offset | Size | Field |
 | --- | --- | --- |
@@ -202,6 +207,7 @@ The sensor of the **selected** tank (the one the pump fills), plus pump-wide err
 | 53 | 1 | selected tank's own fault code (see `ERROR_CODES.md`, 0 = none) |
 | 54 | 1 | pump flags: bit 0 = the pump's clock lost power since it started (coin cell flat or missing). Not cleared by setting the time; the app shows *Clock battery flat* |
 | 55 | 4 | pump boot id (u32): random, new every time the pump starts. The app keeps a dismissed *Clock battery flat* banner hidden only for the boot it was dismissed on |
+| 59 | 2 | offline window (u16 seconds, minor 11): the selected sensor counts as offline after this long without a packet (see "Offline window" under LoRa) |
 
 For tank OTA the app authenticates to the tank with that sensor's token from the Sensors characteristic.
 
@@ -249,7 +255,7 @@ Up to 8 slots. With no sensor paired there is exactly one slot (`sensor_index` `
 | 18 | 1 | board revision |
 | 19 | 16 | BLE OTA token (zeros if unknown) |
 
-After the entries, one fault byte per entry in the same order (the tank's own light code, 0 = none).
+After the entries, one fault byte per entry in the same order (the tank's own light code, 0 = none). Then (minor 11) per entry, same order: `interval(u16) stale(u16)`: the update interval the sensor last reported (0 = not reported since the pump started) and its offline window in seconds.
 
 Notified on every packet from any sensor, and when one goes out of range.
 
@@ -382,7 +388,7 @@ The tank only runs BLE during a ~10 s window after a short button press, for OTA
 
 ## LoRa (tank ↔ pump)
 
-433 MHz, SX1278: SF10, 125 kHz bandwidth, coding rate 4/5, explicit header, CRC on, 8-symbol preamble, +10 dBm on PA_BOOST (the 10 mW licence-free limit at 433 MHz in India). A STATUS or ACK (29 bytes sealed) takes about 410 ms on air, a PAIR (45 bytes) about 575 ms. Pump and tank must use the same spreading factor, bandwidth and coding rate or they can't hear each other (transmit power may differ); a change to those is a breaking radio change even though the packet layout stays.
+433 MHz, SX1278: SF10, 125 kHz bandwidth, coding rate 4/5, explicit header, CRC on, 8-symbol preamble, +10 dBm on PA_BOOST (the 10 mW licence-free limit at 433 MHz in India). A STATUS or ACK (31 bytes sealed) takes about 420 ms on air, a PAIR (45 bytes) about 575 ms. Pump and tank must use the same spreading factor, bandwidth and coding rate or they can't hear each other (transmit power may differ); a change to those is a breaking radio change even though the packet layout stays.
 
 Packed struct `tanklink_lora_status_t`, 21 bytes:
 
@@ -401,7 +407,7 @@ Packed struct `tanklink_lora_status_t`, 21 bytes:
 
 On air:
 
-- STATUS and ACK: the 21-byte body, then an 8-byte tag (29 bytes).
+- STATUS and ACK: the 21-byte body, the update interval (u16 seconds), then an 8-byte tag (31 bytes). In STATUS the interval is the one the tank sleeps between updates now; in an ACK it is the one the pump wants (Cmd `0xAF`), which the tank saves (NVS `tank/beat`) and uses from the sleep that follows. Within LoRa major 5: an older receiver ignores it, and a tank that gets an ACK without it keeps its interval.
 - PAIR: the body, the tank's new 16-byte **link key**, then the tag (45 bytes).
 - UNPAIR: the same size as STATUS (29 bytes), `type = 0x04`, tagged with the link key the tank was paired with.
 
@@ -420,4 +426,6 @@ Exchange:
 3. The pump replies ACK with the same layout, `type = 0x03`, the same `seq`, tagged with that tank's key. The tank retries up to 5 times without an ACK, with a random 40–440 ms gap so two tanks that collided don't retry in step. It only accepts a correctly tagged ACK carrying its own `tank_id` and `seq`.
 
 **Leaving a pump (UNPAIR, `0x04`).** When a tank that was paired goes into pairing mode, it tells the pump it was paired with that it is gone, so the pump removes the sensor (as *Unpair* in the app does) instead of showing it offline for ever. The tank sends it **last**: after it paired with a new pump, or after pairing was cancelled or timed out. It is tagged with the **old** link key and sent twice at most (no more waiting if nobody answers). The pump that holds that key finds the sensor by `tank_id`, checks the tag and that `seq` is not older than the last it saw, removes the sensor and ACKs (tagged with the same key). A pump that was just paired again with the same tank already has the new key, so it fails the tag check and ignores the notice: re-pairing with the same pump keeps its tank names, schedules and settings. The pump refuses it while it fills that sensor's tank (the same rule as *Unpair*); the sensor can then be removed from the app. A pump that doesn't know type `0x04` ignores it, so no coordinated update is needed (`TANKLINK_LORA_VER` is unchanged).
+**Offline window.** A sensor counts as offline after 2.5 update intervals without a packet, and never sooner than 30 s (300 s → 750 s). The interval is the longer of the one the sensor last reported and the pump's setting, because right after a change the sensor still sleeps its old interval once. The pump reports the window in Tank and Sensors so the app's live "online" agrees with it.
+
 4. The pump drops a STATUS whose `seq` is below the last one it saw from that tank (a replay). The same `seq` again is a retry: it is ACKed and updates RSSI/SNR but not state. The pump saves the last `seq` per tank in NVS, so this holds across restarts.

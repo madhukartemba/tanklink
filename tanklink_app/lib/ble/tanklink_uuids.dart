@@ -66,6 +66,14 @@ class TankLinkUuids {
   static const cmdRenamePump = 0xAE;
   static const pumpNameMax = 24;
 
+  /// How often every tank sensor sends an update (minor 11): seconds(u16).
+  /// The pump takes [tankUpdateMinSec] to [tankUpdateMaxSec]; a sensor
+  /// switches after its next update.
+  static const cmdTankUpdateSec = 0xAF;
+  static const tankUpdateMinSec = 5;
+  static const tankUpdateMaxSec = 1800;
+  static const tankUpdateDefaultSec = 300;
+
   /// Wi-Fi setup and status (minor 4).
   static final wifi = Guid('7f1a0011-ac01-4c8c-9b2e-74616e6b6c6e');
 
@@ -224,7 +232,11 @@ class TankLinkUuids {
 
   /// u32, random and new every time the pump starts.
   static const tankStatusBootIdAt = 55;
-  static const tankStatusLen = 59;
+
+  /// u16: the selected sensor counts as offline after this long without a
+  /// packet (follows the tank update interval).
+  static const tankStatusStaleAt = 59;
+  static const tankStatusLen = 61;
 
   static const interruptNone = 0;
   static const interruptPowerLost = 1;
@@ -233,9 +245,6 @@ class TankLinkUuids {
 
   /// Warn when tank reports battery at or below this %.
   static const tankBatteryLowPct = 20;
-
-  /// Match pump CONFIG_PUMP_TANK_STALE_SEC — used for live last-seen / online.
-  static const tankStaleSec = 750;
 
   static const otaOpStart = 0x01;
   static const otaOpAbort = 0x02;

@@ -8,14 +8,63 @@
 #include "relay_control.h"
 #include "sdkconfig.h"
 #include "status_led.h"
+#include "tanklink_lora_proto.h"
 
 #define TAG "PUMP_CFG"
 #define NVS_NAMESPACE "pump"
 #define NVS_KEY "cfg"
 #define NVS_KEY_USAGE "usage"
 #define NVS_KEY_NAME "name"
+#define NVS_KEY_BEAT "tank_beat"
 
 static pump_usage_t s_usage;
+static uint16_t s_beat_sec = TANKLINK_LORA_BEAT_DEFAULT_SEC;
+
+static bool beat_valid(uint16_t sec)
+{
+    return sec >= TANKLINK_LORA_BEAT_MIN_SEC && sec <= TANKLINK_LORA_BEAT_MAX_SEC;
+}
+
+static void load_beat(void)
+{
+    s_beat_sec = TANKLINK_LORA_BEAT_DEFAULT_SEC;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    uint16_t sec = 0;
+    if (nvs_get_u16(h, NVS_KEY_BEAT, &sec) == ESP_OK && beat_valid(sec)) {
+        s_beat_sec = sec;
+    }
+    nvs_close(h);
+}
+
+uint16_t pump_config_tank_beat_sec(void)
+{
+    return s_beat_sec;
+}
+
+esp_err_t pump_config_set_tank_beat_sec(uint16_t sec)
+{
+    if (!beat_valid(sec)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = nvs_set_u16(h, NVS_KEY_BEAT, sec);
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
+    }
+    nvs_close(h);
+    if (err == ESP_OK) {
+        s_beat_sec = sec;
+        ESP_LOGI(TAG, "tank update interval %us", (unsigned)sec);
+    }
+    return err;
+}
 static char s_name[PUMP_NAME_MAX + 1];
 
 static void usage_defaults(pump_usage_t *u)
@@ -215,6 +264,7 @@ esp_err_t pump_config_init(void)
     load_defaults(&s_cfg);
     load_usage();
     load_name();
+    load_beat();
 
     nvs_handle_t h;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &h);
