@@ -119,7 +119,7 @@ Byte 0 is the opcode. Unknown opcodes and writes shorter than listed are rejecte
 | `0xAC` | Forget the "updated automatically" notice | none |
 | `0xAD` | Raise a test alert (see Alerts) | none |
 | `0xAE` | Name the pump (minor 8). Refused if empty, longer than 24 bytes, not valid UTF-8 or containing control characters; leading and trailing spaces are dropped | `name` (UTF-8, 1–24 bytes) |
-| `0xAF` | Set how often every tank sensor sends an update (minor 11). Refused outside 5–1800 s. The app offers 1–30 min (debug builds: 5 s–10 min). Each sensor switches after its next update (it learns the value from the pump's ACK, see LoRa) | `seconds(u16)` |
+| `0xAF` | Set how often every tank sensor sends an update (minor 11). Refused outside 5–1800 s. The app offers 5 s–30 min (under 1 min marked for testing). Each sensor switches after its next update (it learns the value from the pump's ACK, see LoRa) | `seconds(u16)` |
 | `0xB1` | Play a buzzer sound now, whatever the buzzer settings (the app's preview). Refused for an unknown sound | `sound(1)` (see Buzzer) |
 | `0xE0` | Clear last error | — |
 | `0xE1` | Dismiss the interrupted-fill notice | — |

@@ -114,7 +114,7 @@ Stored on the pump in NVS namespace `pump`, key `cfg`. Defaults apply after a fi
 | **Starter type** | **none** | none, two-button, single-phase MCB | **Starter** |
 | Relay pulse | 1000 ms | 50 – 2000 ms (two-button only) | Starter |
 | Second float (per sensor) | off | off, almost-empty, two tanks | Tank sensors → a sensor. Stored with the sensor in `tl_tanks` |
-| Tank updates | 5 min | pump takes 5 s – 30 min; the app offers 1 – 30 min (debug builds 5 s – 10 min) | Tank sensors → Tank updates. `tank_beat` in `pump`, its own key. A sensor switches after its next update |
+| Tank updates | 5 min | pump takes 5 s – 30 min; the app offers 5 s – 30 min (under 1 min marked for testing) | Tank sensors → Tank updates. `tank_beat` in `pump`, its own key. A sensor switches after its next update |
 
 > **The starter type defaults to "none".** In that mode the pump tracks on/off and the LED, but never touches the relays. A new or factory-reset pump needs **Starter → two-button** or **Starter → single-phase MCB** set in the app before it will actually run a motor.
 >
@@ -194,6 +194,6 @@ NVS is 24 KB (6 pages of 4 KB, 126 entries of 32 bytes each). NVS skips a write 
 | Fill history (`tl_hist`) | each fill (the whole 200-fill ring, 2.4 KB) | ~80 |
 | Battery log, alert seq, settings, schedules | when they change | few |
 
-At the default 5-minute tank updates, with one sensor that is about 1,300 entries a day, so each page is erased roughly 3 times a day; with four sensors about 10 times a day. At the 100,000 erase cycles the flash is rated for, that is over 25 years even with four sensors. The tank writes its packet counter once per packet into its own 24 KB NVS (a few hundred entries a day), which is lighter still. A 5-second interval (debug app only) is about 17,000 seq writes a day per sensor, on both boards: fine for testing, not for a sensor left that way for years. If the `DIAG: nvs entries` line shows `free` under ~150 for long, the partition is too full and wear rises; look at what grew.
+At the default 5-minute tank updates, with one sensor that is about 1,300 entries a day, so each page is erased roughly 3 times a day; with four sensors about 10 times a day. At the 100,000 erase cycles the flash is rated for, that is over 25 years even with four sensors. The tank writes its packet counter once per packet into its own 24 KB NVS (a few hundred entries a day), which is lighter still. A 5-second interval (marked "Testing" in the app) is about 17,000 seq writes a day per sensor, on both boards: fine for testing, not for a sensor left that way for years. If the `DIAG: nvs entries` line shows `free` under ~150 for long, the partition is too full and wear rises; look at what grew.
 
 Free flash in the OTA slot: about 18% (the image is about 1.5 MB of 1.75 MB). A change that adds more than ~200 KB needs a smaller feature set or a bigger partition table (which needs an `erase-flash` over USB).

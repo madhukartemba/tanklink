@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
@@ -52,11 +51,9 @@ Future<void> pairTankSensor(BuildContext context) async {
   if (session.tankPairing) await session.stopTankPair();
 }
 
-/// The update intervals the app offers. Debug builds go down to 5 s for
-/// testing; release builds keep to what a battery lasts with.
-List<int> get tankUpdateChoices => kDebugMode
-    ? const [5, 10, 15, 30, 60, 120, 300, 600]
-    : const [60, 120, 300, 600, 900, 1800];
+/// The update intervals the app offers. Under a minute is for testing: it
+/// drains the battery and wears the boards' flash if left that way.
+const tankUpdateChoices = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
 
 Future<void> _pickUpdateInterval(BuildContext context) async {
   final session = context.read<PumpSession>();
@@ -71,7 +68,8 @@ Future<void> _pickUpdateInterval(BuildContext context) async {
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
           child: Text(
             'How often each sensor sends the tank level. More often uses '
-            'more battery. A sensor switches after its next update.',
+            'more battery. Under 1 min is for testing only. A sensor '
+            'switches after its next update.',
             style: TextStyle(
               color: Theme.of(ctx).colorScheme.onSurfaceVariant,
               height: 1.35,
@@ -87,6 +85,7 @@ Future<void> _pickUpdateInterval(BuildContext context) async {
                 RadioListTile<int>(
                   value: sec,
                   title: Text('Every ${formatUpdateInterval(sec)}'),
+                  subtitle: sec < 60 ? const Text('Testing') : null,
                 ),
             ],
           ),
@@ -202,8 +201,7 @@ class TankSensorScreen extends StatelessWidget {
             leading: const Icon(Icons.update_rounded),
             title: const Text('Tank updates'),
             subtitle: Text(
-              'Every ${formatUpdateInterval(session.tankUpdateSec)}'
-              '${kDebugMode ? " · debug build: down to 5 s" : ""}',
+              'Every ${formatUpdateInterval(session.tankUpdateSec)}',
             ),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => _pickUpdateInterval(context),
