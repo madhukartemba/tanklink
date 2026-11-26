@@ -17,6 +17,7 @@ import '../util/error_text.dart';
 import '../util/format.dart';
 import '../util/water_use.dart';
 import 'battery_trend.dart';
+import 'connect_gate.dart';
 import 'models.dart';
 import 'ota_upload.dart';
 import 'protocol.dart';
@@ -545,6 +546,7 @@ class PumpSession extends ChangeNotifier {
     if (selectedRemoteId == pump.remoteId && (connected || connecting)) {
       return;
     }
+    await _connects.cancel();
     await disconnect();
     authRejected = false;
     selectedRemoteId = pump.remoteId;
@@ -579,6 +581,7 @@ class PumpSession extends ChangeNotifier {
   Future<void> forgetPump(SavedPump pump) async {
     final wasSelected = selectedRemoteId == pump.remoteId;
     if (wasSelected) {
+      await _connects.cancel();
       await disconnect();
     }
     pumps.removeWhere((p) => p.remoteId == pump.remoteId);
@@ -603,40 +606,21 @@ class PumpSession extends ChangeNotifier {
   static const _connectAttempts = 4;
   static const _connectRetryWithin = Duration(seconds: 8);
 
-  /// The connect in progress and the pump it is for. Every caller (app
-  /// start, resume, the Connect button, updates) goes through
-  /// [connectSelected], and only one connect runs at a time: two at once
-  /// disconnect each other.
-  Future<void>? _connectInFlight;
-  String? _connectInFlightFor;
+  /// Every caller (app start, resume, the Connect button, updates) goes
+  /// through [connectSelected], and only one connect runs at a time: two at
+  /// once disconnect each other. Switching pumps cancels the running one.
+  late final _connects = ConnectGate(
+    abort: () => disconnect(cancelPendingConnect: true),
+  );
 
-  Future<void> connectSelected({int attempts = _connectAttempts}) async {
-    final id = selected?.remoteId;
-    final running = _connectInFlight;
-    if (running != null) {
-      if (_connectInFlightFor == id) return running;
-      try {
-        await running; // another pump: let that one finish first
-      } catch (_) {}
-    }
-    final f = _connectSelected(attempts);
-    _connectInFlight = f;
-    _connectInFlightFor = id;
-    try {
-      await f;
-    } finally {
-      if (identical(_connectInFlight, f)) {
-        _connectInFlight = null;
-        _connectInFlightFor = null;
-      }
-    }
-  }
+  Future<void> connectSelected({int attempts = _connectAttempts}) => _connects
+      .run(() => selected?.remoteId, (a) => _connectSelected(a, attempts));
 
   /// The pump refused this phone's saved key: it was unpaired (from any
   /// phone, or by a factory reset) and this phone must add it again.
   bool authRejected = false;
 
-  Future<void> _connectSelected(int attempts) async {
+  Future<void> _connectSelected(ConnectAttempt a, int attempts) async {
     final pump = selected;
     if (pump == null) {
       status = 'No pump selected';
@@ -653,18 +637,29 @@ class PumpSession extends ChangeNotifier {
     // same time, so being away from home costs no extra wait.
     final tryWifi = _wifiAllowed(pump);
     final stopScan = Completer<void>();
+    unawaited(
+      a.whenCancelled.then((_) {
+        if (!stopScan.isCompleted) stopScan.complete();
+      }),
+    );
     final deviceFuture = _resolveDeviceForConnect(
       pump,
+      attempt: a,
       cancel: stopScan.future,
     );
     Future<String?>? lookup; // mDNS, only if the saved address didn't answer
     try {
       if (tryWifi) {
         final wifi = await _openWifi(pump.lastIp!, pump.token);
+        if (a.cancelled) {
+          wifi?.close();
+          await deviceFuture;
+          return;
+        }
         if (wifi != null) {
           // The scan keeps going until Wi-Fi is up, in case the session fails.
-          if (await _startWifiSession(wifi, pump)) {
-            stopScan.complete();
+          if (await _startWifiSession(a, wifi, pump) || a.cancelled) {
+            if (!stopScan.isCompleted) stopScan.complete();
             return;
           }
         } else {
@@ -673,17 +668,20 @@ class PumpSession extends ChangeNotifier {
       }
     } on _SignedOut {
       if (!stopScan.isCompleted) stopScan.complete();
-      _showSignedOut();
+      if (!a.cancelled) _showSignedOut();
       return;
     }
 
     try {
       final device = await deviceFuture;
-      await _connectWithRetries(device, attempts);
+      if (a.cancelled) return;
+      await _connectWithRetries(device, attempts, attempt: a);
+      if (a.cancelled) return;
       final tokenPump = selected ?? pump;
       try {
         _authNonce = await signInWith(_auth!, tokenPump.token);
       } catch (e) {
+        if (a.cancelled) return;
         AppLog.w('ble', 'Auth write failed: $e');
         await disconnect();
         connecting = false;
@@ -696,18 +694,24 @@ class PumpSession extends ChangeNotifier {
         notifyListeners();
         return;
       }
+      if (a.cancelled) return;
       authRejected = false;
       authed = true;
       await _startSession();
+      if (a.cancelled) return;
       _relaxBleConnection();
       connecting = false;
       connectFailed = false;
       notifyListeners();
     } catch (e) {
+      if (a.cancelled) return;
       AppLog.w('ble', 'Connect failed: $e');
       await disconnect();
       // Out of Bluetooth range but maybe on the home network at a new address.
-      if (lookup != null && await _connectFoundWifi(pump, await lookup)) return;
+      if (lookup != null && await _connectFoundWifi(a, pump, await lookup)) {
+        return;
+      }
+      if (a.cancelled) return;
       connecting = false;
       connectFailed = true;
       status = 'Couldn’t connect';
@@ -729,14 +733,22 @@ class PumpSession extends ChangeNotifier {
   }
 
   /// Wi-Fi at the address mDNS found ([ip]), after Bluetooth failed.
-  Future<bool> _connectFoundWifi(SavedPump pump, String? ip) async {
-    if (ip == null || ip == pump.lastIp) return false;
+  Future<bool> _connectFoundWifi(
+    ConnectAttempt a,
+    SavedPump pump,
+    String? ip,
+  ) async {
+    if (a.cancelled || ip == null || ip == pump.lastIp) return false;
     connecting = true;
     try {
       final wifi = await _openWifi(ip, pump.token);
-      return wifi != null && await _startWifiSession(wifi, pump);
+      if (a.cancelled) {
+        wifi?.close();
+        return false;
+      }
+      return wifi != null && await _startWifiSession(a, wifi, pump);
     } on _SignedOut {
-      _showSignedOut();
+      if (!a.cancelled) _showSignedOut();
       return true;
     }
   }
@@ -790,7 +802,11 @@ class PumpSession extends ChangeNotifier {
 
   /// Start the session over a signed-in [wifi] link. False means "use
   /// Bluetooth": the session failed and everything is closed again.
-  Future<bool> _startWifiSession(WifiLink wifi, SavedPump pump) async {
+  Future<bool> _startWifiSession(
+    ConnectAttempt a,
+    WifiLink wifi,
+    SavedPump pump,
+  ) async {
     _useWifi(wifi);
     try {
       AppLog.i('wifi', 'Connected over Wi-Fi (${wifi.host})');
@@ -798,11 +814,13 @@ class PumpSession extends ChangeNotifier {
         await _upsertPump((selected ?? pump).copyWith(lastIp: wifi.host));
       }
       await _startSession();
+      if (a.cancelled) return false;
       connecting = false;
       connectFailed = false;
       notifyListeners();
       return true;
     } catch (e) {
+      if (a.cancelled) return false;
       AppLog.w('wifi', 'Wi-Fi session failed, using Bluetooth: $e');
       await disconnect();
       connecting = true; // the caller carries on over Bluetooth
@@ -1168,6 +1186,7 @@ class PumpSession extends ChangeNotifier {
   /// [cancel] completing stops the scan early (the pump answered on Wi-Fi).
   Future<BluetoothDevice> _resolveDeviceForConnect(
     SavedPump pump, {
+    ConnectAttempt? attempt,
     Future<void>? cancel,
   }) async {
     try {
@@ -1215,7 +1234,7 @@ class PumpSession extends ChangeNotifier {
       await FlutterBluePlus.stopScan();
       await sub.cancel();
 
-      if (device.remoteId.str != pump.remoteId) {
+      if (device.remoteId.str != pump.remoteId && attempt?.cancelled != true) {
         // Same pump, new Bluetooth address: replace the entry, don't add one.
         final i = pumps.indexWhere((p) => p.remoteId == pump.remoteId);
         if (i >= 0) pumps.removeAt(i);
@@ -2313,7 +2332,9 @@ class PumpSession extends ChangeNotifier {
     }
   }
 
-  Future<void> disconnect() async {
+  /// [cancelPendingConnect] breaks off a Bluetooth connect still in progress
+  /// instead of waiting for it (up to its 15 s timeout).
+  Future<void> disconnect({bool cancelPendingConnect = false}) async {
     _runTicker?.cancel();
     _runTicker = null;
     _ageTicker?.cancel();
@@ -2366,7 +2387,7 @@ class PumpSession extends ChangeNotifier {
     _batteryNotifySub = null;
     _connSub = null;
     try {
-      await _device?.disconnect();
+      await _device?.disconnect(queue: !cancelPendingConnect);
     } catch (_) {}
     _device = null;
     _service = null;
@@ -2411,6 +2432,7 @@ class PumpSession extends ChangeNotifier {
   }
 
   Future<void> disconnectAndStay() async {
+    await _connects.cancel();
     await disconnect();
     connectFailed = true;
     status = 'Disconnected';
@@ -2439,8 +2461,12 @@ class PumpSession extends ChangeNotifier {
 
   /// [_connectAndDiscover] with the retries described at [_connectAttempts].
   /// Used for saved pumps and when adding a new one.
-  Future<void> _connectWithRetries(BluetoothDevice device, int attempts) async {
-    for (var attempt = 1; ; attempt++) {
+  Future<void> _connectWithRetries(
+    BluetoothDevice device,
+    int attempts, {
+    ConnectAttempt? attempt,
+  }) async {
+    for (var n = 1; ; n++) {
       final took = Stopwatch()..start();
       try {
         await _connectAndDiscover(device);
@@ -2448,10 +2474,12 @@ class PumpSession extends ChangeNotifier {
       } catch (e) {
         // A slow failure is a timeout: the pump is off or out of range,
         // and trying again only keeps the user waiting.
-        if (attempt >= attempts || took.elapsed > _connectRetryWithin) {
+        if (attempt?.cancelled == true ||
+            n >= attempts ||
+            took.elapsed > _connectRetryWithin) {
           rethrow;
         }
-        AppLog.w('ble', 'Connect attempt $attempt of $attempts failed: $e');
+        AppLog.w('ble', 'Connect attempt $n of $attempts failed: $e');
         final wasConnecting = connecting;
         await disconnect();
         connecting = wasConnecting; // disconnect() clears it
