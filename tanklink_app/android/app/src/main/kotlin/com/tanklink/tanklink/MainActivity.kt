@@ -37,7 +37,10 @@ class MainActivity : FlutterActivity() {
     private var initialLink: String? = null
 
     private fun appLink(intent: Intent?): String? =
-        if (intent?.action == Intent.ACTION_VIEW) intent.dataString else null
+        when (intent?.action) {
+            Intent.ACTION_VIEW, android.nfc.NfcAdapter.ACTION_NDEF_DISCOVERED -> intent.dataString
+            else -> null
+        }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

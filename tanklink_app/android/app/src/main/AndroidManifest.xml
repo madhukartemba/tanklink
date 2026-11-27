@@ -49,6 +49,13 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="tanklink.madhukartemba.in" android:pathPrefix="/pump"/>
             </intent-filter>
+            <!-- The same link read from an NFC tag: Android gives tag URIs to an
+                 NDEF_DISCOVERED filter first, before any browser. -->
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:scheme="https" android:host="tanklink.madhukartemba.in" android:pathPrefix="/pump"/>
+            </intent-filter>
             <!-- The link is read in lib/link/app_link.dart, not pushed as a
                  Flutter route. -->
             <meta-data android:name="flutter_deeplinking_enabled" android:value="false"/>
