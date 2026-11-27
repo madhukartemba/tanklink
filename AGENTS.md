@@ -32,6 +32,7 @@ Flow: the tank wakes on a float change or a heartbeat (every 5 minutes by defaul
 | Diagnostics and bug reports (plan and status) | [`docs/plan-diagnostics-and-bug-reports.md`](docs/plan-diagnostics-and-bug-reports.md), [`report_worker/README.md`](report_worker/README.md) |
 | Alerts with the app closed (Bluetooth is built; Wi-Fi/webhook/push channels are designed, not built) | [`docs/plan-alerts.md`](docs/plan-alerts.md); layouts in [`docs/PROTOCOL.md`](docs/PROTOCOL.md) ("Alerts") |
 | Local Wi-Fi: control and pump updates over Wi-Fi (plan and status) | [`docs/plan-local-wifi.md`](docs/plan-local-wifi.md); wire format in [`docs/PROTOCOL.md`](docs/PROTOCOL.md#wi-fi-transport) |
+| LoRa hub: reach far pumps from the house (design, not built) | [`docs/plan-lora-hub.md`](docs/plan-lora-hub.md) |
 
 ## Code map
 
