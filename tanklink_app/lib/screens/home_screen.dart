@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../alerts/alerts_prompt.dart';
@@ -11,6 +10,7 @@ import '../update/app_self_update.dart';
 import '../update/home_update_banner.dart';
 import '../update/firmware_update.dart';
 import '../update/github_release_util.dart';
+import '../util/haptics.dart';
 import 'add_pump_screen.dart';
 import 'pump_list_screen.dart';
 import 'pump_settings_sheet.dart';
@@ -34,15 +34,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// The one-time alerts permission prompt has been started (see build).
   bool _alertPromptStarted = false;
 
+  late final PumpSession _session;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _startUpdateChecks());
+    _session = context.read<PumpSession>();
+    _session.addListener(_feel);
+  }
+
+  // What the pump did, felt as well as seen: connecting, the motor starting
+  // and stopping (whoever started it), the tank filling up, a new problem.
+  bool _wasReady = false;
+  bool _wasOn = false;
+  bool _wasFailed = false;
+  String? _wasError;
+  String? _wasFault;
+
+  void _feel() {
+    final s = _session;
+    final ready = s.ready;
+    final on = ready && s.pumpOn;
+    final visible =
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    if (visible) {
+      if (ready && !_wasReady) {
+        Haptics.play(Haptic.connected);
+      } else if (ready && _wasReady && on != _wasOn) {
+        final full = s.tankBound && s.tankOnline && s.tankFull;
+        Haptics.play(
+          on
+              ? Haptic.pumpStart
+              : full
+              ? Haptic.tankFull
+              : Haptic.pumpStop,
+        );
+      }
+      if (ready && s.pumpErrorTitle != null && _wasError == null) {
+        Haptics.play(Haptic.error);
+      } else if (ready && s.tankFaultTitle != null && _wasFault == null) {
+        Haptics.play(Haptic.warning);
+      }
+      if (s.connectFailed && !_wasFailed) Haptics.play(Haptic.warning);
+    }
+    _wasReady = ready;
+    _wasOn = on;
+    _wasFailed = s.connectFailed;
+    _wasError = ready ? s.pumpErrorTitle : null;
+    _wasFault = ready ? s.tankFaultTitle : null;
   }
 
   @override
   void dispose() {
+    _session.removeListener(_feel);
     _updateTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -77,7 +123,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _setPump(bool on) async {
-    HapticFeedback.mediumImpact();
+    // Starting already got its feedback from the slider.
+    if (!on) Haptics.play(Haptic.confirm);
     await context.read<PumpSession>().setPump(on);
   }
 
@@ -243,6 +290,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _setPump(false);
                   },
                   onConnect: () {
+                    Haptics.play(Haptic.tap);
                     session.connectSelected();
                   },
                 ),

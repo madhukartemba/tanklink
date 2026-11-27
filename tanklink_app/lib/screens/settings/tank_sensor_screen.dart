@@ -7,6 +7,7 @@ import '../../util/format.dart';
 import '../../util/error_text.dart';
 import '../../ble/tanklink_uuids.dart';
 import 'update_tiles.dart';
+import '../../util/haptics.dart';
 
 String _err(Object e) => errorMessage(e);
 
@@ -78,7 +79,7 @@ Future<void> _pickUpdateInterval(BuildContext context) async {
         ),
         RadioGroup<int>(
           groupValue: current,
-          onChanged: (v) => Navigator.pop(ctx, v),
+          onChanged: Haptics.choose((v) => Navigator.pop(ctx, v)),
           child: Column(
             children: [
               for (final sec in choices)
@@ -136,10 +137,10 @@ class TankSensorScreen extends StatelessWidget {
             ),
             RadioGroup<int>(
               groupValue: session.activeSlot,
-              onChanged: (v) {
+              onChanged: Haptics.choose((v) {
                 final slot = v == null ? null : session.slotAt(v);
                 if (slot != null) _select(context, slot);
-              },
+              }),
               child: Column(
                 children: [
                   for (final slot in session.tanks)
@@ -462,9 +463,9 @@ class TankSensorDetailScreen extends StatelessWidget {
           const SizedBox(height: 4),
           RadioGroup<int>(
             groupValue: sensor.mode,
-            onChanged: (v) {
+            onChanged: Haptics.choose((v) {
               if (v != null) _setMode(context, sensor, v);
-            },
+            }),
             child: const Column(
               children: [
                 RadioListTile<int>(

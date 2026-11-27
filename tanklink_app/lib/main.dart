@@ -9,10 +9,12 @@ import 'package:provider/provider.dart';
 
 import 'ble/pump_session.dart';
 import 'diag/app_log.dart';
+import 'glance/glance_bridge.dart';
 import 'diag/report_sender.dart';
 import 'screens/welcome_screen.dart';
 import 'update/app_self_update.dart';
 import 'update/firmware_update.dart';
+import 'util/app_prefs.dart';
 
 /// flutter_blue_plus logs every read and write at info level. Keep only the
 /// lines that point at a problem, so the app log covers hours, not seconds.
@@ -45,7 +47,8 @@ void main() {
         DeviceOrientation.portraitUp,
       ]);
       FlutterBluePlus.setLogLevel(LogLevel.info, color: false);
-      runApp(const TankLinkApp());
+      final appPrefs = await AppPrefs.load();
+      runApp(TankLinkApp(prefs: appPrefs));
       unawaited(ReportSender.sendQueued());
     },
     (error, stack) => AppLog.e('uncaught', 'Uncaught error', error, stack),
@@ -63,13 +66,47 @@ void main() {
 }
 
 class TankLinkApp extends StatelessWidget {
-  const TankLinkApp({super.key});
+  const TankLinkApp({super.key, required this.prefs});
+
+  final AppPrefs prefs;
+
+  static ThemeData _theme(Brightness b) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF2EC4B6),
+      brightness: b,
+    );
+    return ThemeData(
+      colorScheme: scheme,
+      useMaterial3: true,
+      appBarTheme: const AppBarTheme(centerTitle: false),
+      // Android 14+ back gesture: the page follows the finger.
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+        },
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => PumpSession()..init()),
+        ChangeNotifierProvider.value(value: prefs),
+        ChangeNotifierProvider(
+          create: (_) {
+            final session = PumpSession()..init();
+            GlanceBridge(session); // widget and Quick Settings tile
+            return session;
+          },
+        ),
         // Each updater only offers firmware built for the connected board.
         ChangeNotifierProxyProvider<PumpSession, PumpFirmwareUpdate>(
           create: (_) => PumpFirmwareUpdate()..loadCache(),
@@ -81,33 +118,33 @@ class TankLinkApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(create: (_) => AppSelfUpdate()..loadCache()),
       ],
-      child: MaterialApp(
-        title: 'TankLink',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF2EC4B6),
-            brightness: Brightness.dark,
-          ),
-          useMaterial3: true,
-          appBarTheme: const AppBarTheme(centerTitle: false),
-          filledButtonTheme: FilledButtonThemeData(
-            style: FilledButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+      child: Consumer<AppPrefs>(
+        builder: (context, prefs, _) => MaterialApp(
+          title: 'TankLink',
+          debugShowCheckedModeBanner: false,
+          theme: _theme(Brightness.light),
+          darkTheme: _theme(Brightness.dark),
+          themeMode: prefs.theme,
+          // Android 15+ draws apps edge to edge. Keep every page and sheet
+          // above the navigation / gesture bar (lists with their own padding
+          // don't do this themselves); the top is handled by app bars,
+          // SafeArea and useSafeArea on sheets.
+          // Status and navigation bar icons follow the theme: the home
+          // screen has no app bar to set them.
+          builder: (context, child) {
+            final dark = Theme.of(context).brightness == Brightness.dark;
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: dark
+                  ? SystemUiOverlayStyle.light
+                  : SystemUiOverlayStyle.dark,
+              child: ColoredBox(
+                color: Theme.of(context).colorScheme.surface,
+                child: SafeArea(top: false, child: child!),
               ),
-            ),
-          ),
+            );
+          },
+          home: const StartGate(),
         ),
-        // Android 15+ draws apps edge to edge. Keep every page and sheet
-        // above the navigation / gesture bar (lists with their own padding
-        // don't do this themselves); the top is handled by app bars,
-        // SafeArea and useSafeArea on sheets.
-        builder: (context, child) => ColoredBox(
-          color: Theme.of(context).colorScheme.surface,
-          child: SafeArea(top: false, child: child!),
-        ),
-        home: const StartGate(),
       ),
     );
   }

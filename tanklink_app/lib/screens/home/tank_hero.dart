@@ -4,6 +4,7 @@ import '../../ble/pump_session.dart';
 import '../../util/format.dart';
 import '../../util/error_text.dart';
 import '../settings/auto_fill_screen.dart';
+import '../../util/haptics.dart';
 
 /// Full-area tank status — level, signal, battery; no FW / tank ID.
 class TankHero extends StatelessWidget {
@@ -210,12 +211,14 @@ class TankHero extends StatelessWidget {
                 flex: veryTight ? 2 : 3,
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: _LevelGlyph(
-                    accent: accent,
-                    full: session.tankFull && !offline,
-                    empty: session.tankEmpty && !offline,
-                    offline: offline,
-                    size: veryTight ? 88 : 120,
+                  child: ExcludeSemantics(
+                    child: _LevelGlyph(
+                      accent: accent,
+                      full: session.tankFull && !offline,
+                      empty: session.tankEmpty && !offline,
+                      offline: offline,
+                      size: veryTight ? 88 : 120,
+                    ),
                   ),
                 ),
               ),
@@ -233,7 +236,15 @@ class TankHero extends StatelessWidget {
                     ),
                   ),
                 ),
-              Text(title, style: titleStyle, textAlign: TextAlign.center),
+              // Announced when it changes (the tank fills, goes offline).
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  title,
+                  style: titleStyle,
+                  textAlign: TextAlign.center,
+                ),
+              ),
               SizedBox(height: veryTight ? 2 : 6),
               Text(
                 subtitle,
@@ -362,7 +373,9 @@ class _AutoFillChip extends StatelessWidget {
         tooltip: on
             ? 'Turn auto-fill off for this tank'
             : 'Fill this tank by itself when it runs low',
-        onSelected: (v) => setAutoFillFor(context, session, slot, v),
+        onSelected: Haptics.pick(
+          (v) => setAutoFillFor(context, session, slot, v),
+        ),
       ),
     );
   }
@@ -444,57 +457,62 @@ class _MetricTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: compact ? 16 : 18, color: accent),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: text.labelLarge?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-                fontSize: compact ? 12 : null,
+    // One TalkBack stop: "Battery, 80%, about 3 weeks".
+    return MergeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: compact ? 16 : 18, color: accent),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: text.labelLarge?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                  fontSize: compact ? 12 : null,
+                ),
               ),
-            ),
-          ],
-        ),
-        SizedBox(height: compact ? 4 : 8),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: (compact ? text.titleMedium : text.titleLarge)?.copyWith(
-            fontWeight: FontWeight.w700,
+            ],
           ),
-        ),
-        const SizedBox(height: 2),
-        SizedBox(
-          height: compact ? 14 : 16,
-          child: Text(
-            detail ?? ' ',
+          SizedBox(height: compact ? 4 : 8),
+          Text(
+            value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: text.bodySmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-              fontSize: compact ? 11 : null,
+            style: (compact ? text.titleMedium : text.titleLarge)?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
           ),
-        ),
-        SizedBox(height: compact ? 6 : 10),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(99),
-          child: LinearProgressIndicator(
-            value: progress.clamp(0.0, 1.0),
-            minHeight: compact ? 4 : 6,
-            backgroundColor: scheme.surfaceContainerHighest,
-            color: accent,
+          const SizedBox(height: 2),
+          SizedBox(
+            height: compact ? 14 : 16,
+            child: Text(
+              detail ?? ' ',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: text.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontSize: compact ? 11 : null,
+              ),
+            ),
           ),
-        ),
-      ],
+          SizedBox(height: compact ? 6 : 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: ExcludeSemantics(
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                minHeight: compact ? 4 : 6,
+                backgroundColor: scheme.surfaceContainerHighest,
+                color: accent,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

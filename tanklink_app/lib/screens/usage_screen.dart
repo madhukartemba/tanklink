@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../ble/pump_session.dart';
 import '../util/water_use.dart';
 import '../util/error_text.dart';
+import '../util/haptics.dart';
 
 /// Water and power use, worked out from how long the pump ran.
 ///
@@ -95,7 +96,9 @@ class _UsageScreenState extends State<UsageScreen> {
             ],
             selected: {_days},
             showSelectedIcon: false,
-            onSelectionChanged: (v) => setState(() => _days = v.first),
+            onSelectionChanged: Haptics.pick(
+              (v) => setState(() => _days = v.first),
+            ),
           ),
           const SizedBox(height: 16),
           if (session.simUsage) ...[
@@ -652,7 +655,7 @@ class _DailyCard extends StatelessWidget {
                   ChoiceChip(
                     label: Text(_labels[m]!),
                     selected: m == metric,
-                    onSelected: (_) => onMetric(m),
+                    onSelected: Haptics.pick((_) => onMetric(m)),
                   ),
             ],
           ),

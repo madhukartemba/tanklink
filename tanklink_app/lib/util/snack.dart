@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import 'error_text.dart';
+import 'haptics.dart';
 
 /// Run [action]; if it fails, say why in a snackbar instead of failing silently.
 Future<void> runOrSnack(
@@ -11,6 +12,7 @@ Future<void> runOrSnack(
   try {
     await action();
   } catch (e) {
+    Haptics.play(Haptic.error);
     messenger.showSnackBar(SnackBar(content: Text(errorMessage(e))));
   }
 }

@@ -1,11 +1,16 @@
 import 'package:material_ui/material_ui.dart';
 
+import 'package:provider/provider.dart';
+
 import '../../ble/pump_session.dart';
+import '../../update/app_self_update.dart';
 import '../about_dialog.dart';
 import '../add_pump_screen.dart';
 import '../welcome_screen.dart';
 import '../report_problem_screen.dart';
 import '../../util/error_text.dart';
+import '../../util/haptics.dart';
+import '../settings/app_settings_screen.dart';
 
 class TopBar extends StatelessWidget {
   const TopBar({super.key, required this.onPumps, required this.onAdd});
@@ -33,6 +38,18 @@ class TopBar extends StatelessWidget {
         const Spacer(),
         // Always here, so a problem can be reported with no pump, or with
         // one that never connects.
+        IconButton(
+          tooltip: 'This phone',
+          onPressed: () => openAppSettings(context),
+          // A dot when an app update is waiting (shown on that screen).
+          icon: Badge(
+            isLabelVisible: context.select<AppSelfUpdate, bool>(
+              (u) => u.enabled && u.updateAvailable(),
+            ),
+            smallSize: 9,
+            child: const Icon(Icons.phone_android_rounded),
+          ),
+        ),
         IconButton(
           tooltip: 'Report a problem',
           onPressed: () => openReportScreen(context),
@@ -90,72 +107,76 @@ class PumpHeader extends StatelessWidget {
     return Material(
       color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
       borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onOpenList,
-        onLongPress: onRename,
-        borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
-          child: Row(
-            children: [
-              Container(
-                width: 9,
-                height: 9,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: connected
-                      ? const Color(0xFF3DDC97)
-                      : connecting
-                      ? scheme.tertiary
-                      : scheme.outline,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      pump.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    Text(
-                      connected
-                          ? 'Online · #${pump.serial}'
-                          : connecting
-                          ? status
-                          : 'Offline · #${pump.serial}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: scheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-              if (overWifi && connected) ...[
-                Tooltip(
-                  message: 'Connected over Wi-Fi',
-                  child: Icon(
-                    Icons.wifi_rounded,
-                    size: 20,
-                    color: scheme.primary,
+      child: Semantics(
+        onTapHint: 'Choose a pump',
+        onLongPressHint: 'Rename',
+        child: InkWell(
+          onTap: Haptics.tapped(onOpenList, Haptic.tick),
+          onLongPress: Haptics.tapped(onRename, Haptic.longPress),
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: connected
+                        ? const Color(0xFF3DDC97)
+                        : connecting
+                        ? scheme.tertiary
+                        : scheme.outline,
                   ),
                 ),
-                const SizedBox(width: 6),
-              ] else if (bleRssiDbm != null) ...[
-                _BleSignal(rssi: bleRssiDbm!),
-                const SizedBox(width: 2),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        pump.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        connected
+                            ? 'Online · #${pump.serial}'
+                            : connecting
+                            ? status
+                            : 'Offline · #${pump.serial}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: scheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                if (overWifi && connected) ...[
+                  Tooltip(
+                    message: 'Connected over Wi-Fi',
+                    child: Icon(
+                      Icons.wifi_rounded,
+                      size: 20,
+                      color: scheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ] else if (bleRssiDbm != null) ...[
+                  _BleSignal(rssi: bleRssiDbm!),
+                  const SizedBox(width: 2),
+                ],
+                IconButton(
+                  tooltip: 'Settings',
+                  onPressed: onSettings,
+                  icon: const Icon(Icons.tune_rounded),
+                ),
               ],
-              IconButton(
-                tooltip: 'Settings',
-                onPressed: onSettings,
-                icon: const Icon(Icons.tune_rounded),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -287,19 +308,22 @@ class _TankChip extends StatelessWidget {
       label: Text(
         '${slot.name.isEmpty ? session.tankNameFor(slot.index) : slot.name} · $label',
       ),
-      onSelected: locked
-          ? null
-          : (_) async {
-              if (selected) return;
-              try {
-                await session.selectTank(slot.index);
-              } catch (e) {
-                if (!context.mounted) return;
-                final msg = errorMessage(e);
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text(msg)));
-              }
-            },
+      onSelected: Haptics.pick(
+        locked
+            ? null
+            : (_) async {
+                if (selected) return;
+                try {
+                  await session.selectTank(slot.index);
+                } catch (e) {
+                  Haptics.play(Haptic.error);
+                  if (!context.mounted) return;
+                  final msg = errorMessage(e);
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(msg)));
+                }
+              },
+      ),
       selectedColor: full && !offline
           ? const Color(0xFF1FA97A).withValues(alpha: 0.22)
           : scheme.secondaryContainer,

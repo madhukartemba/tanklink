@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home screen widget. -v31 folders use the phone's wallpaper colours. -->
+<resources>
+    <color name="widget_bg">#FFF2FBF9</color>
+    <color name="widget_fg">#FF161D1C</color>
+    <color name="widget_muted">#FF3F4947</color>
+    <color name="widget_accent">#FF006A62</color>
+</resources>

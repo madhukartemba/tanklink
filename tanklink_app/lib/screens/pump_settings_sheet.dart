@@ -28,6 +28,7 @@ import 'settings/factory_reset_dialog.dart';
 import 'report_problem_screen.dart';
 import '../util/error_text.dart';
 import '../util/nav.dart';
+import 'settings/app_settings_screen.dart';
 
 Future<void> showPumpSettingsSheet(BuildContext context) {
   // Refresh release metadata when opening settings, unless it was checked
@@ -372,6 +373,14 @@ class _PumpSettingsSheetState extends State<_PumpSettingsSheet> {
                   ),
                 );
               },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.phone_android_rounded),
+              title: const Text('This phone'),
+              subtitle: const Text('Appearance and vibration'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => openAppSettings(context),
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,

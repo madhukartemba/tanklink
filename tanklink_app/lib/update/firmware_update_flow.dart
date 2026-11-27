@@ -15,6 +15,7 @@ import '../screens/report_problem_screen.dart';
 import '../util/nav.dart';
 import '../util/error_text.dart';
 import '../diag/app_log.dart';
+import '../util/haptics.dart';
 
 /// Ways to get a pump update onto the pump, best first.
 enum PumpUpdateMethod { pumpDownloads, phoneWifi, bluetooth }
@@ -426,7 +427,7 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
   Future<void> _run() async {
     final session = context.read<PumpSession>();
     final fw = context.read<PumpFirmwareUpdate>();
-    HapticFeedback.mediumImpact();
+    Haptics.play(Haptic.confirm);
     await WakelockPlus.enable();
     try {
       if (widget.method == PumpUpdateMethod.pumpDownloads) {
@@ -439,7 +440,7 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
           onRebooting: fw.setRebooting,
         );
         fw.setDone();
-        HapticFeedback.heavyImpact();
+        Haptics.play(Haptic.success);
         return;
       }
       if (widget.method == PumpUpdateMethod.bluetooth &&
@@ -463,11 +464,11 @@ class _OtaProgressDialogState extends State<_OtaProgressDialog> {
       // Stays open on "Update complete" until Done: closing it here too
       // raced the Done tap, and the second close popped the home screen.
       fw.setDone();
-      HapticFeedback.heavyImpact();
+      Haptics.play(Haptic.success);
     } catch (e) {
       AppLog.w('update', 'Update failed: $e'); // the full text, for reports
       fw.setError(errorMessage(e));
-      HapticFeedback.heavyImpact();
+      Haptics.play(Haptic.error);
     } finally {
       await WakelockPlus.disable();
     }

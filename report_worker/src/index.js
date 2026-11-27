@@ -47,6 +47,11 @@
  * GET /app → 302 to TankLink.apk of the newest app-v* release (from the
  * same cached list). The install QR code points here, so it never has to
  * change. Falls back to the GitHub releases page.
+ *
+ * GET /.well-known/assetlinks.json → Android App Links: lets the TankLink
+ * app (signed with the upload key) open https://<this host>/pump links,
+ * such as the one on the pump's NFC tag. GET /pump[/...] → 302 to the landing
+ * page, for a phone without the app.
  */
 
 const MAX_BODY_BYTES = 200 * 1024;
@@ -61,6 +66,19 @@ const RELEASES_FRESH_SEC = 600;
 const RELEASES_KEEP_SEC = 86400;
 const RELEASES_PER_PAGE = 30;
 const APP_FALLBACK_URL = "https://github.com/madhukartemba/tanklink/releases";
+// SHA-256 of the app's upload key certificate (docs/app-release.md).
+const ASSET_LINKS = [
+  {
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: {
+      namespace: "android_app",
+      package_name: "com.tanklink.tanklink",
+      sha256_cert_fingerprints: [
+        "D4:00:00:75:A2:50:3D:04:C9:D1:9C:4E:44:0D:FD:06:56:14:0C:35:37:98:09:29:0F:DF:A7:21:67:EC:C3:A1",
+      ],
+    },
+  },
+];
 
 export default {
   async fetch(request, env) {
@@ -70,6 +88,12 @@ export default {
     }
     if (url.pathname === "/app" || url.pathname === "/app/") {
       return appDownload(env);
+    }
+    if (url.pathname === "/.well-known/assetlinks.json") {
+      return json(ASSET_LINKS);
+    }
+    if (url.pathname === "/pump" || url.pathname.startsWith("/pump/")) {
+      return Response.redirect(new URL("/", url).toString(), 302);
     }
     if (url.pathname === "/v1/releases") {
       if (request.method !== "GET") {

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../alerts/alert_bridge.dart';
 import '../diag/app_log.dart';
+import '../link/app_link.dart';
 import '../link/ble_link.dart';
 import '../link/pump_link.dart';
 import '../link/pump_finder.dart';
@@ -491,6 +492,17 @@ class PumpSession extends ChangeNotifier {
 
     selectedRemoteId =
         prefs.getString('selected_pump_id') ?? pumps.firstOrNull?.remoteId;
+    unawaited(AppLink.setShortcuts(pumps));
+    // Opened from a pump's NFC tag (or link) naming a pump: start on that one.
+    final linked = _pumpForLink(await AppLink.initial());
+    if (linked != null && linked.remoteId != selectedRemoteId) {
+      selectedRemoteId = linked.remoteId;
+      await _persistAll();
+    }
+    AppLink.listen((url) {
+      final pump = _pumpForLink(url);
+      if (pump != null) unawaited(selectPump(pump));
+    });
     // The background alert code knows the saved pumps from the start, so an
     // alert can be shown before (or without) any connection.
     unawaited(syncAlertBridge());
@@ -506,6 +518,19 @@ class PumpSession extends ChangeNotifier {
     await connectSelected();
   }
 
+  /// The saved pump an app link names by serial, or null (the link only
+  /// opens the app, or names a pump this phone hasn't added).
+  SavedPump? _pumpForLink(String? url) {
+    final serial = pumpSerialFromLink(url);
+    if (serial == null) return null;
+    final pump = pumps.where((p) => p.serial == serial).firstOrNull;
+    AppLog.i(
+      'link',
+      'Opened for pump #$serial${pump == null ? ' (not added)' : ''}',
+    );
+    return pump;
+  }
+
   Future<void> onAppResumed() async {
     if (selected == null) return;
     if (connected && authed) return;
@@ -516,6 +541,7 @@ class PumpSession extends ChangeNotifier {
   }
 
   Future<void> _persistAll() async {
+    unawaited(AppLink.setShortcuts(pumps));
     final prefs = await SharedPreferences.getInstance();
     await _secure.write(
       key: _savedPumpsKey,

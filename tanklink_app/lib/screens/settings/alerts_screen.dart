@@ -7,6 +7,7 @@ import '../../alerts/alert_bridge.dart';
 import '../../ble/pump_session.dart';
 import '../../ble/tanklink_uuids.dart';
 import '../../util/error_text.dart';
+import '../../util/haptics.dart';
 
 /// Alerts with the app closed: the pump puts an alert in its Bluetooth
 /// advertisement and Android wakes the app to show it (docs/plan-alerts.md).
@@ -136,7 +137,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                       'each alert over Bluetooth for an hour.',
                     ),
                     value: _enabled,
-                    onChanged: _toggle,
+                    onChanged: Haptics.toggle(_toggle),
                   ),
                   if (_enabled && (!_notifications || !_scan))
                     Card(
@@ -174,7 +175,9 @@ class _AlertsScreenState extends State<AlertsScreen>
                       contentPadding: EdgeInsets.zero,
                       title: Text(e.value),
                       value: _types.contains(e.key),
-                      onChanged: _enabled ? (v) => _toggleType(e.key, v) : null,
+                      onChanged: Haptics.toggle(
+                        _enabled ? (v) => _toggleType(e.key, v) : null,
+                      ),
                     ),
                   const Divider(height: 24),
                   FilledButton.tonalIcon(

@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter/services.dart';
+
+import '../util/haptics.dart';
 
 /// Matches [_PumpHeader] height on the home screen (14+48+14).
 const double kHomeControlHeight = 76;
@@ -76,7 +77,7 @@ class _SlideToStartState extends State<SlideToStart>
       _progress = 1;
     });
     _syncShimmer();
-    HapticFeedback.heavyImpact();
+    Haptics.play(Haptic.confirm);
     try {
       await widget.onCompleted();
     } finally {
@@ -91,13 +92,32 @@ class _SlideToStartState extends State<SlideToStart>
     }
   }
 
+  /// Detents the thumb passes on the way (each one firmer), and a last one
+  /// where letting go will start the pump.
+  static const _marks = [0.2, 0.4, 0.6, 0.8, _completeAt];
+  int _detent = 0;
+
+  void _detents(double p) {
+    var n = 0;
+    while (n < _marks.length && p >= _marks[n]) {
+      n++;
+    }
+    if (n > _detent) {
+      Haptics.play(
+        n == _marks.length ? Haptic.tap : Haptic.detent,
+        scale: n / _marks.length,
+      );
+    }
+    _detent = n;
+  }
+
   void _snapBack() {
     setState(() {
       _progress = 0;
       _dragging = false;
     });
     _syncShimmer();
-    HapticFeedback.selectionClick();
+    Haptics.play(Haptic.release);
   }
 
   Widget _hintLabel(ColorScheme scheme, TextStyle? style, bool shimmer) {
@@ -130,7 +150,9 @@ class _SlideToStartState extends State<SlideToStart>
                 scheme.onSurface.withValues(alpha: 0.28),
                 scheme.onSurface.withValues(alpha: 0.28),
                 scheme.onSurface.withValues(alpha: 0.95),
-                Colors.white,
+                scheme.brightness == Brightness.dark
+                    ? Colors.white
+                    : scheme.primary,
                 scheme.onSurface.withValues(alpha: 0.95),
                 scheme.onSurface.withValues(alpha: 0.28),
                 scheme.onSurface.withValues(alpha: 0.28),
@@ -166,146 +188,157 @@ class _SlideToStartState extends State<SlideToStart>
         final dx = _progress * travel;
         final hintHidden = _dragging || _progress > 0.12;
 
-        return Opacity(
-          opacity: widget.enabled ? 1 : 0.5,
-          child: Container(
-            width: double.infinity,
-            height: _height,
-            decoration: BoxDecoration(
-              borderRadius: trackRadius,
-              color: scheme.surfaceContainerHighest.withValues(alpha: 0.85),
-              border: Border.all(
-                color: enabled
-                    ? scheme.primary.withValues(alpha: 0.65)
-                    : scheme.outlineVariant,
-                width: _border,
+        // TalkBack can't drag the thumb: a double tap is its deliberate
+        // action instead.
+        return Semantics(
+          button: true,
+          enabled: enabled,
+          label: widget.label,
+          hint: enabled ? 'Double tap to start the pump' : null,
+          onTap: enabled ? _finish : null,
+          excludeSemantics: true,
+          child: Opacity(
+            opacity: widget.enabled ? 1 : 0.5,
+            child: Container(
+              width: double.infinity,
+              height: _height,
+              decoration: BoxDecoration(
+                borderRadius: trackRadius,
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.85),
+                border: Border.all(
+                  color: enabled
+                      ? scheme.primary.withValues(alpha: 0.65)
+                      : scheme.outlineVariant,
+                  width: _border,
+                ),
               ),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Positioned.fill(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: FractionallySizedBox(
-                      widthFactor: ((_pad + dx + thumbSize) / innerW).clamp(
-                        0.0,
-                        1.0,
-                      ),
-                      heightFactor: 1,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              scheme.primary.withValues(
-                                alpha: 0.35 * _progress,
-                              ),
-                              scheme.primary.withValues(
-                                alpha: 0.12 * _progress,
-                              ),
-                            ],
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Positioned.fill(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: ((_pad + dx + thumbSize) / innerW).clamp(
+                          0.0,
+                          1.0,
+                        ),
+                        heightFactor: 1,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                scheme.primary.withValues(
+                                  alpha: 0.35 * _progress,
+                                ),
+                                scheme.primary.withValues(
+                                  alpha: 0.12 * _progress,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                IgnorePointer(
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 140),
-                    opacity: hintHidden ? 0.0 : 1.0,
-                    child: Padding(
-                      // Clear the thumb on the left; align label toward the end.
-                      padding: EdgeInsets.only(
-                        left: thumbSize + _pad * 2,
-                        right: 16,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Flexible(
-                            child: _hintLabel(
-                              scheme,
-                              Theme.of(context).textTheme.titleMedium,
-                              useShimmer,
+                  IgnorePointer(
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 140),
+                      opacity: hintHidden ? 0.0 : 1.0,
+                      child: Padding(
+                        // Clear the thumb on the left; align label toward the end.
+                        padding: EdgeInsets.only(
+                          left: thumbSize + _pad * 2,
+                          right: 16,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Flexible(
+                              child: _hintLabel(
+                                scheme,
+                                Theme.of(context).textTheme.titleMedium,
+                                useShimmer,
+                              ),
                             ),
-                          ),
-                          if (showChevron) ...[
-                            const SizedBox(width: 6),
-                            Icon(
-                              Icons.keyboard_double_arrow_right_rounded,
-                              size: 22,
-                              color: scheme.primary.withValues(alpha: 0.85),
-                            ),
+                            if (showChevron) ...[
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.keyboard_double_arrow_right_rounded,
+                                size: 22,
+                                color: scheme.primary.withValues(alpha: 0.85),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-                // Equal top/bottom inset → vertically centered in the track.
-                Positioned(
-                  left: _pad + dx,
-                  top: _pad,
-                  bottom: _pad,
-                  width: thumbSize,
-                  child: GestureDetector(
-                    onHorizontalDragStart: enabled
-                        ? (_) {
-                            setState(() => _dragging = true);
-                            _syncShimmer();
-                            HapticFeedback.selectionClick();
-                          }
-                        : null,
-                    onHorizontalDragUpdate: enabled
-                        ? (d) {
-                            final next = (_progress + d.delta.dx / travel)
-                                .clamp(0.0, 1.0);
-                            setState(() => _progress = next);
-                            if (next > 0.48 && next < 0.55) {
-                              HapticFeedback.selectionClick();
+                  // Equal top/bottom inset → vertically centered in the track.
+                  Positioned(
+                    left: _pad + dx,
+                    top: _pad,
+                    bottom: _pad,
+                    width: thumbSize,
+                    child: GestureDetector(
+                      onHorizontalDragStart: enabled
+                          ? (_) {
+                              setState(() => _dragging = true);
+                              _syncShimmer();
+                              _detent = 0;
+                              Haptics.play(Haptic.grab);
                             }
-                          }
-                        : null,
-                    onHorizontalDragEnd: enabled
-                        ? (_) {
-                            if (_progress >= _completeAt) {
-                              _finish();
-                            } else {
-                              _snapBack();
+                          : null,
+                      onHorizontalDragUpdate: enabled
+                          ? (d) {
+                              final next = (_progress + d.delta.dx / travel)
+                                  .clamp(0.0, 1.0);
+                              setState(() => _progress = next);
+                              _detents(next);
                             }
-                          }
-                        : null,
-                    child: AnimatedContainer(
-                      duration: _dragging
-                          ? Duration.zero
-                          : const Duration(milliseconds: 180),
-                      curve: Curves.easeOutCubic,
-                      decoration: BoxDecoration(
-                        color: enabled ? scheme.primary : scheme.outline,
-                        borderRadius: thumbRadius,
-                        boxShadow: enabled
-                            ? [
-                                BoxShadow(
-                                  color: scheme.primary.withValues(alpha: 0.35),
-                                  blurRadius: 8,
-                                  offset: Offset.zero,
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Icon(
-                        _busy
-                            ? Icons.hourglass_top_rounded
-                            : Icons.play_arrow_rounded,
-                        color: enabled ? scheme.onPrimary : scheme.onSurface,
-                        size: 28,
+                          : null,
+                      onHorizontalDragEnd: enabled
+                          ? (_) {
+                              if (_progress >= _completeAt) {
+                                _finish();
+                              } else {
+                                _snapBack();
+                              }
+                            }
+                          : null,
+                      child: AnimatedContainer(
+                        duration: _dragging
+                            ? Duration.zero
+                            : const Duration(milliseconds: 180),
+                        curve: Curves.easeOutCubic,
+                        decoration: BoxDecoration(
+                          color: enabled ? scheme.primary : scheme.outline,
+                          borderRadius: thumbRadius,
+                          boxShadow: enabled
+                              ? [
+                                  BoxShadow(
+                                    color: scheme.primary.withValues(
+                                      alpha: 0.35,
+                                    ),
+                                    blurRadius: 8,
+                                    offset: Offset.zero,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: Icon(
+                          _busy
+                              ? Icons.hourglass_top_rounded
+                              : Icons.play_arrow_rounded,
+                          color: enabled ? scheme.onPrimary : scheme.onSurface,
+                          size: 28,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );

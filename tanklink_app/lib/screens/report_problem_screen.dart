@@ -16,6 +16,7 @@ import '../diag/app_log.dart';
 import '../diag/report_builder.dart';
 import '../diag/report_sender.dart';
 import '../util/nav.dart';
+import '../util/haptics.dart';
 
 /// Opens "Report a problem", pre-filled with [problem] when it comes from an
 /// error banner or a failed update.
@@ -329,7 +330,9 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
                 ],
                 selected: {_when},
                 showSelectedIcon: false,
-                onSelectionChanged: (s) => setState(() => _when = s.first),
+                onSelectionChanged: Haptics.pick(
+                  (s) => setState(() => _when = s.first),
+                ),
               ),
             ],
             const SizedBox(height: 12),
@@ -352,7 +355,7 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
               title: const Text('App log'),
               subtitle: const Text('What the app did recently'),
               value: _withLog,
-              onChanged: (v) => setState(() => _withLog = v),
+              onChanged: Haptics.toggle((v) => setState(() => _withLog = v)),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -363,14 +366,14 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
                     : 'Saved pumps and why it isn’t connected',
               ),
               value: _withPump,
-              onChanged: (v) => setState(() => _withPump = v),
+              onChanged: Haptics.toggle((v) => setState(() => _withPump = v)),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Phone details'),
               subtitle: const Text('Model and Android version'),
               value: _withPhone,
-              onChanged: (v) => setState(() => _withPhone = v),
+              onChanged: Haptics.toggle((v) => setState(() => _withPhone = v)),
             ),
             if (_error != null) ...[
               const SizedBox(height: 8),

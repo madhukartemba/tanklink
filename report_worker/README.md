@@ -15,6 +15,10 @@ Every app's pump, tank and app update check asks here instead of GitHub. The Wor
 
 Redirects (302) to `TankLink.apk` of the newest `app-v*` release, read from the same cached release list. The install QR code ([`docs/app-qr.svg`](../docs/app-qr.svg)) points here. If the list can't be read, it redirects to the GitHub releases page.
 
+## App Links (`GET /.well-known/assetlinks.json`, `GET /pump`)
+
+`assetlinks.json` lets the TankLink app open `https://tanklink.madhukartemba.in/pump` and `/pump/<serial>` links (the pump's NFC tag) instead of the browser. It names the package and the upload key's certificate SHA-256, so only release builds signed with that key qualify; a debug build still opens the browser. Android fetches it when the app is installed. `/pump` itself redirects to the landing page, which is what a phone without the app sees.
+
 ## Latest pump firmware (`GET /v1/firmware/pump/latest?hw=<rev>&proto=<major>`)
 
 For pumps that update themselves over Wi-Fi: the release list is too big for a pump to parse, so this returns just `{"version", "url", "size", "sha256"}` for the newest `pump-v*` release whose manifest has the same `proto_major` and lists `hw` in `hw_revs` (the same rules as the app). Built from the cached release list and cached the same way; `404` if nothing fits, `502` if GitHub can't be reached and nothing is cached. The `url` in the answer points back at this Worker (`GET /v1/firmware/pump/download/<version>.bin`), which streams `pump_node.bin` of that `pump-v*` release from GitHub. The pump then only ever talks to this one host: GitHub's download host (`release-assets.githubusercontent.com`) turned out not to be reachable from every network, and its redirect carries a very long signed address. Only `pump_node.bin` of a release of `RELEASES_REPO` can be fetched this way. The pump verifies the `sha256` and the image's signature itself, so a wrong answer here can't make it run foreign code.
@@ -77,4 +81,4 @@ The release list is cached for 10 minutes, and the pump's "latest firmware" answ
 
 ## Landing page (`GET /`)
 
-`public/index.html` is a static page (what TankLink is, plus a Download button that links to `/app`). `[assets]` in `wrangler.toml` serves it; paths with no file in `public/` (`/app`, `/v1/*`, `/health`) still reach `src/index.js`. It goes live with `npx wrangler deploy`.
+`public/index.html` is a static page (what TankLink is, plus a Download button that links to `/app`). `[assets]` in `wrangler.toml` serves it; paths with no file in `public/` (`/app`, `/pump`, `/.well-known/assetlinks.json`, `/v1/*`, `/health`) still reach `src/index.js`. It goes live with `npx wrangler deploy`.

@@ -8,6 +8,9 @@ import android.net.nsd.NsdServiceInfo
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.FileProvider
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -28,8 +31,80 @@ class MainActivity : FlutterActivity() {
         super.onPause()
     }
 
+    // lib/link/app_link.dart: the App Link the app was opened with (given to
+    // Dart once) and the ones that arrive while it runs.
+    private var linkChannel: MethodChannel? = null
+    private var initialLink: String? = null
+
+    private fun appLink(intent: Intent?): String? =
+        if (intent?.action == Intent.ACTION_VIEW) intent.dataString else null
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        appLink(intent)?.let { linkChannel?.invokeMethod("link", it) }
+    }
+
+    /** Long-press the app icon: one shortcut per saved pump (the launcher shows about 4). */
+    private fun setPumpShortcuts(pumps: List<Map<String, String>>) {
+        val max = ShortcutManagerCompat.getMaxShortcutCountPerActivity(this)
+        val list = pumps.take(max).mapIndexed { i, p ->
+            val serial = p["serial"]!!
+            val name = p["name"]!!
+            ShortcutInfoCompat.Builder(this, "pump-$serial")
+                .setShortLabel(name)
+                .setLongLabel("Open $name")
+                .setIcon(IconCompat.createWithResource(this, R.mipmap.ic_launcher))
+                .setRank(i)
+                .setIntent(
+                    Intent(Intent.ACTION_VIEW, android.net.Uri.parse("$LINK_BASE/pump/$serial"))
+                        .setClass(this, MainActivity::class.java),
+                )
+                .build()
+        }
+        ShortcutManagerCompat.setDynamicShortcuts(this, list)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        initialLink = appLink(intent)
+        linkChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LINK_CHANNEL).also {
+            it.setMethodCallHandler { call, result ->
+                if (call.method == "initialLink") {
+                    result.success(initialLink)
+                    initialLink = null
+                } else if (call.method == "setShortcuts") {
+                    @Suppress("UNCHECKED_CAST")
+                    setPumpShortcuts(call.arguments as List<Map<String, String>>)
+                    result.success(null)
+                } else {
+                    result.notImplemented()
+                }
+            }
+        }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, GLANCE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                if (call.method == "update") {
+                    @Suppress("UNCHECKED_CAST")
+                    PumpGlance.save(this, call.arguments as Map<String, Any?>)
+                    result.success(null)
+                } else {
+                    result.notImplemented()
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, HAPTICS_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                if (call.method == "play") {
+                    Haptics.play(
+                        this,
+                        call.argument<String>("name") ?: "tap",
+                        (call.argument<Double>("scale") ?: 1.0).toFloat(),
+                    )
+                    result.success(null)
+                } else {
+                    result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALERTS_CHANNEL)
             .setMethodCallHandler { call, result -> handleAlerts(call, result) }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler {
@@ -262,5 +337,9 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "com.tanklink/install"
         private const val ALERTS_CHANNEL = "tanklink/alerts"
+        private const val LINK_CHANNEL = "com.tanklink/link"
+        private const val HAPTICS_CHANNEL = "com.tanklink/haptics"
+        private const val GLANCE_CHANNEL = "com.tanklink/glance"
+        const val LINK_BASE = "https://tanklink.madhukartemba.in"
     }
 }

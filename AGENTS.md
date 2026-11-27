@@ -68,13 +68,16 @@ App (`tanklink_app/lib/`):
 | `ble/models.dart` | Saved pumps, tank slots, schedules |
 | `ble/pump_session.dart` | Connection (Wi-Fi first when the pump has it, else Bluetooth), state the screens read, commands |
 | `alerts/alert_bridge.dart` | Dart side of the Android alert code (`android/.../Alert*.kt`: background Bluetooth scan, one notifier, boot receiver) |
-| `link/` | `PumpChr` (one characteristic over either link), `wifi_link.dart` (TCP framing and tags), `ble_link.dart`, `pump_finder.dart` (mDNS lookup through MainActivity) |
+| `link/` | `PumpChr` (one characteristic over either link), `wifi_link.dart` (TCP framing and tags), `ble_link.dart`, `pump_finder.dart` (mDNS lookup through MainActivity), `app_link.dart` (`/pump/<serial>` App Links, e.g. the pump's NFC tag) |
 | `ble/ota_upload.dart` | The shared OTA transfer for pump and tank |
 | `update/` | GitHub release checks, downloads, update flows (the update sheet picks a method: the pump downloads it, the phone sends it over Wi-Fi, or over Bluetooth) |
 | `screens/settings/alerts_screen.dart` | Alerts switches, test alert, permission and battery help |
 | `screens/settings/auto_fill_screen.dart`, `buzzer_screen.dart` | Auto-fill (tanks, allowed times, gap, live state) and the buzzer (events, sounds, quiet hours) |
 | `screens/`, `screens/home/`, `screens/settings/` | UI. One widget family per file. `settings/wifi_screen.dart` sets up the pump's Wi-Fi |
 | `util/format.dart` | Shared labels |
+| `util/haptics.dart` | Vibration patterns named by event (`Haptic.pumpStart`, `toggleOn`, ...), played by `android/.../Haptics.kt` from vibrator primitives; `Haptics.toggle/pick/slide` wrap a control's callback. New switches, chips and sliders should use them |
+| `util/app_prefs.dart`, `screens/settings/app_settings_screen.dart` | This phone's settings: appearance (phone / light / dark) and vibration |
+| `glance/glance_bridge.dart` | Sends the selected pump's state to the home screen widget and Quick Settings tile (`PumpGlance.kt`, `PumpWidget.kt`, `PumpTile.kt`). The tile only opens the app: starting needs the slider |
 | `util/water_use.dart`, `screens/usage_screen.dart` | Water and power: litres, energy and cost from run time (unit tested) and the charts. Flow, power, price and the 200-fill history all live on the pump |
 | `diag/` | App log (`app_log.dart`), report text and redaction (`report_builder.dart`, unit tested), sending and offline queue (`report_sender.dart`) |
 | `screens/report_problem_screen.dart` | Report a problem; opened from Settings, error banners and failed updates |
@@ -172,7 +175,7 @@ Notes: `scripts/release.sh` needs a clean `main` that is pushed, and the signing
 
 ## The report service (Cloudflare Worker)
 
-`report_worker/` is deployed with `cd report_worker && npx wrangler deploy` (needs a logged-in `wrangler`; changes go live for everyone). Secrets: `GITHUB_TOKEN`, `APP_KEY`, `REFRESH_KEY` (`wrangler secret put`). Routes: `POST /v1/report`, `GET /v1/releases` (10-minute cache), `GET /v1/firmware/pump/latest?hw=&proto=` and `GET /v1/firmware/pump/download/<ver>.bin` (the pump fetches firmware **through** the Worker because GitHub's download host isn't reachable from every network), `GET /` (landing page, `report_worker/public/index.html`), `GET /app` (install QR redirect), `POST /v1/refresh` (refresh the cache now; needs the `x-refresh-key` header; `scripts/refresh_worker.sh` reads the key from the gitignored `report_worker/.refresh_key`). See `report_worker/README.md`.
+`report_worker/` is deployed with `cd report_worker && npx wrangler deploy` (needs a logged-in `wrangler`; changes go live for everyone). Secrets: `GITHUB_TOKEN`, `APP_KEY`, `REFRESH_KEY` (`wrangler secret put`). Routes: `POST /v1/report`, `GET /v1/releases` (10-minute cache), `GET /v1/firmware/pump/latest?hw=&proto=` and `GET /v1/firmware/pump/download/<ver>.bin` (the pump fetches firmware **through** the Worker because GitHub's download host isn't reachable from every network), `GET /` (landing page, `report_worker/public/index.html`), `GET /app` (install QR redirect), `GET /.well-known/assetlinks.json` and `GET /pump` (App Links for the pump's NFC tag, `docs/app-release.md`), `POST /v1/refresh` (refresh the cache now; needs the `x-refresh-key` header; `scripts/refresh_worker.sh` reads the key from the gitignored `report_worker/.refresh_key`). See `report_worker/README.md`.
 
 ## The pump's Wi-Fi, updates and alerts: things that bit us
 

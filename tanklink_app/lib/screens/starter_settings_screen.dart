@@ -6,6 +6,7 @@ import '../ble/tanklink_uuids.dart';
 import '../util/format.dart';
 import '../util/nav.dart';
 import '../util/error_text.dart';
+import '../util/haptics.dart';
 
 class StarterSettingsScreen extends StatefulWidget {
   const StarterSettingsScreen({super.key});
@@ -174,11 +175,13 @@ class _StarterSettingsScreenState extends State<StarterSettingsScreen> {
                         50,
                     value: _draftPulseMs.toDouble(),
                     label: '$_draftPulseMs ms',
-                    onChanged: _saving
-                        ? null
-                        : (v) => setState(
-                            () => _draftPulseMs = (v / 50).round() * 50,
-                          ),
+                    onChanged: Haptics.slide(
+                      _saving
+                          ? null
+                          : (v) => setState(
+                              () => _draftPulseMs = (v / 50).round() * 50,
+                            ),
+                    ),
                   ),
                 ),
                 SizedBox(

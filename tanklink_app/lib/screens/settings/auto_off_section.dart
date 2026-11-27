@@ -5,6 +5,7 @@ import '../../ble/pump_session.dart';
 import '../../ble/tanklink_uuids.dart';
 import '../../util/format.dart';
 import '../../util/error_text.dart';
+import '../../util/haptics.dart';
 
 /// Auto-off switch and duration for one tank. With several tanks a selector
 /// picks which tank is being edited; each tank keeps its own limit.
@@ -118,8 +119,9 @@ class _AutoOffSectionState extends State<AutoOffSection> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     selected: t.index == _editSlot,
-                    onSelected: (_) =>
-                        setState(() => _loadSlot(session, t.index)),
+                    onSelected: Haptics.pick(
+                      (_) => setState(() => _loadSlot(session, t.index)),
+                    ),
                   ),
               ],
             ),
@@ -162,9 +164,9 @@ class _AutoOffSectionState extends State<AutoOffSection> {
                       .clamp(_minMinutes, _maxMinutes)
                       .toDouble(),
                   label: formatAutoOff(_draftMinutes),
-                  onChanged: (v) {
+                  onChanged: Haptics.slide((v) {
                     setState(() => _draftMinutes = v.round());
-                  },
+                  }),
                   onChangeEnd: (v) => _commitAuto(v.round()),
                 ),
                 Padding(

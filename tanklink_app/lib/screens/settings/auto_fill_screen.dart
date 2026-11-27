@@ -6,6 +6,7 @@ import '../../ble/pump_session.dart';
 import '../../ble/tanklink_uuids.dart';
 import '../../util/format.dart';
 import '../../util/snack.dart';
+import '../../util/haptics.dart';
 
 /// Auto-fill: which tanks fill themselves, when they may, and what it is
 /// doing right now.
@@ -330,15 +331,17 @@ class _LeverWarning extends StatelessWidget {
                 ChoiceChip(
                   label: Text(session.tankNameFor(t.index)),
                   selected: t.index == session.activeSlot,
-                  onSelected: session.pumpOn && t.index != session.activeSlot
-                      ? null
-                      : (_) {
-                          if (t.index == session.activeSlot) return;
-                          runOrSnack(
-                            context,
-                            () => session.selectTank(t.index),
-                          );
-                        },
+                  onSelected: Haptics.pick(
+                    session.pumpOn && t.index != session.activeSlot
+                        ? null
+                        : (_) {
+                            if (t.index == session.activeSlot) return;
+                            runOrSnack(
+                              context,
+                              () => session.selectTank(t.index),
+                            );
+                          },
+                  ),
                 ),
             ],
           ),
@@ -383,7 +386,9 @@ class _TankRow extends StatelessWidget {
             : subtitle,
       ),
       value: t.autoFill,
-      onChanged: !can ? null : (v) => setAutoFillFor(context, session, slot, v),
+      onChanged: Haptics.toggle(
+        !can ? null : (v) => setAutoFillFor(context, session, slot, v),
+      ),
     );
   }
 }
@@ -410,7 +415,7 @@ class _TimesSection extends StatelessWidget {
                 : 'Starts any time the tank runs low',
           ),
           value: info.limitTimes,
-          onChanged: (v) => _save(context, info, limitTimes: v),
+          onChanged: Haptics.toggle((v) => _save(context, info, limitTimes: v)),
         ),
         if (info.limitTimes) ...[
           for (var i = 0; i < info.windows.length; i++)
@@ -460,7 +465,9 @@ class _TimesSection extends StatelessWidget {
                         'is full',
             ),
             value: info.stopAtEnd,
-            onChanged: (v) => _save(context, info, stopAtEnd: v),
+            onChanged: Haptics.toggle(
+              (v) => _save(context, info, stopAtEnd: v),
+            ),
           ),
         ],
       ],
@@ -504,11 +511,11 @@ class _WindowTile extends StatelessWidget {
         },
         trailing: Switch(
           value: w.enabled,
-          onChanged: (v) {
+          onChanged: Haptics.toggle((v) {
             final next = [...info.windows];
             next[index] = w.copyWith(enabled: v);
             _save(context, info, windows: next);
-          },
+          }),
         ),
       ),
     );
@@ -593,8 +600,9 @@ Future<DayWindow?> _editWindow(
                     ChoiceChip(
                       label: Text(label),
                       selected: w.days == days,
-                      onSelected: (_) =>
-                          setState(() => w = w.copyWith(days: days)),
+                      onSelected: Haptics.pick(
+                        (_) => setState(() => w = w.copyWith(days: days)),
+                      ),
                     ),
                 ],
               ),
@@ -608,9 +616,11 @@ Future<DayWindow?> _editWindow(
                       label: Text(dayShort(d)),
                       selected: w.onDay(d),
                       showCheckmark: false,
-                      onSelected: (on) => setState(
-                        () => w = w.copyWith(
-                          days: on ? w.days | (1 << d) : w.days & ~(1 << d),
+                      onSelected: Haptics.pick(
+                        (on) => setState(
+                          () => w = w.copyWith(
+                            days: on ? w.days | (1 << d) : w.days & ~(1 << d),
+                          ),
                         ),
                       ),
                     ),
@@ -688,7 +698,7 @@ class _GapSectionState extends State<_GapSection> {
               5,
           value: gap.toDouble(),
           label: formatWait(gap),
-          onChanged: (v) => setState(() => _draft = v.round()),
+          onChanged: Haptics.slide((v) => setState(() => _draft = v.round())),
           onChangeEnd: (v) async {
             await _save(context, widget.info, gapMin: v.round());
             if (mounted) setState(() => _draft = null);

@@ -5,6 +5,7 @@ import '../ble/pump_session.dart';
 import 'add_pump_screen.dart';
 import 'pump_settings_sheet.dart';
 import '../util/nav.dart';
+import '../util/haptics.dart';
 
 class PumpListScreen extends StatelessWidget {
   const PumpListScreen({super.key});
@@ -120,10 +121,14 @@ class PumpListScreen extends StatelessWidget {
                       ],
                     ),
                     onTap: () async {
+                      Haptics.play(Haptic.select);
                       await session.selectPump(p);
                       if (context.mounted) popSelf(context);
                     },
-                    onLongPress: () => showRenamePumpDialog(context, p),
+                    onLongPress: () {
+                      Haptics.play(Haptic.longPress);
+                      showRenamePumpDialog(context, p);
+                    },
                   ),
                 );
               },

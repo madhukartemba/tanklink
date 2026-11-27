@@ -5,6 +5,7 @@ import '../../ble/pump_session.dart';
 import '../../link/pump_link.dart';
 import '../../update/firmware_update_flow.dart' show showFirmwareConfirmSheet;
 import '../../util/error_text.dart';
+import '../../util/haptics.dart';
 
 String _why(Object e) => errorMessage(e);
 
@@ -102,7 +103,7 @@ class WifiScreen extends StatelessWidget {
               ),
               trailing: Switch(
                 value: !pump.bleOnly,
-                onChanged: (auto) => session.setBleOnly(!auto),
+                onChanged: Haptics.toggle((auto) => session.setBleOnly(!auto)),
               ),
             ),
             if (session.connected)
@@ -332,18 +333,20 @@ class _PumpUpdates extends StatelessWidget {
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           value: session.autoUpdate,
-          onChanged: session.ready
-              ? (v) async {
-                  try {
-                    await session.setAutoUpdate(v);
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(SnackBar(content: Text(_why(e))));
+          onChanged: Haptics.toggle(
+            session.ready
+                ? (v) async {
+                    try {
+                      await session.setAutoUpdate(v);
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(SnackBar(content: Text(_why(e))));
+                      }
                     }
                   }
-                }
-              : null,
+                : null,
+          ),
         ),
       ],
     );

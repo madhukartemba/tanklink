@@ -6,6 +6,7 @@ import '../../ble/pump_session.dart';
 import '../../ble/tanklink_uuids.dart';
 import '../../util/format.dart';
 import '../../util/snack.dart';
+import '../../util/haptics.dart';
 
 /// Names of the pump's buzzer sounds, by TankLinkUuids.buzzSound*.
 const buzzSoundNames = [
@@ -132,9 +133,11 @@ class BuzzerScreen extends StatelessWidget {
                     b.enabled ? 'Sounds on the pump' : 'Every sound is off',
                   ),
                   value: b.enabled,
-                  onChanged: (v) => runOrSnack(
-                    context,
-                    () => session.setBuzzer(b.copyWith(enabled: v)),
+                  onChanged: Haptics.toggle(
+                    (v) => runOrSnack(
+                      context,
+                      () => session.setBuzzer(b.copyWith(enabled: v)),
+                    ),
                   ),
                 ),
                 IgnorePointer(
@@ -213,9 +216,11 @@ class _EventRow extends StatelessWidget {
       onTap: () => _pickSound(context, session, event, title),
       trailing: Switch(
         value: on,
-        onChanged: (v) => runOrSnack(
-          context,
-          () => session.setBuzzer(config.withEvent(event, v)),
+        onChanged: Haptics.toggle(
+          (v) => runOrSnack(
+            context,
+            () => session.setBuzzer(config.withEvent(event, v)),
+          ),
         ),
       ),
     );
@@ -350,9 +355,11 @@ class _QuietHours extends StatelessWidget {
                 : 'Off',
           ),
           value: b.quiet,
-          onChanged: (v) => runOrSnack(
-            context,
-            () => session.setBuzzer(b.copyWith(quiet: v)),
+          onChanged: Haptics.toggle(
+            (v) => runOrSnack(
+              context,
+              () => session.setBuzzer(b.copyWith(quiet: v)),
+            ),
           ),
         ),
         if (b.quiet) ...[
@@ -380,9 +387,11 @@ class _QuietHours extends StatelessWidget {
               'Someone at the pump hears the button and "start refused"',
             ),
             value: b.quietButton,
-            onChanged: (v) => runOrSnack(
-              context,
-              () => session.setBuzzer(b.copyWith(quietButton: v)),
+            onChanged: Haptics.toggle(
+              (v) => runOrSnack(
+                context,
+                () => session.setBuzzer(b.copyWith(quietButton: v)),
+              ),
             ),
           ),
           Text(

@@ -1,5 +1,4 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -10,6 +9,7 @@ import '../screens/report_problem_screen.dart';
 import '../util/nav.dart';
 import '../util/error_text.dart';
 import '../diag/app_log.dart';
+import '../util/haptics.dart';
 
 String _fmtBytes(int n) {
   if (n < 1024) return '$n B';
@@ -250,7 +250,7 @@ class _TankOtaProgressDialogState extends State<_TankOtaProgressDialog> {
   Future<void> _run() async {
     final session = context.read<PumpSession>();
     final fw = context.read<TankFirmwareUpdate>();
-    HapticFeedback.mediumImpact();
+    Haptics.play(Haptic.confirm);
     await WakelockPlus.enable();
     try {
       final image = await fw.ensureBinaryDownloaded();
@@ -266,11 +266,11 @@ class _TankOtaProgressDialogState extends State<_TankOtaProgressDialog> {
       );
       // Stays open until Done (see the pump flow: an auto-close raced it).
       fw.setDone();
-      HapticFeedback.heavyImpact();
+      Haptics.play(Haptic.success);
     } catch (e) {
       AppLog.w('update', 'Update failed: $e'); // the full text, for reports
       fw.setError(errorMessage(e));
-      HapticFeedback.heavyImpact();
+      Haptics.play(Haptic.error);
     } finally {
       await WakelockPlus.disable();
     }

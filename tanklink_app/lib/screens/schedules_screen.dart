@@ -5,6 +5,7 @@ import '../ble/pump_session.dart';
 import '../ble/tanklink_uuids.dart';
 import '../util/format.dart';
 import '../util/error_text.dart';
+import '../util/haptics.dart';
 
 class SchedulesScreen extends StatefulWidget {
   const SchedulesScreen({super.key});
@@ -229,7 +230,10 @@ class _ScheduleTile extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Switch(value: schedule.enabled, onChanged: enabled ? onToggle : null),
+          Switch(
+            value: schedule.enabled,
+            onChanged: Haptics.toggle(enabled ? onToggle : null),
+          ),
           IconButton(
             tooltip: 'Remove',
             onPressed: enabled ? onDelete : null,

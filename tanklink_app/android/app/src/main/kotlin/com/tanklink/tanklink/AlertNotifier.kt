@@ -145,14 +145,20 @@ object AlertNotifier {
                 NotificationChannel(CHANNEL_URGENT, "Pump problems", NotificationManager.IMPORTANCE_HIGH),
             )
         }
+        // Opens the app on this pump: the same App Link as the pump's NFC tag
+        // (lib/link/app_link.dart), with the serial (last 4 hex of the id).
+        val serial = p.id.takeLast(4).uppercase()
         val open = PendingIntent.getActivity(
             c,
-            0,
-            Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            p.id.hashCode(),
+            Intent(Intent.ACTION_VIEW, android.net.Uri.parse("${MainActivity.LINK_BASE}/pump/$serial"))
+                .setClass(c, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val n = NotificationCompat.Builder(c, channel)
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setSmallIcon(R.drawable.ic_stat_tanklink)
+            .setColor(0xFF2EC4B6.toInt())
             .setPriority(if (urgent) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setContentTitle(if (p.name.isNotBlank()) "${p.name}: $title" else title)
