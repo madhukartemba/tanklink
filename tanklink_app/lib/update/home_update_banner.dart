@@ -196,28 +196,25 @@ List<_UpdateItem> _pendingUpdates(BuildContext context, BuildContext actions) {
 
   final tankFw = context.watch<TankFirmwareUpdate>();
   if (session.ready) {
-    // The first sensor in range that can take the update; the rest follow
-    // from Settings → Tank sensors (each needs its own button press).
-    final sensor = session.sensors
-        .where(
-          (s) =>
-              session.sensorOnline(s) &&
-              s.otaReady &&
-              tankFw.showHomeBanner(s.firmware),
-        )
-        .firstOrNull;
-    if (sensor != null) {
+    // Every sensor in range that can take the update; each needs its own
+    // button press, so each gets its own Update button.
+    final ready = session.sensors.where(
+      (s) =>
+          session.sensorOnline(s) &&
+          s.otaReady &&
+          tankFw.showHomeBanner(s.firmware),
+    );
+    final many = session.sensors.length > 1;
+    for (final sensor in ready) {
       final current = sensor.firmware.isEmpty ? '—' : sensor.firmware;
       final latest = tankFw.latestVersion ?? '';
       items.add(
         _UpdateItem(
-          name: session.sensors.length > 1
-              ? 'Sensor #${sensor.shortId}'
-              : 'Tank',
+          name: many ? 'Sensor #${sensor.shortId}' : 'Tank',
           tint: scheme.tertiary,
           backgroundAlpha: 0.16,
           icon: Icons.sensors,
-          title: session.sensors.length > 1
+          title: many
               ? 'Sensor #${sensor.shortId} update available'
               : 'Tank update available',
           subtitle: '$current → $latest',
