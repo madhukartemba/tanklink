@@ -151,7 +151,7 @@ The pump's **time** is not in NVS. It lives in the DS3231, is set by the phone, 
 | Value | Where | Current |
 | --- | --- | --- |
 | LoRa frequency | `PUMP_LORA_FREQ_HZ`, `TANK_LORA_FREQ_HZ` | 433 MHz |
-| LoRa radio settings | `sx1278_init` in `components/tanklink_lora/sx1278.c` (shared, so both nodes build the same) | SF10, 125 kHz, CR 4/5, +10 dBm (10 mW legal limit) |
+| LoRa radio settings | `sx1278_init` in `components/tanklink_lora/sx1278.c` (shared, so both nodes build the same) | SF10, 125 kHz, CR 4/5, +17 dBm, 120 mA current limit |
 | Tank ACK wait vs LoRa air time | `TANK_ACK_TIMEOUT_MS` must cover the pump's ACK (~410 ms at SF10) plus its turnaround | 1500 ms |
 | Tank update interval range | `TANKLINK_LORA_BEAT_MIN_SEC` / `MAX_SEC` (shared LoRa header), app `TankLinkUuids.tankUpdateMinSec` / `MaxSec` | 5 – 1800 s |
 | Tank offline window | `node_stale_sec` in `pump_node/main/lora_link.c` (2.5 intervals, at least 30 s). The pump sends it to the app in Tank and Sensors | 750 s at 5 min |

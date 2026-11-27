@@ -17,6 +17,7 @@
 #define REG_FRF_MID 0x07
 #define REG_FRF_LSB 0x08
 #define REG_PA_CONFIG 0x09
+#define REG_OCP 0x0B
 #define REG_LNA 0x0C
 #define REG_FIFO_ADDR_PTR 0x0D
 #define REG_FIFO_TX_BASE_ADDR 0x0E
@@ -32,6 +33,9 @@
 #define REG_PREAMBLE_LSB 0x21
 #define REG_PAYLOAD_LENGTH 0x22
 #define REG_MODEM_CONFIG_3 0x26
+#define REG_IF_FREQ_2 0x2F
+#define REG_IF_FREQ_1 0x30
+#define REG_DETECT_OPTIMIZE 0x31
 #define REG_DIO_MAPPING_1 0x40
 #define REG_VERSION 0x42
 #define REG_PA_DAC 0x4D
@@ -258,11 +262,16 @@ static esp_err_t configure(void)
     set_mode(MODE_STDBY);
     set_frequency(s_freq_hz);
 
-    /* +10 dBm on PA_BOOST (Pout = 17 - (15 - OutputPower), OutputPower 8):
-     * the 10 mW licence-free limit for 433 MHz in India. The RA-02 only wires
-     * PA_BOOST. Normal DAC; the 100 mA default current limit is enough. */
-    write_reg(REG_PA_CONFIG, 0x88);
+    /* +17 dBm on PA_BOOST (Pout = 17 - (15 - OutputPower), OutputPower 15),
+     * the most the normal DAC gives and within the RA-02's 18 dBm rating.
+     * The RA-02 only wires PA_BOOST. The +20 dBm high-power DAC stays off:
+     * it is rated for 1% duty cycle and its ~120 mA peaks load the pump's
+     * 3V3 regulator, which also feeds Wi-Fi. Sending draws about 90 mA, so
+     * the current limit goes from the default 100 mA to 120 mA (OcpTrim 15)
+     * for headroom. */
+    write_reg(REG_PA_CONFIG, 0x8F);
     write_reg(REG_PA_DAC, 0x84);
+    write_reg(REG_OCP, 0x2F);
     /* LNA at maximum gain, boost on. */
     write_reg(REG_LNA, 0x23);
 
@@ -274,6 +283,14 @@ static esp_err_t configure(void)
     /* AGC on. Low-data-rate optimise stays off: SF10/125 kHz symbols are
      * 8 ms, it is needed only above 16 ms (SF11 and up). */
     write_reg(REG_MODEM_CONFIG_3, 0x04);
+    /* Semtech SX1276/77/78 errata 2.3 (spurious reception), 125 kHz case:
+     * automatic IF off and a fixed IF, so noise is less often taken for a
+     * preamble while the pump listens. No frequency offset at 125 kHz. */
+    uint8_t detect = 0;
+    read_reg(REG_DETECT_OPTIMIZE, &detect);
+    write_reg(REG_DETECT_OPTIMIZE, (uint8_t)(detect & 0x7F));
+    write_reg(REG_IF_FREQ_2, 0x40);
+    write_reg(REG_IF_FREQ_1, 0x00);
     write_reg(REG_PREAMBLE_MSB, 0x00);
     write_reg(REG_PREAMBLE_LSB, 0x08);
     write_reg(REG_FIFO_TX_BASE_ADDR, 0x00);
@@ -513,15 +530,20 @@ esp_err_t sx1278_poll_recv_ex(uint8_t *buf, size_t buf_len, size_t *out_len,
     write_reg(REG_IRQ_FLAGS, 0xFF);
     if (err == ESP_OK) {
         *out_len = n;
+        /* Signed SNR in 0.25 dB units. */
+        const int snr_q = (int8_t)pkt_snr;
         if (rssi_dbm) {
-            /* Semtech: HF (≥862 MHz) offset −157; LF (433/470) offset −164. */
+            /* Semtech datasheet 5.5.5: HF (>= 862 MHz) offset -157, LF (433/470)
+             * -164. Below the noise floor (SNR < 0, common at SF10) the packet
+             * is weaker than PktRssi says, so add the SNR; above it, scale
+             * PktRssi by 16/15. */
             const int offset = (s_freq_hz >= 862000000UL) ? -157 : -164;
-            *rssi_dbm = (int16_t)(offset + (int)pkt_rssi);
+            const int rssi = (snr_q < 0) ? offset + (int)pkt_rssi + snr_q / 4
+                                         : offset + ((int)pkt_rssi * 16) / 15;
+            *rssi_dbm = (int16_t)rssi;
         }
         if (snr_db) {
-            /* Signed SNR in 0.25 dB units → dB. */
-            int8_t snr_raw = (int8_t)pkt_snr;
-            *snr_db = (int8_t)(snr_raw / 4);
+            *snr_db = (int8_t)(snr_q / 4);
         }
     }
     return err;

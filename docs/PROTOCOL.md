@@ -388,7 +388,7 @@ The tank only runs BLE during a ~10 s window after a short button press, for OTA
 
 ## LoRa (tank ↔ pump)
 
-433 MHz, SX1278: SF10, 125 kHz bandwidth, coding rate 4/5, explicit header, CRC on, 8-symbol preamble, +10 dBm on PA_BOOST (the 10 mW licence-free limit at 433 MHz in India). A STATUS or ACK (31 bytes sealed) takes about 420 ms on air, a PAIR (45 bytes) about 575 ms. Pump and tank must use the same spreading factor, bandwidth and coding rate or they can't hear each other (transmit power may differ); a change to those is a breaking radio change even though the packet layout stays.
+433 MHz, SX1278: SF10, 125 kHz bandwidth, coding rate 4/5, explicit header, CRC on, 8-symbol preamble, +17 dBm on PA_BOOST (120 mA current limit), Semtech errata 2.3 IF fix for 125 kHz. A STATUS or ACK (31 bytes sealed) takes about 420 ms on air, a PAIR (45 bytes) about 575 ms. Pump and tank must use the same spreading factor, bandwidth and coding rate or they can't hear each other (transmit power may differ); a change to those is a breaking radio change even though the packet layout stays.
 
 Packed struct `tanklink_lora_status_t`, 21 bytes:
 

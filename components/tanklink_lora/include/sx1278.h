@@ -33,7 +33,8 @@ esp_err_t sx1278_start_rx(void);
 esp_err_t sx1278_poll_recv(uint8_t *buf, size_t buf_len, size_t *out_len);
 /**
  * Same as poll_recv; on success fills optional last-packet RSSI (dBm) and SNR (dB).
- * 433 MHz: RSSI ≈ -164 + RegPktRssiValue. SNR is RegPktSnrValue/4.
+ * 433 MHz: RSSI = -164 + PktRssi + SNR when SNR < 0, else -164 + 16/15 PktRssi.
+ * SNR is RegPktSnrValue/4.
  */
 esp_err_t sx1278_poll_recv_ex(uint8_t *buf, size_t buf_len, size_t *out_len,
                               int16_t *rssi_dbm, int8_t *snr_db);
